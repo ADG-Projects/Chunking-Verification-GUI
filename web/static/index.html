@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Chunking Visualizer</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <!-- Prefer local vendor copy (server auto-fetches if missing), fallback to CDN -->
+    <script>
+      (function() {
+        function load(src) {
+          return new Promise(function(resolve, reject){
+            var s = document.createElement('script'); s.src = src; s.onload = resolve; s.onerror = reject; document.head.appendChild(s);
+          });
+        }
+        (async function ensurePdfjs(){
+          const localPdf = '/vendor/pdfjs/pdf.min.js';
+          const cdns = [
+            'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js',
+            'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js',
+          ];
+          let ok = false;
+          try { await load(localPdf); ok = true; } catch(e) {}
+          for (const url of cdns) { if (ok) break; try { await load(url); ok = true; } catch(e) {} }
+          if (ok && window.pdfjsLib) {
+            // Point worker to local first, then CDN fallbacks.
+            const workerCandidates = [
+              '/vendor/pdfjs/pdf.worker.min.js',
+              'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js',
+              'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js',
+            ];
+            // Use first; pdf.js will fetch this URL when creating the worker.
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc = workerCandidates[0];
+          }
+        })();
+      })();
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
+  </head>
+  <body>
+    <header>
+      <h1>Chunking Visualizer</h1>
+      <div class="controls">
+        <label>
+          Run:
+          <select id="runSelect"></select>
+        </label>
+      </div>
+    </header>
+
+    <main>
+      <section class="left">
+        <div class="page-controls">
+          <button id="prevPage">◀</button>
+          <span>Page <span id="pageNum">-</span> / <span id="pageCount">-</span></span>
+          <button id="nextPage">▶</button>
+          <input type="range" id="zoom" min="50" max="200" value="110" />
+        </div>
+        <div id="pdfContainer">
+          <div class="page-layer">
+            <canvas id="pdfCanvas"></canvas>
+            <div id="overlay"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="right">
+        <div class="metrics">
+          <div class="metric">
+            <div class="label">Avg Coverage <span class="info" tabindex="0">i</span><div class="tip">Macro average of per-table coverage (recall): share of gold rows covered by the selected chunks.</div></div>
+            <div class="bar"><div id="mcov" class="fill"></div></div>
+            <div id="mcovv" class="value">-</div>
+          </div>
+          <div class="metric">
+            <div class="label">Avg Cohesion <span class="info" tabindex="0">i</span><div class="tip">Macro average of per-table cohesion = 1 / selected_chunk_count. Maximized when a table stays in a single chunk.</div></div>
+            <div class="bar"><div id="mcoh" class="fill"></div></div>
+            <div id="mcohv" class="value">-</div>
+          </div>
+          <div class="metric">
+            <div class="label">Avg F1 <span class="info" tabindex="0">i</span><div class="tip">Macro average of per-table F1 where F1 = harmonic mean of coverage and cohesion.</div></div>
+            <div class="bar"><div id="mf1" class="fill"></div></div>
+            <div id="mf1v" class="value">-</div>
+          </div>
+          <div class="metric">
+            <div class="label">Micro Coverage <span class="info" tabindex="0">i</span><div class="tip">Coverage weighted by gold-row counts across tables (larger tables contribute more).</div></div>
+            <div class="bar"><div id="mmicro" class="fill"></div></div>
+            <div id="mmicrov" class="value">-</div>
+          </div>
+        </div>
+
+        <div class="chart">
+          <canvas id="chart"></canvas>
+        </div>
+
+        <div class="matches">
+          <h2>Tables</h2>
+          <div id="matchList" class="list"></div>
+        </div>
+      </section>
+
+      <aside id="drawer" class="drawer hidden">
+        <div class="drawer-header">
+          <div>
+            <div id="drawerTitle" class="drawer-title">Unstructured Chunks</div>
+            <div id="drawerMeta" class="drawer-meta"></div>
+            <div id="drawerSummary" class="mini-metrics compact"></div>
+          </div>
+          <button id="drawerClose" class="btn">Close</button>
+        </div>
+        <div class="drawer-content">
+          <div id="elementPicker" class="element-picker"></div>
+          <div id="preview" class="table-preview">
+            <div class="placeholder">Select an Unstructured chunk to preview its extracted table</div>
+          </div>
+        </div>
+      </aside>
+    </main>
+
+    <script src="/app.js" defer></script>
+  </body>
+  </html>

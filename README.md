@@ -61,3 +61,34 @@ Use `--input-jsonl` when you want to re-evaluate matches from a previously saved
 ## Next ideas
 
 - Evaluate additional ingestion pipelines (Azure AI Document Intelligence, AWS Textract, etc.) as new experiments land in this sandbox.
+
+## Web UI (Chunking Visualizer)
+
+Spin up a small local UI to inspect PDFs, table matching, and chunker performance without juggling multiple files.
+
+Quickstart:
+
+```bash
+uv sync
+uv run python web/serve.py
+# then open http://127.0.0.1:8765/
+```
+
+What you get:
+- PDF rendering of the trimmed slice (via `*.pagesX-Y.pdf`).
+- Per-table cards with coverage, cohesion, F1, and chunk count.
+- One-click highlighting of selected chunks on the PDF (or just the best chunk, via a toggle).
+ - Highlight controls per table: "Highlight all" overlays all selected chunks; "Highlight best" shows just the single best chunk.
+- Overall metrics bars and a small chart of F1 by table.
+- Drilldown: click "Details" on any table to preview the extracted HTML table for the best chunk (and switch among all selected chunks).
+
+Data sources used by the UI:
+- `outputs/unstructured/<slug>.matches.json`
+- `outputs/unstructured/<slug>.pagesX-Y.tables.jsonl`
+- `outputs/unstructured/<slug>.pagesX-Y.pdf`
+
+Endpoints (served by FastAPI):
+- `GET /api/runs` — discover available runs under `outputs/unstructured/`.
+- `GET /api/matches/{slug}` — load the matches JSON.
+- `GET /api/tables/{slug}` — load and parse the tables JSONL.
+- `GET /pdf/{slug}` — stream the trimmed PDF.

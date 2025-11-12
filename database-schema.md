@@ -31,3 +31,11 @@ The project does not persist to a database yet. Instead, Unstructured parses eac
      - `tables`: number of tables matched
      - `avg_coverage`, `avg_cohesion`, `avg_chunker_f1`, `avg_selected_chunk_count`
      - `micro_coverage`: coverage weighted by gold-row counts
+
+## Web UI consumption
+
+The local web UI (served by `web/serve.py`) consumes the same artifacts:
+- Tables JSONL for per-chunk coordinates (`metadata.coordinates.points`, `layout_width`, `layout_height`, `page_number`).
+- Matches JSON for per-table `selected_elements` (with `page_trimmed`/`page_original`) and overall metrics.
+
+No schema changes are introduced; these endpoints are thin wrappers over the files on disk.
