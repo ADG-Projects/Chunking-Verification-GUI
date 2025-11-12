@@ -1,0 +1,23 @@
+# Generated artifacts
+outputs/
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments & local tooling
+.venv/
+env/
+.env
+.env.*
+.python-version
+
+# Packaging/build output
+chunking_tests.egg-info/
+build/
+dist/
+
+# Editors & OS metadata
+.DS_Store
+.history/
+.idea/
+.vscode/

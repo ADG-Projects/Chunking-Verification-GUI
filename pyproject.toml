@@ -1,0 +1,12 @@
+[project]
+name = "chunking-tests"
+version = "0.1.0"
+description = "Document ingestion experiments for local Unstructured processing."
+requires-python = ">=3.10"
+dependencies = [
+    "unstructured[pdf]",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
