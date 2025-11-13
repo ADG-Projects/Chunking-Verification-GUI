@@ -1,6 +1,8 @@
 # Data Notes
 
-The project does not persist to a database yet. Instead, Unstructured parses each PDF into JSON documents stored under `outputs/`. Source PDFs are read from `res/` by default, but the server honors a `PDF_DIR` environment variable (set to `/data/res` on Fly.io) so uploaded files can live on a mounted volume.
+The project does not persist to a database yet. Instead, Unstructured parses each PDF into JSON documents stored under `outputs/`. Source PDFs are read from a configurable directory:
+
+- `PDF_DIR` environment variable points to where PDFs live. Locally it defaults to `res/`. In Fly deployments with a volume mounted at `/data`, use `PDF_DIR=/data/res` so uploads persist across deploys.
 
 ## Document JSON layout
 - `source_file`: Absolute path to the processed PDF.
