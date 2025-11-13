@@ -220,6 +220,7 @@ class RunRequest:
     strategy: str = "auto"  # auto|fast|hi_res
     infer_table_structure: bool = True
     chunking: str = "by_title"  # basic|by_title
+    chunk_max_tokens: Optional[int] = None
     chunk_max_characters: Optional[int] = None
     chunk_new_after_n_chars: Optional[int] = None
     chunk_combine_under_n_chars: Optional[int] = None
@@ -248,6 +249,7 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
     if chunking not in {"basic", "by_title"}:
         raise HTTPException(status_code=400, detail="chunking must be one of: basic, by_title")
 
+    chunk_max_tokens = payload.get("chunk_max_tokens")
     chunk_max_characters = payload.get("chunk_max_characters")
     chunk_new_after_n_chars = payload.get("chunk_new_after_n_chars")
     chunk_combine_under_n_chars = payload.get("chunk_combine_under_n_chars")
@@ -286,6 +288,24 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
     run_slug = f"{slug}__{safe_tag}" if safe_tag else slug
     pages_tag = _safe_pages_tag(pages)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    form_snapshot: Dict[str, Any] = {
+        "pdf": pdf_name,
+        "pages": pages,
+        "tag": raw_tag or None,
+        "strategy": strategy,
+        "infer_table_structure": infer_table_structure,
+        "chunking": chunking,
+        "max_tokens": chunk_max_tokens,
+        "chunk_max_characters": chunk_max_characters,
+        "chunk_new_after_n_chars": chunk_new_after_n_chars,
+        "chunk_combine_under_n_chars": chunk_combine_under_n_chars,
+        "chunk_overlap": chunk_overlap,
+        "chunk_include_orig_elements": chunk_include_orig_elements,
+        "chunk_overlap_all": chunk_overlap_all,
+        "chunk_multipage_sections": chunk_multipage_sections,
+    }
+    payload["form_snapshot"] = form_snapshot
 
     def build_paths(slug_val: str):
         return (
@@ -354,6 +374,31 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
         # Include a short tail of stderr for debugging
         tail = (r.stderr or "").splitlines()[-20:]
         raise HTTPException(status_code=500, detail=f"Run failed ({r.returncode}):\n" + "\n".join(tail))
+
+    # Post-process matches JSON to persist full form snapshot for the recap bar
+    try:
+        with matches_out.open("r", encoding="utf-8") as f:
+            mobj = json.load(f)
+    except Exception:
+        mobj = None
+    if isinstance(mobj, dict):
+        rc = mobj.get("run_config") or {}
+        snap = payload.get("form_snapshot") or {}
+        rc["form_snapshot"] = snap
+        rc["pdf"] = pdf_name
+        rc["pages"] = pages
+        if safe_tag:
+            rc["tag"] = safe_tag
+        if raw_tag:
+            rc["variant_tag"] = raw_tag
+        mobj["run_config"] = rc
+        try:
+            with matches_out.open("w", encoding="utf-8") as f:
+                json.dump(mobj, f, ensure_ascii=False, indent=2)
+                f.write("\n")
+        except Exception:
+            # Non-fatal: keep going if we can't rewrite
+            pass
 
     # Return fresh run metadata
     run_info = {

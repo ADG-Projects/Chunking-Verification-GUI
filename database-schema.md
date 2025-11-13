@@ -31,6 +31,11 @@ The project does not persist to a database yet. Instead, Unstructured parses eac
      - `tables`: number of tables matched
      - `avg_coverage`, `avg_cohesion`, `avg_chunker_f1`, `avg_selected_chunk_count`
      - `micro_coverage`: coverage weighted by gold-row counts
+   - `run_config`: metadata about how the run was produced
+     - `strategy`, `chunking`, `infer_table_structure`, `match_source`
+     - `chunk_params`: the effective parameters supplied to Unstructured. Keys may include `max_characters`, `new_after_n_chars`, `combine_text_under_n_chars`, `overlap`, `include_orig_elements`, `overlap_all`, `multipage_sections`.
+     - `chunk_summary`: quick stats about emitted chunks (`count`, `min_chars`, `max_chars`, `avg_chars`)
+     - `form_snapshot` (UI-only): raw values entered in the New Run modal, including convenience fields like `max_tokens` and the original `pdf`, `pages`, and optional `tag`. The recap bar prefers these when available and falls back to `chunk_params`.
 
 3. **Optional Chunks JSONL** (`outputs/unstructured/<doc>.pages<range>.chunks.jsonl`)
    - Emitted when the UI/API runs with `chunking=by_title`.

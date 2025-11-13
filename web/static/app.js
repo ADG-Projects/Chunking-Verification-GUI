@@ -28,7 +28,7 @@ let SHOW_ELEMENT_OVERLAYS = true;
 // Top-level view: 'metrics' or 'inspect'
 let CURRENT_VIEW = 'metrics';
 // Inspect sub-tab: 'chunks' or 'elements'
-let INSPECT_TAB = 'chunks';
+let INSPECT_TAB = 'elements';
 let CURRENT_INSPECT_ELEMENT_ID = null; // selected element id in Inspect->Elements
 let RUN_PREVIEW_DOC = null;
 let RUN_PREVIEW_PAGE = 1;
@@ -271,6 +271,10 @@ function drawChunksModeForPage(pageNum) {
     for (const ch of CURRENT_CHUNKS.chunks) {
       const box = chunkBox(ch);
       if (!box || box.page_trimmed !== pageNum) continue;
+      // Filter by chunk type if a filter is active
+      if (CURRENT_CHUNK_TYPE_FILTER && CURRENT_CHUNK_TYPE_FILTER !== 'All' && ch.type !== CURRENT_CHUNK_TYPE_FILTER) {
+        continue;
+      }
       const meta = { kind: 'chunk', id: ch.element_id, type: ch.type, page: box.page_trimmed, chars: ch.char_len };
       addBox({ x: box.x, y: box.y, w: box.w, h: box.h }, box.layout_w, box.layout_h, false, ch.type, null, 'chunk', meta);
       if (ch.type) chunkTypesPresent.add(ch.type);
@@ -415,32 +419,50 @@ function refreshMatchesView() {
 }
 
 function updateRunConfigCard() {
-  const card = $('runConfigCard');
-  if (!card) return;
+  // Update settings recap bar
   const cfg = CURRENT_RUN_CONFIG || CURRENT_RUN?.run_config;
+  const set = (id, value) => {
+    const el = $(id);
+    if (el) el.textContent = value;
+  };
   if (!cfg) {
-    card.innerHTML = '<div class="placeholder">No run metadata</div>';
+    ['Strategy','InferTables','Chunking','MaxTokens','MaxChars','NewAfter','CombineUnder','Overlap','IncludeOrig','OverlapAll','Multipage','Pdf','Pages','Tag']
+      .forEach(name => set(`setting${name}`, '-'));
     return;
   }
-  const chunking = cfg.chunking || 'by_title';
   const chunkParams = cfg.chunk_params || {};
-  const rows = [
-    ['Strategy', cfg.strategy || '-'],
-    ['Infer table structure', String(cfg.infer_table_structure !== false)],
-    ['Chunking', chunking],
-  ];
-  Object.entries(chunkParams).forEach(([k, v]) => rows.push([`chunk.${k}`, v]));
-  let chunkSummaryHtml = '';
-  if (CURRENT_CHUNK_SUMMARY) {
-    const s = CURRENT_CHUNK_SUMMARY;
-    chunkSummaryHtml = `<div class="chunk-meta">Chunks: ${s.count || 0}, avg ${(s.avg_chars||0).toFixed(1)} chars, min ${s.min_chars||0}, max ${s.max_chars||0}</div>`;
-  }
-  card.innerHTML = `
-    <div class="config-grid">
-      ${rows.map(([k,v]) => `<div><span class="lab">${k}</span><span>${v ?? '-'}</span></div>`).join('')}
-    </div>
-    ${chunkSummaryHtml}
-  `;
+  const snap = cfg.form_snapshot || cfg.ui_form || {};
+  const fallback = (value, def) => {
+    if (value === undefined || value === null || value === '') return def;
+    return value;
+  };
+  set('settingStrategy', cfg.strategy || 'auto');
+  set('settingInferTables', String(cfg.infer_table_structure !== false));
+  set('settingChunking', cfg.chunking || 'by_title');
+  const maxCharsRaw = fallback(chunkParams.max_characters, snap.max_characters);
+  const mtSource = fallback(snap.max_tokens, chunkParams.max_tokens);
+  const inferredTokens = (maxCharsRaw != null && Number.isFinite(Number(maxCharsRaw))) ? Math.round(Number(maxCharsRaw) / 4) : null;
+  const maxTokens = (mtSource != null && Number.isFinite(Number(mtSource))) ? Number(mtSource) : inferredTokens;
+  set('settingMaxTokens', maxTokens != null ? String(maxTokens) : '-');
+  set('settingMaxChars', maxCharsRaw != null ? String(maxCharsRaw) : '500');
+  set('settingNewAfter', fallback(chunkParams.new_after_n_chars, snap.new_after_n_chars) ?? '500');
+  const combineVal = fallback(
+    chunkParams.combine_under_n_chars,
+    fallback(chunkParams.combine_text_under_n_chars, snap.combine_under_n_chars),
+  );
+  set('settingCombineUnder', combineVal ?? '500');
+  const overlapVal = fallback(chunkParams.overlap, snap.overlap);
+  set('settingOverlap', overlapVal ?? '0');
+  const includeOrig = fallback(chunkParams.include_orig_elements, snap.include_orig_elements);
+  set('settingIncludeOrig', String(includeOrig !== false));
+  const overlapAll = fallback(chunkParams.overlap_all, snap.overlap_all);
+  set('settingOverlapAll', String(Boolean(overlapAll)));
+  const multipage = fallback(chunkParams.multipage_sections, snap.multipage_sections);
+  set('settingMultipage', String(multipage !== false));
+  const pages = CURRENT_RUN?.page_range || cfg.pages || snap.pages;
+  set('settingPages', pages || '-');
+  set('settingPdf', cfg.pdf || snap.pdf || (CURRENT_RUN?.slug?.split('.pages')[0] ?? '-'));
+  set('settingTag', cfg.tag || snap.tag || snap.variant_tag || '-');
 }
 
 async function openDetails(tableMatch) {
@@ -559,6 +581,7 @@ async function loadRun(slug) {
   CURRENT_RUN = (RUNS_CACHE || []).find(r => r.slug === slug) || null;
   CURRENT_RUN_HAS_CHUNKS = Boolean(CURRENT_RUN && CURRENT_RUN.chunks_file);
   CURRENT_CHUNK_LOOKUP = {};
+  CURRENT_CHUNK_TYPE_FILTER = 'All';
   BOX_INDEX = {};
   // Load PDF
   const pdfUrl = `/pdf/${encodeURIComponent(slug)}`;
@@ -799,6 +822,7 @@ function wireRunForm() {
     const maxTokens = parseNumber('chunkMaxTokens');
     const maxChars = parseNumber('chunkMaxChars');
     if (maxTokens != null) {
+      payload.chunk_max_tokens = maxTokens;
       payload.chunk_max_characters = Math.max(1, Math.round(maxTokens * 4));
     } else if (maxChars != null) {
       payload.chunk_max_characters = maxChars;
@@ -817,6 +841,23 @@ function wireRunForm() {
       const multipage = parseBoolSelect('chunkMultipage');
       if (multipage != null) payload.chunk_multipage_sections = multipage;
     }
+    // Include a raw snapshot of modal values so the recap can display
+    payload.form_snapshot = {
+      pdf: payload.pdf,
+      pages: payload.pages,
+      strategy: payload.strategy,
+      infer_table_structure: payload.infer_table_structure,
+      chunking: payload.chunking,
+      tag: tagVal || null,
+      max_tokens: parseNumber('chunkMaxTokens'),
+      max_characters: parseNumber('chunkMaxChars'),
+      new_after_n_chars: parseNumber('chunkNewAfter'),
+      combine_under_n_chars: parseNumber('chunkCombineUnder'),
+      overlap: parseNumber('chunkOverlap'),
+      include_orig_elements: parseBoolSelect('chunkIncludeOrig'),
+      overlap_all: parseBoolSelect('chunkOverlapAll'),
+      multipage_sections: parseBoolSelect('chunkMultipage'),
+    };
     const btn = $('runBtn');
     btn.disabled = true; btn.textContent = 'Running…';
     try {
@@ -1332,7 +1373,7 @@ function renderChunksTab() {
     return;
   }
   const summary = CURRENT_CHUNKS.summary || {};
-  const allChunks = CURRENT_CHUNKS.chunks || {};
+  const allChunks = CURRENT_CHUNKS.chunks || [];
 
   // Compute chunk types from all chunks
   const typeCount = new Map();
@@ -1378,10 +1419,9 @@ function renderChunksTab() {
     </div>
   `;
 
-  // Wire up the type filter
+  // Wire up the type filter (element is recreated each time via innerHTML, so add listener each time)
   const typeSelect = $('chunksTypeSelect');
-  if (typeSelect && !typeSelect._wired) {
-    typeSelect._wired = true;
+  if (typeSelect) {
     typeSelect.addEventListener('change', () => {
       CURRENT_CHUNK_TYPE_FILTER = typeSelect.value || 'All';
       renderChunksTab();
