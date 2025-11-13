@@ -805,35 +805,52 @@ function wireRunForm() {
   const uploadInput = $('pdfUploadInput');
   const uploadStatus = $('pdfUploadStatus');
   if (uploadBtn && uploadInput) {
-    uploadBtn.addEventListener('click', async () => {
+    let uploading = false;
+    const setStatus = (msg) => { if (uploadStatus) uploadStatus.textContent = msg || ''; };
+    const handleUpload = async () => {
+      if (uploading) return;
       if (!uploadInput.files || !uploadInput.files.length) {
-        if (uploadStatus) uploadStatus.textContent = 'Select a PDF first';
+        try { uploadInput.click(); } catch (e) {}
+        setStatus('');
         return;
       }
       const file = uploadInput.files[0];
       if (!file || !file.name || !file.name.toLowerCase().endsWith('.pdf')) {
-        if (uploadStatus) uploadStatus.textContent = 'File must be a .pdf';
+        setStatus('File must be a .pdf');
+        uploadInput.value = '';
         return;
       }
       const form = new FormData();
       form.append('file', file);
+      uploading = true;
       uploadBtn.disabled = true;
       uploadBtn.textContent = 'Uploading…';
-      if (uploadStatus) uploadStatus.textContent = '';
+      setStatus(`Uploading ${file.name}…`);
       try {
         const resp = await fetch('/api/pdfs', { method: 'POST', body: form });
         let data = null;
         try { data = await resp.json(); } catch (err) { data = null; }
         if (!resp.ok) throw new Error((data && data.detail) || `HTTP ${resp.status}`);
-        if (uploadStatus) uploadStatus.textContent = `Uploaded ${data.name}`;
+        setStatus(`Uploaded ${data.name}`);
         uploadInput.value = '';
         await loadPdfs(data?.name || null);
-        await loadRunPreviewForSelectedPdf();
+        try {
+          await loadRunPreviewForSelectedPdf();
+        } catch (err) {
+          console.error('Failed to refresh preview after upload', err);
+        }
       } catch (e) {
-        if (uploadStatus) uploadStatus.textContent = `Upload failed: ${e.message}`;
+        setStatus(`Upload failed: ${e.message}`);
       } finally {
+        uploading = false;
         uploadBtn.disabled = false;
         uploadBtn.textContent = 'Upload';
+      }
+    };
+    uploadBtn.addEventListener('click', handleUpload);
+    uploadInput.addEventListener('change', async () => {
+      if (uploadInput.files && uploadInput.files.length) {
+        await handleUpload();
       }
     });
   }
