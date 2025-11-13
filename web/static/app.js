@@ -13,7 +13,9 @@ let LAST_HIGHLIGHT_MODE = 'all'; // 'all' | 'best'
 let KNOWN_PDFS = [];
 let CURRENT_TAB = 'overview';
 let ELEMENT_TYPES = [];
+let CHUNK_TYPES = [];
 let CURRENT_TYPE_FILTER = 'All';
+let CURRENT_CHUNK_TYPE_FILTER = 'All';
 let SHOW_UNMATCHED = false;
 let RUNS_CACHE = [];
 let CURRENT_RUN = null;
@@ -200,6 +202,9 @@ function drawTargetsOnPage(pageNum, tableMatch, bestOnly=false) {
   const colorMap = {};
   ids.forEach((id) => { colorMap[id] = colorForId(id); });
 
+  const chunkTypesPresent = new Set();
+  const elementTypesPresent = new Set();
+
   for (const t of targets) {
     if (t.page_trimmed !== pageNum) continue;
     const ch = CURRENT_CHUNK_LOOKUP[t.element_id];
@@ -217,11 +222,27 @@ function drawTargetsOnPage(pageNum, tableMatch, bestOnly=false) {
         chars: ch.char_len,
       };
       addBox(rect, box.layout_w, box.layout_h, isBest, ch.type, null, 'chunk', meta);
+      if (ch.type) chunkTypesPresent.add(ch.type);
     }
     if (SHOW_ELEMENT_OVERLAYS) {
       drawOrigBoxesForChunk(t.element_id, pageNum, null);
+      // Collect element types
+      if (ch.orig_boxes) {
+        for (const box of ch.orig_boxes) {
+          if (box.page_trimmed === pageNum && box.type) {
+            const t = String(box.type || '').toLowerCase();
+            if (!t.includes('composite')) {
+              elementTypesPresent.add(box.type);
+            }
+          }
+        }
+      }
     }
   }
+
+  // Update legend - show both chunk and element types in metrics view
+  const allTypes = new Set([...chunkTypesPresent, ...elementTypesPresent]);
+  updateLegend(Array.from(allTypes));
 }
 
 function drawOrigBoxesForChunk(chunkId, pageNum, color) {
@@ -243,6 +264,8 @@ function drawOrigBoxesForChunk(chunkId, pageNum, color) {
 
 function drawChunksModeForPage(pageNum) {
   clearBoxes();
+  const chunkTypesPresent = new Set();
+  const elementTypesPresent = new Set();
   // show all chunk bboxes on this page when enabled
   if (SHOW_CHUNK_OVERLAYS && CURRENT_CHUNKS && CURRENT_CHUNKS.chunks) {
     for (const ch of CURRENT_CHUNKS.chunks) {
@@ -250,6 +273,7 @@ function drawChunksModeForPage(pageNum) {
       if (!box || box.page_trimmed !== pageNum) continue;
       const meta = { kind: 'chunk', id: ch.element_id, type: ch.type, page: box.page_trimmed, chars: ch.char_len };
       addBox({ x: box.x, y: box.y, w: box.w, h: box.h }, box.layout_w, box.layout_h, false, ch.type, null, 'chunk', meta);
+      if (ch.type) chunkTypesPresent.add(ch.type);
     }
   }
   // if a chunk is selected and element overlays are enabled, draw its orig boxes only
@@ -257,8 +281,21 @@ function drawChunksModeForPage(pageNum) {
     const ch = CURRENT_CHUNK_LOOKUP[CURRENT_ELEMENT_ID];
     if (ch) {
       drawOrigBoxesForChunk(ch.element_id, pageNum, null);
+      // Collect element types from orig_boxes
+      if (ch.orig_boxes) {
+        for (const box of ch.orig_boxes) {
+          if (box.page_trimmed === pageNum && box.type) {
+            elementTypesPresent.add(box.type);
+          }
+        }
+      }
     }
   }
+  // Update legend based on what's being shown
+  const typesToShow = SHOW_ELEMENT_OVERLAYS && elementTypesPresent.size > 0
+    ? Array.from(elementTypesPresent)
+    : Array.from(chunkTypesPresent);
+  updateLegend(typesToShow);
 }
 
 function redrawOverlaysForCurrentContext() {
@@ -277,6 +314,7 @@ function redrawOverlaysForCurrentContext() {
     drawTargetsOnPage(CURRENT_PAGE, LAST_SELECTED_MATCH, LAST_HIGHLIGHT_MODE === 'best');
   } else {
     clearBoxes();
+    updateLegend([]);
   }
 }
 
@@ -1142,7 +1180,7 @@ function renderElementsListForCurrentPage(boxes) {
           txt = String(data.text_as_html).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
         }
         if (!txt) txt = '(no text)';
-        pre.textContent = txt.length > 400 ? `${txt.slice(0, 400)}…` : txt;
+        pre.textContent = txt;
         const displayId = data.original_element_id || id;
         const shortId = displayId.length > 16 ? `${displayId.slice(0,12)}…` : displayId;
         header.innerHTML = `<span>${data.type || entry.type || 'Element'}</span><span class="meta">${shortId}</span>`;
@@ -1294,22 +1332,63 @@ function renderChunksTab() {
     return;
   }
   const summary = CURRENT_CHUNKS.summary || {};
-  const allChunks = CURRENT_CHUNKS.chunks || [];
-  // Filter chunks by current page
-  const chunks = allChunks.filter(ch => {
+  const allChunks = CURRENT_CHUNKS.chunks || {};
+
+  // Compute chunk types from all chunks
+  const typeCount = new Map();
+  allChunks.forEach(ch => {
+    const type = ch.type || 'Unknown';
+    typeCount.set(type, (typeCount.get(type) || 0) + 1);
+  });
+  CHUNK_TYPES = Array.from(typeCount.entries()).map(([type, count]) => ({ type, count }));
+
+  // Filter chunks by current page and type
+  let chunks = allChunks.filter(ch => {
     const b = chunkBox(ch);
     return b && Number.isFinite(b.page_trimmed) && b.page_trimmed === CURRENT_PAGE;
   });
 
+  if (CURRENT_CHUNK_TYPE_FILTER && CURRENT_CHUNK_TYPE_FILTER !== 'All') {
+    chunks = chunks.filter(ch => ch.type === CURRENT_CHUNK_TYPE_FILTER);
+  }
+
+  // Build type dropdown options
+  const typeOpts = ['All', ...CHUNK_TYPES.map(t => t.type)];
+  const typeOptsHtml = typeOpts.map(t => `<option value="${t}" ${t === CURRENT_CHUNK_TYPE_FILTER ? 'selected' : ''}>${t}</option>`).join('');
+
+  // Build types list
+  const typesListHtml = CHUNK_TYPES.map(t => `<div>${t.type}: ${t.count}</div>`).join('');
+
   summaryEl.innerHTML = `
-    <div class="config-grid">
-      <div><span class="lab">Chunks (page ${CURRENT_PAGE})</span><span>${chunks.length} of ${summary.count || 0}</span></div>
-      <div><span class="lab">Avg chars</span><span>${(summary.avg_chars || 0).toFixed(1)}</span></div>
-      <div><span class="lab">Min chars</span><span>${summary.min_chars || 0}</span></div>
-      <div><span class="lab">Max chars</span><span>${summary.max_chars || 0}</span></div>
-      <div><span class="lab">Total chars</span><span>${summary.total_chars || 0}</span></div>
+    <div class="chunk-summary-row">
+      <div class="row">
+        <label>
+          <span class="lab">Type</span>
+          <select id="chunksTypeSelect">${typeOptsHtml}</select>
+        </label>
+      </div>
+      <div class="chunk-types">${typesListHtml}</div>
+      <div class="chunk-stats">
+        <div><span class="lab">Chunks (page ${CURRENT_PAGE})</span><span>${chunks.length} of ${summary.count || 0}</span></div>
+        <div><span class="lab">Avg chars</span><span>${(summary.avg_chars || 0).toFixed(1)}</span></div>
+        <div><span class="lab">Min chars</span><span>${summary.min_chars || 0}</span></div>
+        <div><span class="lab">Max chars</span><span>${summary.max_chars || 0}</span></div>
+        <div><span class="lab">Total chars</span><span>${summary.total_chars || 0}</span></div>
+      </div>
     </div>
   `;
+
+  // Wire up the type filter
+  const typeSelect = $('chunksTypeSelect');
+  if (typeSelect && !typeSelect._wired) {
+    typeSelect._wired = true;
+    typeSelect.addEventListener('change', () => {
+      CURRENT_CHUNK_TYPE_FILTER = typeSelect.value || 'All';
+      renderChunksTab();
+      redrawOverlaysForCurrentContext();
+    });
+  }
+
   listEl.innerHTML = '';
   chunks.forEach((chunk, idx) => {
     const card = document.createElement('div');
@@ -1323,7 +1402,7 @@ function renderChunksTab() {
     header.innerHTML = `<span>${chunk.element_id || '(no id)'}</span><span>${chunk.char_len || 0} chars</span>`;
     const pre = document.createElement('pre');
     const text = chunk.text || '';
-    pre.textContent = text.length > 400 ? `${text.slice(0, 400)}…` : text || '(empty)';
+    pre.textContent = text || '(empty)';
     // Elements sublist (collapsed by default)
     const sub = document.createElement('div');
     sub.className = 'elements-sublist hidden';

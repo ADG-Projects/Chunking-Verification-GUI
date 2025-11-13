@@ -777,7 +777,12 @@ def _find_row_span(orig_rows: List[str], chunk_rows: List[str]) -> Optional[Tupl
     return start_idx, min(len(haystack), end_idx)
 
 
-def _slice_bbox(bbox: Optional[Dict[str, Any]], total_rows: int, row_span: Tuple[int, int]) -> Optional[Dict[str, Any]]:
+def _slice_bbox(
+    bbox: Optional[Dict[str, Any]],
+    total_rows: int,
+    row_span: Tuple[int, int],
+    weights: Optional[List[float]] = None,
+) -> Optional[Dict[str, Any]]:
     if not bbox or not total_rows:
         return None
     x = bbox.get("x")
@@ -789,9 +794,27 @@ def _slice_bbox(bbox: Optional[Dict[str, Any]], total_rows: int, row_span: Tuple
     start, end = row_span
     if start < 0 or end <= start or end > total_rows:
         return None
-    row_height = h / total_rows
-    seg_y = y + row_height * start
-    seg_h = row_height * (end - start)
+    seg_y = y
+    seg_h = 0.0
+    if weights and len(weights) == total_rows:
+        total_weight = sum(weights)
+        if total_weight <= 0:
+            weights = None
+    if weights and len(weights) == total_rows:
+        acc = [0.0]
+        running = 0.0
+        for wgt in weights:
+            running += max(float(wgt), 0.0)
+            acc.append(running)
+        total_weight = acc[-1] or 1.0
+        start_w = acc[start]
+        end_w = acc[end]
+        seg_y = y + h * (start_w / total_weight)
+        seg_h = h * max((end_w - start_w) / total_weight, 0.0)
+    else:
+        row_height = h / total_rows
+        seg_y = y + row_height * start
+        seg_h = row_height * (end - start)
     if seg_h <= 0:
         return None
     return {
@@ -820,13 +843,14 @@ def _compute_table_segment(meta: Dict[str, Any], chunk: Dict[str, Any], table_ht
     if "<table" not in chunk_html.lower():
         return None
     orig_rows = _collect_table_rows(table_html)
+    row_weights = [max(len(r), 1) for r in orig_rows]
     chunk_rows = _collect_table_rows(chunk_html)
     if not orig_rows or not chunk_rows:
         return None
     span = _find_row_span(orig_rows, chunk_rows)
     if not span:
         return None
-    sliced = _slice_bbox(reference_bbox, len(orig_rows), span)
+    sliced = _slice_bbox(reference_bbox, len(orig_rows), span, row_weights)
     if not sliced:
         return None
     return sliced, span, len(orig_rows)
