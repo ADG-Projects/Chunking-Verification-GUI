@@ -4,6 +4,7 @@ import json
 import re
 from html import unescape
 from html.parser import HTMLParser
+import os
 from pathlib import Path
 import subprocess
 from dataclasses import dataclass
@@ -13,7 +14,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from chunking_pipeline.chunker import decode_orig_elements
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
@@ -23,7 +24,9 @@ from fastapi.staticfiles import StaticFiles
 ROOT = Path(__file__).resolve().parent.parent
 OUT_DIR = ROOT / "outputs" / "unstructured"
 DATASET_DIR = ROOT / "dataset"
-RES_DIR = ROOT / "res"
+# Allow overriding the PDF source directory via env (e.g., for Fly.io volume mounts)
+RES_DIR = Path(os.environ.get("PDF_DIR") or (ROOT / "res"))
+RES_DIR.mkdir(parents=True, exist_ok=True)
 VENDOR_DIR = ROOT / "web" / "static" / "vendor" / "pdfjs"
 PDFJS_VERSION = "3.11.174"
 
@@ -44,6 +47,13 @@ def _latest_by_mtime(paths: List[Path]) -> Optional[Path]:
     if not paths:
         return None
     return max(paths, key=lambda p: p.stat().st_mtime)
+
+
+def _relative_to_root(path: Path) -> str:
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
 
 
 def _parse_matches(p: Path) -> Dict[str, Optional[str]]:
@@ -202,10 +212,56 @@ def api_pdfs() -> List[Dict[str, Any]]:
             pdfs.append({
                 "name": p.name,
                 "slug": p.stem,
-                "path": str(p.relative_to(ROOT)),
+                "path": _relative_to_root(p),
                 "size": size,
             })
     return pdfs
+
+
+def _sanitize_pdf_filename(filename: str) -> str:
+    base = Path(filename or "").name
+    if not base:
+        return ""
+    if not base.lower().endswith(".pdf"):
+        return ""
+    stem = Path(base).stem
+    safe_stem = re.sub(r"[^A-Za-z0-9_\-]+", "-", stem).strip("-_")
+    if not safe_stem:
+        safe_stem = "upload"
+    return f"{safe_stem}.pdf"
+
+
+@app.post("/api/pdfs")
+async def api_upload_pdf(file: UploadFile = File(...)) -> Dict[str, Any]:
+    if not file or not file.filename:
+        raise HTTPException(status_code=400, detail="file is required")
+    safe_name = _sanitize_pdf_filename(file.filename)
+    if not safe_name:
+        raise HTTPException(status_code=400, detail="Only .pdf files are accepted")
+    dest = (RES_DIR / safe_name).resolve()
+    if not str(dest).startswith(str(RES_DIR.resolve())):
+        raise HTTPException(status_code=400, detail="Invalid destination path")
+    if dest.exists():
+        raise HTTPException(status_code=409, detail=f"PDF already exists: {safe_name}")
+    try:
+        with dest.open("wb") as out:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                out.write(chunk)
+    finally:
+        await file.close()
+    try:
+        size = dest.stat().st_size
+    except OSError:
+        size = None
+    return {
+        "name": safe_name,
+        "slug": dest.stem,
+        "path": _relative_to_root(dest),
+        "size": size,
+    }
 
 
 def _safe_pages_tag(pages: str) -> str:
