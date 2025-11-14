@@ -4,7 +4,14 @@ version = "0.1.0"
 description = "Document ingestion experiments for local Unstructured processing."
 requires-python = ">=3.10"
 dependencies = [
-    "unstructured[pdf]",
+    "unstructured",
+    "unstructured-inference",
+    "pdfminer.six",
+    "pypdf",
+    "pdf2image",
+    "unstructured.pytesseract",
+    "python-multipart",
+    "pi-heif",
     "fastapi",
     "uvicorn[standard]",
 ]
