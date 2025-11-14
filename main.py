@@ -1,3 +1,4 @@
+# Entry point for FastAPI app
 from __future__ import annotations
 
 import json
@@ -22,7 +23,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent
 DATASET_DIR = ROOT / "dataset"
 
 # Volume-aware directories (Railway/Fly/etc.)

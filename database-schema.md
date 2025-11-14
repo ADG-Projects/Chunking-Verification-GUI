@@ -47,7 +47,7 @@ The project does not persist to a database yet. Instead, Unstructured parses eac
 
 ## Web UI consumption
 
-The local web UI (served by `web/serve.py`) consumes the same artifacts:
+The local web UI (served by `main.py`) consumes the same artifacts:
 - Tables JSONL for per-chunk coordinates (`metadata.coordinates.points`, `layout_width`, `layout_height`, `page_number`).
 - Matches JSON for per-table `selected_elements` (with `page_trimmed`/`page_original`) and overall metrics.
  - Chunks JSONL is currently not visualized, but generation is available from the “New Run” card for tuning text chunking parameters.

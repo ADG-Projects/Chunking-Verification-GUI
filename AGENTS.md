@@ -5,7 +5,7 @@ Repository root keeps runnable helpers alongside documentation for fast iteratio
 
 - `scripts/preview_unstructured_pages.py` — fast page slicing + gold-table comparisons.
 - `web/` — Chunking Visualizer (FastAPI + static UI):
-  - `web/serve.py` FastAPI app exposing JSON endpoints and serving the UI.
+  - `main.py` FastAPI app exposing JSON endpoints and serving the UI.
   - `web/static/` static assets (no bundler): `index.html`, `styles.css`, `app.js`.
   - `web/static/vendor/pdfjs/` vendor-pinned pdf.js (autofetched if missing).
 - PDF fixtures live in `res/`, curated references in `dataset/`, and generated artifacts in `outputs/` (use `outputs/unstructured/` for JSONL runs).
@@ -28,7 +28,7 @@ uv run python scripts/preview_unstructured_pages.py \
 Run the visualizer locally:
 
 ```bash
-uv run uvicorn web.serve:app --reload --host 127.0.0.1 --port 8765
+uv run uvicorn main:app --reload --host 127.0.0.1 --port 8765
 # open http://127.0.0.1:8765/
 ```
 

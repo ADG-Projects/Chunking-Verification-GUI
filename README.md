@@ -70,7 +70,7 @@ Quickstart:
 
 ```bash
 uv sync
-uv run uvicorn web.serve:app --host 127.0.0.1 --port 8765
+uv run uvicorn main:app --host 127.0.0.1 --port 8765
 # open http://127.0.0.1:8765/
 ```
 
@@ -189,7 +189,7 @@ Recommended setup in the Railway service:
 2. Set env vars:
    - `DATA_DIR=/data`
    - (optional) override `PDF_DIR` or `OUTPUT_DIR` explicitly if you prefer different subfolders.
-3. Deploy using this repo’s Dockerfile. Hi‑res extraction is enabled by default.
+3. Deploy using this repo’s Dockerfile (or with the Python/Nixpacks builder, set Start Command to `uvicorn main:app --host 0.0.0.0 --port $PORT`). Hi‑res extraction is enabled by default when using the Dockerfile.
 
 You can disable hi‑res (smaller image/runtimes) by building with:
 
