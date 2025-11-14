@@ -21,13 +21,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ## Install uv (fast Python package manager) and create venv
 # uv places the binary in /root/.local/bin by default
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh -s -- --yes && \
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
     python -m venv "$VIRTUAL_ENV"
 ENV PATH="/root/.local/bin:$PATH"
 
 # Copy lockfiles first for better layer caching and install deps
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev
+
+# Opt-in to heavy hi_res deps at build time to keep image small by default
+ARG WITH_HIRES=0
+ENV DISABLE_HI_RES=1
+RUN if [ "$WITH_HIRES" = "1" ]; then \
+      echo "Installing hires extras"; \
+      uv sync --frozen --no-dev --extra hires; \
+      unset DISABLE_HI_RES; \
+    else \
+      echo "Installing minimal deps (no hires)"; \
+      uv sync --frozen --no-dev; \
+    fi
 
 # Copy the rest of the app
 COPY . .
@@ -40,5 +51,9 @@ ensure_chartjs_assets()
 print("Vendor assets cached")
 PY
 
+# Drop build caches to reduce final image size
+RUN rm -rf /root/.cache/uv /root/.cache/pip || true
+
 EXPOSE 8000
-CMD ["uvicorn", "web.serve:app", "--host", "0.0.0.0", "--port", "8000"]
+ENV PORT=8000
+CMD ["sh","-lc","uvicorn web.serve:app --host 0.0.0.0 --port ${PORT:-8000}"]

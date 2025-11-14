@@ -5,7 +5,6 @@ description = "Document ingestion experiments for local Unstructured processing.
 requires-python = ">=3.10"
 dependencies = [
     "unstructured",
-    "unstructured-inference",
     "pdfminer.six",
     "pypdf",
     "pdf2image",
@@ -14,6 +13,12 @@ dependencies = [
     "pi-heif",
     "fastapi",
     "uvicorn[standard]",
+]
+
+[project.optional-dependencies]
+# Heavy deps only needed for hi_res layout (torch/opencv via unstructured-inference)
+hires = [
+    "unstructured-inference",
 ]
 
 [build-system]
