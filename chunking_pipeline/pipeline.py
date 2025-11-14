@@ -12,14 +12,29 @@ from .chunker import ensure_stable_element_id, apply_coordinates_to_chunk
 from .matcher import load_gold, compute_table_match_cohesion
 
 
-def partition_document(input_pdf: str, pages: List[int], strategy: str, infer_table_structure: bool, trimmed_out: Optional[str]) -> Tuple[str, List[Any], List[Dict[str, Any]]]:
+def partition_document(
+    input_pdf: str,
+    pages: List[int],
+    strategy: str,
+    infer_table_structure: bool,
+    trimmed_out: Optional[str],
+    ocr_languages: Optional[str],
+    languages: Optional[List[str]],
+    detect_language_per_element: bool,
+) -> Tuple[str, List[Any], List[Dict[str, Any]]]:
     trimmed = slice_pdf(input_pdf, pages, trimmed_out)
-    elements = partition_pdf(
-        filename=trimmed,
-        strategy=strategy,
-        include_page_breaks=False,
-        infer_table_structure=infer_table_structure,
-    )
+    partition_kwargs: Dict[str, Any] = {
+        "filename": trimmed,
+        "strategy": strategy,
+        "include_page_breaks": False,
+        "infer_table_structure": infer_table_structure,
+        "detect_language_per_element": detect_language_per_element,
+    }
+    if ocr_languages:
+        partition_kwargs["ocr_languages"] = ocr_languages
+    if languages:
+        partition_kwargs["languages"] = languages
+    elements = partition_pdf(**partition_kwargs)
     dict_elements = [el.to_dict() for el in elements]
     for el in dict_elements:
         ensure_stable_element_id(el)

@@ -310,6 +310,26 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
     chunk_new_after_n_chars = payload.get("chunk_new_after_n_chars")
     chunk_combine_under_n_chars = payload.get("chunk_combine_under_n_chars")
     chunk_overlap = payload.get("chunk_overlap")
+    ocr_languages = str(payload.get("ocr_languages") or "eng+ara").strip() or None
+    languages_raw = payload.get("languages")
+
+    def _normalize_languages(value: Any) -> Optional[List[str]]:
+        if value is None:
+            return None
+        items: List[str] = []
+        if isinstance(value, str):
+            parts = value.split(",")
+        elif isinstance(value, (list, tuple, set)):
+            parts = value
+        else:
+            raise HTTPException(status_code=400, detail="languages must be a list or comma-separated string")
+        for part in parts:
+            txt = str(part).strip()
+            if txt:
+                items.append(txt)
+        return items or None
+
+    languages = _normalize_languages(languages_raw)
 
     def _coerce_bool(name: str) -> Optional[bool]:
         val = payload.get(name)
@@ -330,6 +350,9 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
     chunk_include_orig_elements = _coerce_bool("chunk_include_orig_elements")
     chunk_overlap_all = _coerce_bool("chunk_overlap_all")
     chunk_multipage_sections = _coerce_bool("chunk_multipage_sections")
+    detect_language_per_element = _coerce_bool("detect_language_per_element")
+    if detect_language_per_element is None:
+        detect_language_per_element = False
 
     input_pdf = RES_DIR / pdf_name
     if not input_pdf.exists():
@@ -360,6 +383,9 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
         "chunk_include_orig_elements": chunk_include_orig_elements,
         "chunk_overlap_all": chunk_overlap_all,
         "chunk_multipage_sections": chunk_multipage_sections,
+        "ocr_languages": ocr_languages,
+        "languages": languages,
+        "detect_language_per_element": detect_language_per_element,
     }
     payload["form_snapshot"] = form_snapshot
 
@@ -420,6 +446,12 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
         cmd.append("--chunk-multipage-sections")
     elif chunk_multipage_sections is False:
         cmd.append("--chunk-no-multipage-sections")
+    if ocr_languages:
+        cmd += ["--ocr-languages", ocr_languages]
+    if languages:
+        cmd += ["--languages", ",".join(languages)]
+    if detect_language_per_element:
+        cmd.append("--detect-language-per-element")
 
     try:
         r = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True)

@@ -51,6 +51,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--chunk-no-overlap-all", dest="chunk_overlap_all", action="store_false", help="Only overlap when a chunk exceeds max characters")
     parser.add_argument("--chunk-multipage-sections", dest="chunk_multipage_sections", action="store_true", default=None, help="Allow chunks to span multiple pages (by_title only)")
     parser.add_argument("--chunk-no-multipage-sections", dest="chunk_multipage_sections", action="store_false", help="Force new chunk on page break (by_title only)")
+    parser.add_argument("--ocr-languages", default="eng+ara", help="Languages passed to Tesseract OCR (e.g., 'eng+ara')")
+    parser.add_argument("--languages", help="Comma-separated ISO language codes passed to partition_pdf (e.g., 'en,ar')")
+    parser.add_argument("--detect-language-per-element", dest="detect_language_per_element", action="store_true", help="Enable language detection per element")
+    parser.add_argument("--no-detect-language-per-element", dest="detect_language_per_element", action="store_false", help="Disable per-element language detection")
+    parser.set_defaults(detect_language_per_element=False)
     parser.add_argument("--no-infer-table-structure", dest="infer_table_structure", action="store_false", help="Disable Unstructured infer_table_structure flag")
     parser.set_defaults(infer_table_structure=True)
     args = parser.parse_args(argv)
@@ -76,12 +81,19 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.chunk_multipage_sections is not None:
         chunk_params["multipage_sections"] = args.chunk_multipage_sections
 
+    languages: Optional[List[str]] = None
+    if args.languages:
+        languages = [part.strip() for part in args.languages.split(",") if part.strip()]
+
     trimmed, raw_elements, dict_elements = partition_document(
         input_pdf=args.input,
         pages=pages,
         strategy=args.strategy,
         infer_table_structure=args.infer_table_structure,
         trimmed_out=args.trimmed_out,
+        ocr_languages=args.ocr_languages,
+        languages=languages,
+        detect_language_per_element=args.detect_language_per_element,
     )
     args.trimmed_out = trimmed
     # Base partition elements (dict form) for UI overlays/types
@@ -104,6 +116,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         "match_source": resolved_source,
         "only_tables": args.only_tables,
         "infer_table_structure": args.infer_table_structure,
+        "ocr_languages": args.ocr_languages,
+        "languages": languages,
+        "detect_language_per_element": args.detect_language_per_element,
     }
     if chunk_params:
         run_config["chunk_params"] = chunk_params
