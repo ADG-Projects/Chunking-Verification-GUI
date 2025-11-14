@@ -632,10 +632,18 @@ async function loadElementPreview(elementId) {
       scroll.className = 'scrollbox';
       const wrapper = document.createElement('div');
       wrapper.innerHTML = html;
+      if (CURRENT_DOC_LANGUAGE === 'ara') {
+        try { wrapper.setAttribute('dir', 'rtl'); } catch (e) {}
+        wrapper.style.textAlign = 'right';
+      }
       scroll.appendChild(wrapper);
       container.appendChild(scroll);
     } else {
       const pre = document.createElement('pre');
+      if (CURRENT_DOC_LANGUAGE === 'ara') {
+        try { pre.setAttribute('dir', 'rtl'); } catch (e) {}
+        pre.style.textAlign = 'right';
+      }
       pre.textContent = data.text || '(no text)';
       container.appendChild(pre);
     }
@@ -1354,6 +1362,10 @@ function renderElementsListForCurrentPage(boxes) {
     const short = dId.length > 16 ? `${dId.slice(0,12)}…` : dId;
     header.innerHTML = `<span>${entry.type || 'Unknown'}</span><span class="meta">${short}</span>`;
     const pre = document.createElement('pre');
+    if (CURRENT_DOC_LANGUAGE === 'ara') {
+      try { pre.setAttribute('dir', 'rtl'); } catch (e) {}
+      pre.style.textAlign = 'right';
+    }
     pre.textContent = 'Loading preview…';
     card.appendChild(header);
     card.appendChild(pre);
@@ -1425,10 +1437,18 @@ async function openElementDetails(elementId) {
       scroll.className = 'scrollbox';
       const wrapper = document.createElement('div');
       wrapper.innerHTML = html;
+      if (CURRENT_DOC_LANGUAGE === 'ara') {
+        try { wrapper.setAttribute('dir', 'rtl'); } catch (e) {}
+        wrapper.style.textAlign = 'right';
+      }
       scroll.appendChild(wrapper);
       container.appendChild(scroll);
     } else {
       const pre = document.createElement('pre');
+      if (CURRENT_DOC_LANGUAGE === 'ara') {
+        try { pre.setAttribute('dir', 'rtl'); } catch (e) {}
+        pre.style.textAlign = 'right';
+      }
       pre.textContent = data.text || '(no text)';
       container.appendChild(pre);
     }
