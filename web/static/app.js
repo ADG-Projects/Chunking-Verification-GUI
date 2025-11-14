@@ -39,7 +39,39 @@ let HINTED_HIRES = false;
 let RETURN_TO = null; // navigation context for closing drawers
 let CURRENT_DOC_LANGUAGE = 'eng';
 
+const RTL_AWARE_ELEMENTS = new Set();
+
 const $ = (id) => document.getElementById(id);
+
+function isArabicDocument() {
+  return CURRENT_DOC_LANGUAGE === 'ara';
+}
+
+function applyDirectionalText(element, options={}) {
+  if (!element) return;
+  const { align=true, bidi=true, attr=true, track=true } = options;
+  const rtl = isArabicDocument();
+  const dirValue = rtl ? 'rtl' : 'ltr';
+  if (attr !== false) {
+    try { element.setAttribute('dir', dirValue); } catch (_) {}
+  }
+  if (element.style) {
+    element.style.direction = dirValue;
+    if (align) element.style.textAlign = rtl ? 'right' : 'left';
+    if (bidi) element.style.unicodeBidi = 'plaintext';
+  }
+  if (track) RTL_AWARE_ELEMENTS.add(element);
+}
+
+function refreshDirectionalElements() {
+  for (const el of Array.from(RTL_AWARE_ELEMENTS)) {
+    if (!el.isConnected) {
+      RTL_AWARE_ELEMENTS.delete(el);
+      continue;
+    }
+    applyDirectionalText(el, { track: false });
+  }
+}
 
 async function fetchJSON(url) {
   const r = await fetch(url);
@@ -49,9 +81,22 @@ async function fetchJSON(url) {
 
 function applyLanguageDirection() {
   const body = document.body;
-  if (!body) return;
-  const isArabic = CURRENT_DOC_LANGUAGE === 'ara';
-  body.classList.toggle('rtl-preview', isArabic);
+  const preview = $('preview');
+  if (!body || !preview) return;
+  const isArabic = isArabicDocument();
+  console.log('[RTL Debug] applyLanguageDirection called:', {
+    CURRENT_DOC_LANGUAGE,
+    isArabic,
+    hasBodyClass: body.classList.contains('rtl-preview'),
+    hasPreviewClass: preview.classList.contains('rtl-preview')
+  });
+  body.classList.remove('rtl-preview');
+  preview.classList.toggle('rtl-preview', isArabic);
+  refreshDirectionalElements();
+  console.log('[RTL Debug] After toggle:', {
+    hasBodyClass: body.classList.contains('rtl-preview'),
+    hasPreviewClass: preview.classList.contains('rtl-preview')
+  });
 }
 
 function normalizeLangCode(value) {
@@ -528,6 +573,7 @@ function updateRunConfigCard() {
   set('settingPdf', cfg.pdf || snap.pdf || (CURRENT_RUN?.slug?.split('.pages')[0] ?? '-'));
   set('settingTag', cfg.tag || snap.tag || snap.variant_tag || '-');
   const primaryLang = resolvePrimaryLanguage(cfg, snap);
+  console.log('[RTL Debug] updateRunConfigCard:', { cfg, snap, primaryLang });
   CURRENT_DOC_LANGUAGE = primaryLang;
   set('settingPrimaryLang', primaryLang === 'ara' ? 'Arabic' : 'English');
   applyLanguageDirection();
@@ -632,19 +678,13 @@ async function loadElementPreview(elementId) {
       scroll.className = 'scrollbox';
       const wrapper = document.createElement('div');
       wrapper.innerHTML = html;
-      if (CURRENT_DOC_LANGUAGE === 'ara') {
-        try { wrapper.setAttribute('dir', 'rtl'); } catch (e) {}
-        wrapper.style.textAlign = 'right';
-      }
       scroll.appendChild(wrapper);
+      applyDirectionalText(scroll);
       container.appendChild(scroll);
     } else {
       const pre = document.createElement('pre');
-      if (CURRENT_DOC_LANGUAGE === 'ara') {
-        try { pre.setAttribute('dir', 'rtl'); } catch (e) {}
-        pre.style.textAlign = 'right';
-      }
       pre.textContent = data.text || '(no text)';
+      applyDirectionalText(pre);
       container.appendChild(pre);
     }
   } catch (e) {
@@ -1451,11 +1491,8 @@ function renderElementsListForCurrentPage(boxes) {
     const short = dId.length > 16 ? `${dId.slice(0,12)}…` : dId;
     header.innerHTML = `<span>${entry.type || 'Unknown'}</span><span class="meta">${short}</span>`;
     const pre = document.createElement('pre');
-    if (CURRENT_DOC_LANGUAGE === 'ara') {
-      try { pre.setAttribute('dir', 'rtl'); } catch (e) {}
-      pre.style.textAlign = 'right';
-    }
     pre.textContent = 'Loading preview…';
+    applyDirectionalText(pre);
     card.appendChild(header);
     card.appendChild(pre);
     // add focus class if it matches current selection
@@ -1526,19 +1563,13 @@ async function openElementDetails(elementId) {
       scroll.className = 'scrollbox';
       const wrapper = document.createElement('div');
       wrapper.innerHTML = html;
-      if (CURRENT_DOC_LANGUAGE === 'ara') {
-        try { wrapper.setAttribute('dir', 'rtl'); } catch (e) {}
-        wrapper.style.textAlign = 'right';
-      }
       scroll.appendChild(wrapper);
+      applyDirectionalText(scroll);
       container.appendChild(scroll);
     } else {
       const pre = document.createElement('pre');
-      if (CURRENT_DOC_LANGUAGE === 'ara') {
-        try { pre.setAttribute('dir', 'rtl'); } catch (e) {}
-        pre.style.textAlign = 'right';
-      }
       pre.textContent = data.text || '(no text)';
+      applyDirectionalText(pre);
       container.appendChild(pre);
     }
   } catch (e) {
@@ -1710,11 +1741,8 @@ function renderChunksTab() {
     header.innerHTML = `<span>${chunk.element_id || '(no id)'}</span><span>${chunk.char_len || 0} chars</span>`;
     const pre = document.createElement('pre');
     const text = chunk.text || '';
-    if (CURRENT_DOC_LANGUAGE === 'ara') {
-      try { pre.setAttribute('dir', 'rtl'); } catch (e) {}
-      pre.style.textAlign = 'right';
-    }
     pre.textContent = text || '(empty)';
+    applyDirectionalText(pre);
     // Elements sublist (collapsed by default)
     const sub = document.createElement('div');
     sub.className = 'elements-sublist hidden';
@@ -1808,11 +1836,8 @@ async function openChunkDetailsDrawer(chunkId, elementsSublist) {
   const pre = document.createElement('pre');
   pre.style.maxHeight = '200px';
   pre.style.overflow = 'auto';
-  if (CURRENT_DOC_LANGUAGE === 'ara') {
-    try { pre.setAttribute('dir', 'rtl'); } catch (e) {}
-    pre.style.textAlign = 'right';
-  }
   pre.textContent = ch.text || '(empty)';
+  applyDirectionalText(pre);
   textSection.appendChild(pre);
   container.appendChild(textSection);
 
