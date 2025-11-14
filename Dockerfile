@@ -4,6 +4,7 @@ FROM python:3.10-slim AS base
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     VIRTUAL_ENV=/app/.venv \
+    UV_PROJECT_ENVIRONMENT=/app/.venv \
     PATH="/app/.venv/bin:$PATH"
 
 WORKDIR /app
@@ -18,13 +19,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 \
   && rm -rf /var/lib/apt/lists/*
 
-# Copy source first (pip will install from local project)
-COPY . .
+## Install uv (fast Python package manager) and create venv
+# uv places the binary in /root/.local/bin by default
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh -s -- --yes && \
+    python -m venv "$VIRTUAL_ENV"
+ENV PATH="/root/.local/bin:$PATH"
 
-# Create venv and install project with pip
-RUN python -m venv "$VIRTUAL_ENV" && \
-    "$VIRTUAL_ENV/bin/pip" install --no-cache-dir --upgrade pip setuptools wheel && \
-    "$VIRTUAL_ENV/bin/pip" install --no-cache-dir .
+# Copy lockfiles first for better layer caching and install deps
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev
+
+# Copy the rest of the app
+COPY . .
 
 # Pre-fetch vendor assets to avoid runtime CDN fetches on cold start
 RUN "$VIRTUAL_ENV/bin/python" - <<'PY'
