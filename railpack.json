@@ -1,4 +1,5 @@
 {
+  "provider": "railway",
   "steps": {
     "build": {
       "commands": [
@@ -8,12 +9,11 @@
       ]
     }
   },
-  "start": "bash ./start_headless.sh",
-  "packages": {
-    "apt": [
+  "deploy": {
+    "startCommand": "bash ./start_headless.sh",
+    "aptPackages": [
       "tesseract-ocr",
       "poppler-utils"
     ]
   }
 }
-
