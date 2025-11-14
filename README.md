@@ -198,6 +198,8 @@ You can disable hi‑res (smaller image/runtimes) by building with:
 docker build -t chunking-tests:min \
   --build-arg WITH_HIRES=0 \
   --build-arg DISABLE_HI_RES=1 .
+
+If you deploy with Railway’s default Nixpacks builder and hit an OpenCV error like `ImportError: libGL.so.1`, use the included `nixpacks.toml`. It replaces `opencv-python` with `opencv-python-headless` during the install phase so no system `libGL` is required. You can additionally set `DISABLE_HI_RES=1` in your service’s environment to force the lightweight `strategy=fast` path.
 ```
 
 Operational notes:
