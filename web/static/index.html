@@ -255,8 +255,11 @@
         </div>
         <div class="run-grid">
           <label>
-            <div class="lab">PDF <span class="info" tabindex="0">i</span><div class="tip">Pick a source PDF from <code>res/</code>.</div></div>
-            <select id="pdfSelect"></select>
+            <div class="lab">PDF <span class="info" tabindex="0">i</span><div class="tip">Pick a source PDF from <code>res/</code>. Use Delete to remove the selected file from the server.</div></div>
+            <div class="upload-row">
+              <select id="pdfSelect"></select>
+              <button id="pdfDeleteBtn" class="btn btn-secondary" type="button" title="Delete selected PDF from server">Delete</button>
+            </div>
           </label>
           <div class="upload-row">
             <label>
@@ -377,6 +380,6 @@
       </div>
     </div>
 
-    <script src="/app.js?v=20251113-3" defer></script>
+    <script src="/app.js?v=20251114-1" defer></script>
   </body>
   </html>

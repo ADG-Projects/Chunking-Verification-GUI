@@ -266,6 +266,24 @@ async def api_upload_pdf(file: UploadFile = File(...)) -> Dict[str, Any]:
     }
 
 
+@app.delete("/api/pdfs/{name}")
+def api_delete_pdf(name: str) -> Dict[str, Any]:
+    # Delete a previously uploaded/source PDF from RES_DIR.
+    # Guard against path traversal and invalid names.
+    if not name or not name.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="name must be a .pdf")
+    candidate = (RES_DIR / Path(name).name).resolve()
+    if not str(candidate).startswith(str(RES_DIR.resolve())):
+        raise HTTPException(status_code=400, detail="invalid path")
+    if not candidate.exists():
+        raise HTTPException(status_code=404, detail=f"PDF not found: {name}")
+    try:
+        candidate.unlink()
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete: {e}")
+    return {"status": "ok", "removed": _relative_to_root(candidate)}
+
+
 def _safe_pages_tag(pages: str) -> str:
     # Keep digits and dashes; replace others with underscore to stabilize filenames
     return "pages" + re.sub(r"[^0-9\-]+", "_", pages)

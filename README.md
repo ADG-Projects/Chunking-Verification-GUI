@@ -128,6 +128,11 @@ Run on demand via the UI:
  - Per-table highlighting uses distinct colors per selected chunk so multi-page/multi-chunk tables are easy to see; the overlay legend reflects element types present on the current page.
 - Use the header “Cleanup outputs” button (or `POST /api/cleanup`) to remove orphaned files under `outputs/unstructured/` that are no longer referenced by runs.
 
+### Manage uploaded PDFs
+
+- Delete a source PDF: in the New Run modal, use the Delete button next to the PDF selector to remove the selected file from the server’s `PDF_DIR` (defaults to `res/`). If any runs reference that PDF, you’ll be prompted to optionally delete all of them along with the PDF. Existing runs can be kept; they remain viewable because they reference trimmed copies in `outputs/unstructured/`.
+- API: `DELETE /api/pdfs/{name}` removes a single `.pdf` from `PDF_DIR`.
+
 ### Fly.io deployment & persistent PDF uploads
 
 The web server now reads a `PDF_DIR` environment variable to decide where uploads live. Locally it defaults to `res/`, but Fly deployments can mount a volume for shared storage:

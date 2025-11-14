@@ -3,6 +3,7 @@ outputs/
 __pycache__/
 *.py[cod]
 *.pyo
+res/
 
 # Virtual environments & local tooling
 .venv/

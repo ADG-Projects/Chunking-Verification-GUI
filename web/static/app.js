@@ -1071,6 +1071,86 @@ function setupInspectTabs() {
   for (const t of tabs) {
     t.addEventListener('click', () => switchInspectTab(t.dataset.inspect));
   }
+
+  // Wire Delete Selected PDF
+  const deleteBtn = $('pdfDeleteBtn');
+  if (deleteBtn) {
+    deleteBtn.addEventListener('click', async (ev) => {
+      // Prevent label/select focus quirks from swallowing the click
+      try { ev.preventDefault(); ev.stopPropagation(); } catch (_) {}
+      const sel = $('pdfSelect');
+      const name = sel && sel.value;
+      if (!name) { showToast('No PDF selected', 'err', 2000); return; }
+      // Ensure runs cache is fresh before prompting
+      try { await refreshRuns(); } catch (_) {}
+      // Identify associated runs that used this PDF
+      const stem = name.replace(/\.pdf$/i, '');
+      const runs = (RUNS_CACHE || []).filter(r => {
+        const cfg = r.run_config || {};
+        const pdfFromCfg = cfg.pdf || (cfg.form_snapshot && cfg.form_snapshot.pdf) || null;
+        if (pdfFromCfg && pdfFromCfg === name) return true;
+        // Fallback: match by base slug prefix
+        let base = r.slug || '';
+        if (base.includes('.pages')) base = base.split('.pages')[0];
+        if (base.includes('__')) base = base.split('__')[0];
+        return base === stem;
+      });
+
+      // Confirm deletion strategy depending on association
+      let deleteRunsToo = false;
+      if (runs.length > 0) {
+        const listPreview = runs.slice(0, 5).map(r => `- ${r.slug}`).join('\n');
+        const more = runs.length > 5 ? `\n…and ${runs.length - 5} more` : '';
+        const msg = `Found ${runs.length} run(s) referencing ${name}:\n${listPreview}${more}\n\nDelete the PDF and ALL associated runs?`;
+        deleteRunsToo = !!confirm(msg);
+        if (!deleteRunsToo) {
+          const onlyPdf = confirm(`Delete the PDF only and keep ${runs.length} run(s)?`);
+          if (!onlyPdf) return; // abort
+        }
+      } else {
+        const ok = confirm(`Delete PDF: ${name}? This removes it from server storage; runs remain intact.`);
+        if (!ok) return;
+      }
+
+      try {
+        // Optionally delete associated runs first
+        if (deleteRunsToo && runs.length > 0) {
+          let okCount = 0, failCount = 0;
+          for (const rr of runs) {
+            try {
+              const dr = await fetch(`/api/run/${encodeURIComponent(rr.slug)}`, { method: 'DELETE' });
+              if (!dr.ok) failCount++; else okCount++;
+            } catch (_) {
+              failCount++;
+            }
+          }
+          await refreshRuns();
+          showToast(`Deleted runs: ${okCount} ok, ${failCount} failed`, failCount ? 'err' : 'ok', 3000);
+        }
+
+        // Now delete the PDF itself
+        const r = await fetch(`/api/pdfs/${encodeURIComponent(name)}`, { method: 'DELETE' });
+        let data = null; try { data = await r.json(); } catch (e) { data = null; }
+        if (!r.ok) throw new Error((data && data.detail) || `HTTP ${r.status}`);
+        showToast(`Deleted ${name}`, 'ok', 2000);
+        await loadPdfs();
+        // If nothing left, clear preview; otherwise reload preview for new selection
+        if (!KNOWN_PDFS || KNOWN_PDFS.length === 0) {
+          try {
+            RUN_PREVIEW_DOC = null; RUN_PREVIEW_COUNT = 0; RUN_PREVIEW_PAGE = 1;
+            const canvas = $('runPdfCanvas');
+            if (canvas) { const ctx = canvas.getContext('2d'); ctx && ctx.clearRect(0,0,canvas.width,canvas.height); }
+            const numEl = $('runPageNum'); const cntEl = $('runPageCount');
+            if (numEl) numEl.textContent = '-'; if (cntEl) cntEl.textContent = '-';
+          } catch (e) {}
+        } else {
+          try { await loadRunPreviewForSelectedPdf(); } catch (e) {}
+        }
+      } catch (e) {
+        showToast(`Delete failed: ${e.message}`, 'err');
+      }
+    });
+  }
 }
 
 function switchInspectTab(name) {
@@ -1195,14 +1275,23 @@ async function ensurePdfjsReady(maxMs = 5000) {
 async function loadRunPreviewForSelectedPdf() {
   const name = $('pdfSelect')?.value;
   if (!name) return;
-  await ensurePdfjsReady();
-  const url = `/res_pdf/${encodeURIComponent(name)}`;
-  const task = window['pdfjsLib'].getDocument(url);
-  RUN_PREVIEW_DOC = await task.promise;
-  RUN_PREVIEW_COUNT = RUN_PREVIEW_DOC.numPages;
-  RUN_PREVIEW_PAGE = 1;
-  $('runPageCount').textContent = RUN_PREVIEW_COUNT;
-  await renderRunPreviewPage();
+  try {
+    await ensurePdfjsReady();
+    const url = `/res_pdf/${encodeURIComponent(name)}`;
+    const task = window['pdfjsLib'].getDocument(url);
+    RUN_PREVIEW_DOC = await task.promise;
+    RUN_PREVIEW_COUNT = RUN_PREVIEW_DOC.numPages;
+    RUN_PREVIEW_PAGE = 1;
+    $('runPageCount').textContent = RUN_PREVIEW_COUNT;
+    await renderRunPreviewPage();
+  } catch (e) {
+    // File may have been removed; clear preview state gracefully
+    RUN_PREVIEW_DOC = null; RUN_PREVIEW_COUNT = 0; RUN_PREVIEW_PAGE = 1;
+    const canvas = $('runPdfCanvas');
+    if (canvas) { const ctx = canvas.getContext('2d'); ctx && ctx.clearRect(0,0,canvas.width,canvas.height); }
+    const numEl = $('runPageNum'); const cntEl = $('runPageCount');
+    if (numEl) numEl.textContent = '-'; if (cntEl) cntEl.textContent = '-';
+  }
 }
 
 async function renderRunPreviewPage() {
@@ -1621,6 +1710,10 @@ function renderChunksTab() {
     header.innerHTML = `<span>${chunk.element_id || '(no id)'}</span><span>${chunk.char_len || 0} chars</span>`;
     const pre = document.createElement('pre');
     const text = chunk.text || '';
+    if (CURRENT_DOC_LANGUAGE === 'ara') {
+      try { pre.setAttribute('dir', 'rtl'); } catch (e) {}
+      pre.style.textAlign = 'right';
+    }
     pre.textContent = text || '(empty)';
     // Elements sublist (collapsed by default)
     const sub = document.createElement('div');
@@ -1715,6 +1808,10 @@ async function openChunkDetailsDrawer(chunkId, elementsSublist) {
   const pre = document.createElement('pre');
   pre.style.maxHeight = '200px';
   pre.style.overflow = 'auto';
+  if (CURRENT_DOC_LANGUAGE === 'ara') {
+    try { pre.setAttribute('dir', 'rtl'); } catch (e) {}
+    pre.style.textAlign = 'right';
+  }
   pre.textContent = ch.text || '(empty)';
   textSection.appendChild(pre);
   container.appendChild(textSection);

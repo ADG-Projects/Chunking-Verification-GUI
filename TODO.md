@@ -4,6 +4,7 @@
 - [ ] Compare output quality between Unstructured and the Azure Document Intelligence SDK.
 
 ## Completed
+- [x] 2025-11-14 Add delete for uploaded PDFs (UI button + API `DELETE /api/pdfs/{name}`) and guard preview when a file is removed.
 - [x] 2025-11-14 Add Primary Language toggle (English vs Arabic), wire OCR defaults, and right-align previews for Arabic documents.
 - [x] 2025-11-13 Auto-upload PDFs on file selection and store them on Fly volume via `PDF_DIR`; removed separate Upload button and fixed file chooser/tooltip and checkbox UI quirks.
 - [x] 2025-11-13 Enable Fly volume-backed PDF uploads: server honors `PDF_DIR`, Fly config mounts `/data`, UI uploads instantly without a button, and docs cover the flow.
