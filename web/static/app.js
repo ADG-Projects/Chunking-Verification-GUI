@@ -807,7 +807,11 @@ async function init() {
         await openChunkDetailsDrawer(chunkId, null);
       }
     } else {
+      RETURN_TO = null;
       $('drawer').classList.add('hidden');
+      CURRENT_ELEMENT_ID = null;
+      CURRENT_INSPECT_ELEMENT_ID = null;
+      redrawOverlaysForCurrentContext();
     }
   });
 
@@ -1382,25 +1386,34 @@ async function drawBoxesForCurrentPage() {
   const type = CURRENT_TYPE_FILTER;
   const param = type && type !== 'All' ? `&types=${encodeURIComponent(type)}` : '';
   try {
-    const boxes = await fetchJSON(`/api/boxes/${encodeURIComponent(CURRENT_SLUG)}?page=${CURRENT_PAGE}${param}`);
+    const boxes = await fetchJSON(`/api/boxes/${encodeURIComponent(CURRENT_SLUG)}?page=${CURRENT_PAGE}${param}`) || {};
     clearBoxes();
+    const entries = Object.entries(boxes);
     const typesPresent = new Set();
-    for (const [id, entry] of Object.entries(boxes)) {
+    const availableTypes = new Set();
+    for (const [, entry] of entries) {
+      if (entry && entry.type) availableTypes.add(entry.type);
+    }
+    const selectedId = CURRENT_INSPECT_ELEMENT_ID;
+    if (SHOW_ELEMENT_OVERLAYS && selectedId && boxes[selectedId]) {
+      const entry = boxes[selectedId];
       const rect = { x: entry.x, y: entry.y, w: entry.w, h: entry.h };
-      const isSelected = (id === CURRENT_INSPECT_ELEMENT_ID);
-      if (SHOW_ELEMENT_OVERLAYS) {
-        const meta = { kind: 'element', id: id, origId: entry.orig_id, type: entry.type, page: entry.page_trimmed };
-        addBox(rect, entry.layout_w, entry.layout_h, isSelected, entry.type, null, 'element', meta);
-      }
+      const meta = { kind: 'element', id: selectedId, origId: entry.orig_id, type: entry.type, page: entry.page_trimmed };
+      addBox(rect, entry.layout_w, entry.layout_h, true, entry.type, null, 'element', meta);
       if (entry.type) typesPresent.add(entry.type);
     }
     const present = Array.from(typesPresent.values());
     updateLegend(SHOW_ELEMENT_OVERLAYS ? present : []);
     renderElementsListForCurrentPage(boxes);
-    if (present.length === 0) {
+    if (!entries.length) {
       showToast('No boxes found on this page for the current run and filter.', 'err', 2000);
     }
-    if (!HINTED_HIRES && present.length === 1 && present[0] === 'Table' && (!CURRENT_TYPE_FILTER || CURRENT_TYPE_FILTER === 'All' || CURRENT_TYPE_FILTER === 'Table')) {
+    if (
+      !HINTED_HIRES &&
+      availableTypes.size === 1 &&
+      availableTypes.has('Table') &&
+      (!CURRENT_TYPE_FILTER || CURRENT_TYPE_FILTER === 'All' || CURRENT_TYPE_FILTER === 'Table')
+    ) {
       showToast('Only Table boxes present. For overlays on other element types, run with strategy=hi_res.', 'ok', 5000);
       HINTED_HIRES = true;
     }
