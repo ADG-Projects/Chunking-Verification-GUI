@@ -64,6 +64,11 @@ Use `--input-jsonl` when you want to re-evaluate matches from a previously saved
 
 ## Release history
 
+- **v2.0 (2025-11-17)** – Introduced chunk/element review workflows (Good/Bad ratings with notes, filters, and summary chips) while refactoring the frontend into modular scripts so overlays, metrics, and drawers stay in lockstep.
+  - Verification steps:
+    1. `uv run uvicorn main:app --reload --host 127.0.0.1 --port 8765` and confirm you can add/edit chunk + element reviews, filter by rating, see the header chip update instantly, and watch chunk overlays hide/show with the Inspect filters.
+    2. `uv run python scripts/preview_unstructured_pages.py --input res/<pdf>.pdf --pages 4-6 --only-tables --output outputs/unstructured/<slug>.pagesX-Y.tables.jsonl --gold dataset/gold.jsonl --emit-matches outputs/unstructured/<slug>.matches.json` to ensure the backend chunk exports driving the UI remain unchanged.
+
 - **v1.1 (2025-11-17)** – Polished chunk overlays and drawer interactions so Metrics highlights respect the selected chunk, drawer-close restores the same chunk context, and highlight-all/best redraws from a clean slate before rerunning.
   - Verification steps:
     1. `uv run python scripts/preview_unstructured_pages.py --input res/<pdf>.pdf --pages 4-6 --only-tables --output outputs/unstructured/<slug>.pagesX-Y.tables.jsonl --gold dataset/gold.jsonl --emit-matches outputs/unstructured/<slug>.matches.json`
