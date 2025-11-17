@@ -80,6 +80,7 @@
           <span class="lab">Run</span>
           <select id="runSelect"></select>
         </label>
+        <div id="reviewSummary" class="review-summary-chip disabled" title="Click to jump to reviewed chunks">Reviews: none</div>
         <button id="openRunModal" class="btn">New Run</button>
         <button id="deleteRunBtn" class="btn" title="Delete current run">Delete run</button>
       </div>
@@ -214,6 +215,15 @@
               <label>
                 <span class="lab">Type</span>
                 <select id="elementsTypeSelect"></select>
+              </label>
+              <label>
+                <span class="lab">Review</span>
+                <select id="elementsReviewSelect">
+                  <option value="All">All</option>
+                  <option value="Reviewed">Reviewed</option>
+                  <option value="Good">Good only</option>
+                  <option value="Bad">Bad only</option>
+                </select>
               </label>
             </div>
             <div id="typesList" class="types"></div>

@@ -24,6 +24,7 @@ let CURRENT_RUN_CONFIG = null;
 let CURRENT_RUN_HAS_CHUNKS = false;
 let CURRENT_CHUNKS = null;
 let CURRENT_CHUNK_LOOKUP = {};
+let CURRENT_CHUNK_SUMMARY = null;
 let SHOW_CHUNK_OVERLAYS = true;
 let SHOW_ELEMENT_OVERLAYS = true;
 // Top-level view: 'metrics' or 'inspect'
@@ -38,6 +39,13 @@ let RUN_RANGE_START = null;
 let HINTED_HIRES = false;
 let RETURN_TO = null; // navigation context for closing drawers
 let CURRENT_DOC_LANGUAGE = 'eng';
+let CURRENT_REVIEWS = { slug: null, items: [], summary: { good: 0, bad: 0, total: 0 } };
+let REVIEW_LOOKUP = {};
+let CURRENT_CHUNK_REVIEW_FILTER = 'All';
+let CURRENT_ELEMENT_REVIEW_FILTER = 'All';
+let CURRENT_PAGE_BOXES = null;
+let CURRENT_CHUNK_DRAWER_ID = null;
+let CURRENT_ELEMENT_DRAWER_ID = null;
 
 const RTL_AWARE_ELEMENTS = new Set();
 
@@ -752,7 +760,10 @@ async function loadRun(slug) {
   CURRENT_RUN_HAS_CHUNKS = Boolean(CURRENT_RUN && CURRENT_RUN.chunks_file);
   CURRENT_CHUNK_LOOKUP = {};
   CURRENT_CHUNK_TYPE_FILTER = 'All';
+  CURRENT_CHUNK_REVIEW_FILTER = 'All';
+  CURRENT_ELEMENT_REVIEW_FILTER = 'All';
   BOX_INDEX = {};
+  CURRENT_PAGE_BOXES = null;
   // Load PDF
   const pdfUrl = `/pdf/${encodeURIComponent(slug)}`;
   const loadingTask = window['pdfjsLib'].getDocument(pdfUrl);
@@ -785,6 +796,9 @@ async function loadRun(slug) {
   }
   await loadElementTypes(slug);
   populateTypeSelectors();
+  const elemReviewSel = $('elementsReviewSelect');
+  if (elemReviewSel) elemReviewSel.value = CURRENT_ELEMENT_REVIEW_FILTER;
+  await loadReviews(slug);
 }
 
 async function renderPage(num) {
@@ -857,7 +871,20 @@ async function init() {
     await renderPage(CURRENT_PAGE);
     if (LAST_SELECTED_MATCH) drawTargetsOnPage(CURRENT_PAGE, LAST_SELECTED_MATCH, LAST_HIGHLIGHT_MODE === 'best');
   });
+  const reviewChip = $('reviewSummary');
+  if (reviewChip) {
+    reviewChip.addEventListener('click', () => {
+      const summary = CURRENT_REVIEWS?.summary || {};
+      if (!summary.total) return;
+      CURRENT_CHUNK_REVIEW_FILTER = 'Reviewed';
+      switchView('inspect');
+      switchInspectTab('chunks');
+      renderChunksTab();
+    });
+  }
   $('drawerClose').addEventListener('click', async () => {
+    CURRENT_CHUNK_DRAWER_ID = null;
+    CURRENT_ELEMENT_DRAWER_ID = null;
     // If we came here from a chunk's element, restore that chunk drawer
     if (RETURN_TO && RETURN_TO.kind === 'chunk') {
       const chunkId = RETURN_TO.id;
@@ -931,6 +958,8 @@ async function refreshRuns() {
     clearBoxes();
     updateRunConfigCard();
     renderChunksTab();
+    setReviewState(_emptyReviewState());
+    updateReviewSummaryChip();
   }
   sel.onchange = async () => {
     await loadRun(sel.value);
@@ -1463,6 +1492,7 @@ async function drawBoxesForCurrentPage() {
   const param = type && type !== 'All' ? `&types=${encodeURIComponent(type)}` : '';
   try {
     const boxes = await fetchJSON(`/api/boxes/${encodeURIComponent(CURRENT_SLUG)}?page=${CURRENT_PAGE}${param}`) || {};
+    CURRENT_PAGE_BOXES = boxes || {};
     clearBoxes();
     const entries = Object.entries(boxes);
     const typesPresent = new Set();
@@ -1530,23 +1560,52 @@ function renderElementsListForCurrentPage(boxes) {
     if (ya !== 0) return ya;
     return Number(ea.x||0) - Number(eb.x||0);
   });
+  const filtered = [];
   for (const [id, entry] of entries) {
+    const review = getReview('element', id);
+    if (!reviewMatchesFilter(review, CURRENT_ELEMENT_REVIEW_FILTER)) continue;
+    filtered.push([id, entry, review]);
+  }
+  if (!filtered.length) {
+    const div = document.createElement('div');
+    div.className = 'placeholder';
+    div.textContent = 'No elements match the current review filter.';
+    host.appendChild(div);
+    return;
+  }
+  for (const [id, entry, review] of filtered) {
     const card = document.createElement('div');
     card.className = 'chunk-card element-card';
+    if (review && review.rating) {
+      card.classList.add('has-review');
+      card.classList.add(review.rating === 'good' ? 'review-good' : 'review-bad');
+    }
     card.dataset.elementId = id;
     const color = typeBorderColor(entry.type || '');
     card.style.borderLeft = `4px solid ${color}`;
     const header = document.createElement('div');
-    header.className = 'header';
+    header.className = 'header element-card-head';
+    const metaWrap = document.createElement('div');
+    metaWrap.className = 'element-card-meta';
     const dId = entry.orig_id || id;
     const short = dId.length > 16 ? `${dId.slice(0,12)}…` : dId;
-    header.innerHTML = `<span>${entry.type || 'Unknown'}</span><span class="meta">${short}</span>`;
+    metaWrap.innerHTML = `<span>${entry.type || 'Unknown'}</span><span class="meta">${short}</span>`;
+    header.appendChild(metaWrap);
+    header.appendChild(buildReviewButtons('element', id, 'mini'));
     const pre = document.createElement('pre');
     pre.textContent = 'Loading preview…';
     applyDirectionalText(pre);
     card.appendChild(header);
+    const notePreview = buildNotePreview('element', id, 'mini');
+    if (notePreview) {
+      notePreview.title = 'Open element details to edit note';
+      notePreview.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        card.click();
+      });
+      card.appendChild(notePreview);
+    }
     card.appendChild(pre);
-    // add focus class if it matches current selection
     if (id === CURRENT_INSPECT_ELEMENT_ID) card.classList.add('focused');
     card.addEventListener('click', async () => {
       CURRENT_INSPECT_ELEMENT_ID = id;
@@ -1558,20 +1617,18 @@ function renderElementsListForCurrentPage(boxes) {
       openElementDetails(id);
     });
     host.appendChild(card);
-    // fetch preview text + original id asynchronously
     (async () => {
       try {
         const data = await fetchJSON(`/api/element/${encodeURIComponent(CURRENT_SLUG)}/${encodeURIComponent(id)}`);
         let txt = data.text || '';
         if (!txt && data.text_as_html) {
-          // strip tags for a compact preview
           txt = String(data.text_as_html).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
         }
         if (!txt) txt = '(no text)';
         pre.textContent = txt;
         const displayId = data.original_element_id || id;
         const shortId = displayId.length > 16 ? `${displayId.slice(0,12)}…` : displayId;
-        header.innerHTML = `<span>${data.type || entry.type || 'Element'}</span><span class="meta">${shortId}</span>`;
+        metaWrap.innerHTML = `<span>${data.type || entry.type || 'Element'}</span><span class="meta">${shortId}</span>`;
       } catch (e) {
         pre.textContent = `(failed to load preview: ${e.message})`;
       }
@@ -1597,6 +1654,8 @@ async function openElementDetails(elementId) {
   try {
     const data = await fetchJSON(`/api/element/${encodeURIComponent(CURRENT_SLUG)}/${encodeURIComponent(elementId)}`);
     const container = $('preview');
+    CURRENT_ELEMENT_DRAWER_ID = elementId;
+    CURRENT_CHUNK_DRAWER_ID = null;
     $('drawerTitle').textContent = 'Element';
     const displayId = data.original_element_id || elementId;
     $('drawerMeta').innerHTML = `<code>${displayId}</code> · <span class="chip-tag">${data.type || '-'}</span>`;
@@ -1609,6 +1668,7 @@ async function openElementDetails(elementId) {
     head.className = 'preview-meta';
     head.innerHTML = `<span class="badge">Element</span><span>page: ${data.page_number ?? '-'}</span>`;
     container.appendChild(head);
+    container.appendChild(buildDrawerReviewSection('element', elementId));
     const html = data.text_as_html;
     if (html) {
       const scroll = document.createElement('div');
@@ -1669,6 +1729,197 @@ function typeBorderColor(t) {
   return color || '#6bbcff';
 }
 
+function reviewKey(kind, itemId) {
+  return `${kind}:${itemId}`;
+}
+
+function getReview(kind, itemId) {
+  return REVIEW_LOOKUP[reviewKey(kind, itemId)] || null;
+}
+
+function _emptyReviewState(slug = CURRENT_SLUG) {
+  return { slug, items: [], summary: { good: 0, bad: 0, total: 0 } };
+}
+
+function setReviewState(payload) {
+  const base = (payload && Array.isArray(payload.items)) ? payload : _emptyReviewState(payload?.slug || CURRENT_SLUG);
+  CURRENT_REVIEWS = {
+    slug: base.slug || CURRENT_SLUG,
+    items: Array.isArray(base.items) ? base.items : [],
+    summary: base.summary || { good: 0, bad: 0, total: 0 },
+  };
+  REVIEW_LOOKUP = {};
+  (CURRENT_REVIEWS.items || []).forEach((item) => {
+    if (!item || !item.kind || !item.item_id) return;
+    REVIEW_LOOKUP[reviewKey(item.kind, item.item_id)] = item;
+  });
+}
+
+function updateReviewSummaryChip() {
+  const chip = $('reviewSummary');
+  if (!chip) return;
+  const summary = (CURRENT_REVIEWS && CURRENT_REVIEWS.summary) || { good: 0, bad: 0, total: 0 };
+  if (summary.total) {
+    const parts = [];
+    if (summary.good) parts.push(`${summary.good} Good`);
+    if (summary.bad) parts.push(`${summary.bad} Bad`);
+    chip.textContent = `Reviews: ${parts.join(' · ')}`;
+    chip.classList.remove('disabled');
+  } else {
+    chip.textContent = 'Reviews: none';
+    chip.classList.add('disabled');
+  }
+}
+
+async function loadReviews(slug) {
+  try {
+    const data = await fetchJSON(`/api/reviews/${encodeURIComponent(slug)}`);
+    setReviewState(data);
+  } catch (e) {
+    setReviewState(_emptyReviewState(slug));
+  }
+  updateReviewSummaryChip();
+  if (CURRENT_RUN_HAS_CHUNKS) renderChunksTab();
+  if (CURRENT_PAGE_BOXES) {
+    renderElementsListForCurrentPage(CURRENT_PAGE_BOXES);
+  }
+}
+
+function reviewMatchesFilter(review, filter) {
+  if (!filter || filter === 'All') return true;
+  if (filter === 'Reviewed') return Boolean(review && review.rating);
+  if (filter === 'Good') return Boolean(review && review.rating === 'good');
+  if (filter === 'Bad') return Boolean(review && review.rating === 'bad');
+  return true;
+}
+
+async function saveReview(kind, itemId, overrides = {}) {
+  if (!CURRENT_SLUG) {
+    showToast('Select a run before leaving reviews.', 'err');
+    return;
+  }
+  const existing = getReview(kind, itemId);
+  let rating = overrides.rating;
+  if (rating === undefined) rating = existing ? existing.rating : null;
+  let note = overrides.note;
+  if (note === undefined) note = existing ? (existing.note || '') : '';
+  note = String(note || '');
+  if (rating === null) {
+    note = '';
+  }
+  if (note && !rating) {
+    showToast('Choose Good or Bad before saving a note.', 'err');
+    return;
+  }
+  const payload = { kind, item_id: itemId, rating, note };
+  try {
+    const res = await fetch(`/api/reviews/${encodeURIComponent(CURRENT_SLUG)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(txt || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    setReviewState(data.reviews);
+    updateReviewSummaryChip();
+    if (CURRENT_RUN_HAS_CHUNKS) renderChunksTab();
+    renderElementsListForCurrentPage(CURRENT_PAGE_BOXES);
+    if (kind === 'chunk' && CURRENT_CHUNK_DRAWER_ID === itemId) {
+      await openChunkDetailsDrawer(itemId, null);
+    }
+    if (kind === 'element' && CURRENT_ELEMENT_DRAWER_ID === itemId) {
+      await openElementDetails(itemId);
+    }
+    const summary = rating ? `${rating === 'good' ? 'Good' : 'Bad'} review saved` : 'Review removed';
+    showToast(`${summary} for ${kind} ${itemId}`, 'ok', 2000);
+  } catch (e) {
+    showToast(`Failed to save review: ${e.message}`, 'err');
+  }
+}
+
+function buildReviewButtons(kind, itemId, variant = 'card') {
+  const wrap = document.createElement('div');
+  wrap.className = `review-buttons review-${variant}`;
+  const current = getReview(kind, itemId);
+  ['good', 'bad'].forEach((rating) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `review-btn review-${rating} review-${variant}`;
+    btn.textContent = variant === 'mini' ? (rating === 'good' ? '✓' : '!') : (rating === 'good' ? 'Good' : 'Bad');
+    if (current && current.rating === rating) {
+      btn.classList.add('active');
+    }
+    btn.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      const existing = getReview(kind, itemId);
+      const next = existing && existing.rating === rating ? null : rating;
+      await saveReview(kind, itemId, { rating: next });
+    });
+    wrap.appendChild(btn);
+  });
+  return wrap;
+}
+
+function buildNotePreview(kind, itemId, variant = 'card') {
+  const review = getReview(kind, itemId);
+  if (!review || !review.note) return null;
+  const div = document.createElement('div');
+  div.className = `review-note-preview ${variant}`;
+  const max = variant === 'mini' ? 80 : 160;
+  const text = review.note.length > max ? `${review.note.slice(0, max)}…` : review.note;
+  div.textContent = text;
+  return div;
+}
+
+function buildDrawerReviewSection(kind, itemId) {
+  const reviewSection = document.createElement('div');
+  reviewSection.className = 'drawer-review-section';
+  const head = document.createElement('div');
+  head.className = 'drawer-review-head';
+  const label = document.createElement('span');
+  label.className = 'lab';
+  label.textContent = 'Review';
+  head.appendChild(label);
+  head.appendChild(buildReviewButtons(kind, itemId, 'drawer'));
+  reviewSection.appendChild(head);
+  const noteWrap = document.createElement('div');
+  noteWrap.className = 'drawer-review-note';
+  const note = document.createElement('textarea');
+  note.placeholder = 'Add reviewer notes (optional)…';
+  const existing = getReview(kind, itemId);
+  note.value = existing?.note || '';
+  noteWrap.appendChild(note);
+  const actions = document.createElement('div');
+  actions.className = 'drawer-review-actions';
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'btn';
+  saveBtn.textContent = 'Save note';
+  saveBtn.addEventListener('click', async (ev) => {
+    ev.stopPropagation();
+    const state = getReview(kind, itemId);
+    if (!state || !state.rating) {
+      showToast('Pick Good or Bad before saving a note.', 'err');
+      return;
+    }
+    await saveReview(kind, itemId, { note: note.value.trim() });
+  });
+  const clearBtn = document.createElement('button');
+  clearBtn.className = 'btn btn-secondary';
+  clearBtn.textContent = 'Clear';
+  clearBtn.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    note.value = '';
+  });
+  actions.appendChild(saveBtn);
+  actions.appendChild(clearBtn);
+  noteWrap.appendChild(actions);
+  reviewSection.appendChild(noteWrap);
+  return reviewSection;
+}
+
 // Elements tab: type filter mirrors the quickbar's CURRENT_TYPE_FILTER
 document.addEventListener('DOMContentLoaded', () => {
   applyLanguageDirection();
@@ -1680,6 +1931,11 @@ document.addEventListener('DOMContentLoaded', () => {
       drawTargetsOnPage(CURRENT_PAGE, LAST_SELECTED_MATCH, LAST_HIGHLIGHT_MODE === 'best');
     }
     await drawBoxesForCurrentPage();
+  });
+  const reviewSel = $('elementsReviewSelect');
+  if (reviewSel) reviewSel.addEventListener('change', () => {
+    CURRENT_ELEMENT_REVIEW_FILTER = reviewSel.value || 'All';
+    renderElementsListForCurrentPage(CURRENT_PAGE_BOXES);
   });
 });
 
@@ -1734,14 +1990,19 @@ function renderChunksTab() {
   });
   CHUNK_TYPES = Array.from(typeCount.entries()).map(([type, count]) => ({ type, count }));
 
-  // Filter chunks by current page and type
-  let chunks = allChunks.filter(ch => {
-    const b = chunkBox(ch);
-    return b && Number.isFinite(b.page_trimmed) && b.page_trimmed === CURRENT_PAGE;
-  });
+  const baseChunks = allChunks
+    .map((chunk, idx) => ({ chunk, id: chunk.element_id || `chunk-${idx}` }))
+    .filter(({ chunk }) => {
+      const b = chunkBox(chunk);
+      return b && Number.isFinite(b.page_trimmed) && b.page_trimmed === CURRENT_PAGE;
+    });
 
+  let chunks = baseChunks.slice();
   if (CURRENT_CHUNK_TYPE_FILTER && CURRENT_CHUNK_TYPE_FILTER !== 'All') {
-    chunks = chunks.filter(ch => ch.type === CURRENT_CHUNK_TYPE_FILTER);
+    chunks = chunks.filter(({ chunk }) => chunk.type === CURRENT_CHUNK_TYPE_FILTER);
+  }
+  if (CURRENT_CHUNK_REVIEW_FILTER && CURRENT_CHUNK_REVIEW_FILTER !== 'All') {
+    chunks = chunks.filter(({ id }) => reviewMatchesFilter(getReview('chunk', id), CURRENT_CHUNK_REVIEW_FILTER));
   }
 
   // Build type dropdown options
@@ -1750,13 +2011,26 @@ function renderChunksTab() {
 
   // Build types list
   const typesListHtml = CHUNK_TYPES.map(t => `<div>${t.type}: ${t.count}</div>`).join('');
+  const reviewOpts = [
+    { value: 'All', label: 'All' },
+    { value: 'Reviewed', label: 'Reviewed' },
+    { value: 'Good', label: 'Good only' },
+    { value: 'Bad', label: 'Bad only' },
+  ];
+  const reviewOptsHtml = reviewOpts
+    .map(opt => `<option value="${opt.value}" ${opt.value === CURRENT_CHUNK_REVIEW_FILTER ? 'selected' : ''}>${opt.label}</option>`)
+    .join('');
 
   summaryEl.innerHTML = `
     <div class="chunk-summary-row">
-      <div class="row">
+      <div class="row dual">
         <label>
           <span class="lab">Type</span>
           <select id="chunksTypeSelect">${typeOptsHtml}</select>
+        </label>
+        <label>
+          <span class="lab">Review</span>
+          <select id="chunkReviewFilter">${reviewOptsHtml}</select>
         </label>
       </div>
       <div class="chunk-types">${typesListHtml}</div>
@@ -1779,18 +2053,41 @@ function renderChunksTab() {
       redrawOverlaysForCurrentContext();
     });
   }
+  const reviewSelect = $('chunkReviewFilter');
+  if (reviewSelect) {
+    reviewSelect.addEventListener('change', () => {
+      CURRENT_CHUNK_REVIEW_FILTER = reviewSelect.value || 'All';
+      renderChunksTab();
+    });
+  }
 
   listEl.innerHTML = '';
-  chunks.forEach((chunk, idx) => {
+  if (!chunks.length) {
+    const empty = document.createElement('div');
+    empty.className = 'placeholder';
+    empty.textContent = 'No chunks match the current filters.';
+    listEl.appendChild(empty);
+    return;
+  }
+  chunks.forEach(({ chunk, id }, idx) => {
     const card = document.createElement('div');
     card.className = 'chunk-card';
-    const chunkId = chunk.element_id || `chunk-${idx}`;
+    const chunkId = id || `chunk-${idx}`;
     card.dataset.chunkId = chunkId;
     const color = typeBorderColor(chunk.type || '');
     card.style.borderLeft = `4px solid ${color}`;
+    const review = getReview('chunk', chunkId);
+    if (review && review.rating) {
+      card.classList.add('has-review');
+      card.classList.add(review.rating === 'good' ? 'review-good' : 'review-bad');
+    }
     const header = document.createElement('div');
-    header.className = 'header';
-    header.innerHTML = `<span>${chunk.element_id || '(no id)'}</span><span>${chunk.char_len || 0} chars</span>`;
+    header.className = 'header chunk-card-head';
+    const metaWrap = document.createElement('div');
+    metaWrap.className = 'chunk-header-meta';
+    metaWrap.innerHTML = `<span>${chunk.element_id || '(no id)'}</span><span>${chunk.char_len || 0} chars</span>`;
+    header.appendChild(metaWrap);
+    header.appendChild(buildReviewButtons('chunk', chunkId, 'card'));
     const pre = document.createElement('pre');
     const text = chunk.text || '';
     pre.textContent = text || '(empty)';
@@ -1843,6 +2140,15 @@ function renderChunksTab() {
       });
     }
     card.appendChild(header);
+    const notePreview = buildNotePreview('chunk', chunkId, 'card');
+    if (notePreview) {
+      notePreview.title = 'Open chunk details to edit note';
+      notePreview.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        card.click();
+      });
+      card.appendChild(notePreview);
+    }
     card.appendChild(pre);
     card.addEventListener('click', async () => {
       // Open chunk details in drawer
@@ -1867,6 +2173,8 @@ function renderChunksTab() {
 async function openChunkDetailsDrawer(chunkId, elementsSublist) {
   const ch = CURRENT_CHUNK_LOOKUP ? CURRENT_CHUNK_LOOKUP[chunkId] : null;
   if (!ch) return;
+  CURRENT_CHUNK_DRAWER_ID = chunkId;
+  CURRENT_ELEMENT_DRAWER_ID = null;
 
   // Populate drawer with chunk content
   $('drawerTitle').textContent = 'Chunk Details';
@@ -1876,6 +2184,7 @@ async function openChunkDetailsDrawer(chunkId, elementsSublist) {
 
   const container = $('preview');
   container.innerHTML = '';
+  container.appendChild(buildDrawerReviewSection('chunk', chunkId));
 
   // Add chunk text
   const textSection = document.createElement('div');
