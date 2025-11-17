@@ -282,6 +282,10 @@ async function highlightForTable(tableMatch, bestOnly=false) {
 
   LAST_SELECTED_MATCH = tableMatch;
   LAST_HIGHLIGHT_MODE = bestOnly ? 'best' : 'all';
+  // In Metrics view, reset any prior chunk/element selection so highlight-all/best
+  // starts from a clean slate; drawer interactions will re-apply a focused selection.
+  CURRENT_ELEMENT_ID = null;
+  CURRENT_INSPECT_ELEMENT_ID = null;
 
   // No longer fetch element boxes - we'll use chunk bboxes directly from CURRENT_CHUNK_LOOKUP
 
@@ -300,9 +304,21 @@ async function highlightForTable(tableMatch, bestOnly=false) {
 
 function drawTargetsOnPage(pageNum, tableMatch, bestOnly=false) {
   clearBoxes();
-  const targets = bestOnly
+  let targets = bestOnly
     ? [{ element_id: tableMatch.best_element_id, page_trimmed: tableMatch.best_page_trimmed }]
-    : tableMatch.selected_elements;
+    : (tableMatch.selected_elements || []);
+
+  // If a specific chunk is selected in the right drawer, restrict overlays
+  // to that chunk’s footprint even in Metrics view.
+  const selectedChunkId = CURRENT_ELEMENT_ID;
+  if (selectedChunkId) {
+    const filtered = targets.filter(t => t.element_id === selectedChunkId);
+    if (filtered.length) {
+      targets = filtered;
+    } else if (tableMatch.best_element_id && tableMatch.best_element_id === selectedChunkId) {
+      targets = [{ element_id: selectedChunkId, page_trimmed: tableMatch.best_page_trimmed }];
+    }
+  }
 
   // Assign stable colors per chunk for this table
   const ids = Array.from(new Set(targets.map(t=>t.element_id).filter(Boolean)));
@@ -613,6 +629,7 @@ async function openDetails(tableMatch) {
       chip.classList.add('active');
       CURRENT_ELEMENT_ID = id;
       await loadElementPreview(id);
+      redrawOverlaysForCurrentContext();
     });
     picker.appendChild(chip);
   }
@@ -623,6 +640,7 @@ async function openDetails(tableMatch) {
     const firstChip = picker.querySelector('.chip');
     if (firstChip) firstChip.classList.add('active');
     loadElementPreview(bestId);
+    redrawOverlaysForCurrentContext();
   }
 }
 

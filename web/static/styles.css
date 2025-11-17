@@ -447,7 +447,7 @@ section.right {
 
 /* Modal */
 .modal.hidden { display: none; }
-.modal { position: fixed; inset: 0; z-index: 10000; }
+.modal { position: fixed; inset: 0; z-index: 20000; }
 .modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.5); }
 .modal-content { position: absolute; top: 6vh; left: 50%; transform: translateX(-50%); width: min(820px, calc(100vw - 24px)); max-height: 88vh; overflow: auto; }
 .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
