@@ -80,7 +80,10 @@
           <span class="lab">Run</span>
           <select id="runSelect"></select>
         </label>
-        <div id="reviewSummary" class="review-summary-chip disabled" title="Click to jump to reviewed chunks">Reviews: none</div>
+        <div class="review-chip-group">
+          <button id="reviewChunksChip" class="review-chip disabled" type="button" title="Toggle chunk reviews">Chunks: none</button>
+          <button id="reviewElementsChip" class="review-chip disabled" type="button" title="Toggle element reviews">Elements: none</button>
+        </div>
         <button id="openRunModal" class="btn">New Run</button>
         <button id="deleteRunBtn" class="btn" title="Delete current run">Delete run</button>
       </div>
@@ -225,6 +228,7 @@
                   <option value="Bad">Bad only</option>
                 </select>
               </label>
+              <span id="elementsReviewSummary" class="review-inline-count">Reviewed: none</span>
             </div>
             <div id="typesList" class="types"></div>
             <div class="elements-list" id="elementsList"></div>

@@ -742,10 +742,25 @@ def _save_reviews(slug: str, items: Dict[str, Any]) -> None:
     tmp.replace(path)
 
 
-def _summarize_reviews(items: List[Dict[str, Any]]) -> Dict[str, int]:
-    good = sum(1 for item in items if (item.get("rating") or "").lower() == "good")
-    bad = sum(1 for item in items if (item.get("rating") or "").lower() == "bad")
-    return {"good": good, "bad": bad, "total": good + bad}
+def _summarize_reviews(items: List[Dict[str, Any]]) -> Dict[str, Dict[str, int]]:
+    summary = {
+        "overall": {"good": 0, "bad": 0, "total": 0},
+        "chunks": {"good": 0, "bad": 0, "total": 0},
+        "elements": {"good": 0, "bad": 0, "total": 0},
+    }
+    for item in items:
+        if not item:
+            continue
+        rating = (item.get("rating") or "").lower()
+        kind = (item.get("kind") or "").lower()
+        if rating not in {"good", "bad"}:
+            continue
+        summary["overall"][rating] += 1
+        summary["overall"]["total"] += 1
+        target = summary["chunks" if kind == "chunk" else "elements"]
+        target[rating] += 1
+        target["total"] += 1
+    return summary
 
 
 def _format_reviews(slug: str, items_map: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:

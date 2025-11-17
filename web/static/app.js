@@ -39,7 +39,15 @@ let RUN_RANGE_START = null;
 let HINTED_HIRES = false;
 let RETURN_TO = null; // navigation context for closing drawers
 let CURRENT_DOC_LANGUAGE = 'eng';
-let CURRENT_REVIEWS = { slug: null, items: [], summary: { good: 0, bad: 0, total: 0 } };
+let CURRENT_REVIEWS = {
+  slug: null,
+  items: [],
+  summary: {
+    overall: { good: 0, bad: 0, total: 0 },
+    chunks: { good: 0, bad: 0, total: 0 },
+    elements: { good: 0, bad: 0, total: 0 },
+  },
+};
 let REVIEW_LOOKUP = {};
 let CURRENT_CHUNK_REVIEW_FILTER = 'All';
 let CURRENT_ELEMENT_REVIEW_FILTER = 'All';
@@ -871,17 +879,7 @@ async function init() {
     await renderPage(CURRENT_PAGE);
     if (LAST_SELECTED_MATCH) drawTargetsOnPage(CURRENT_PAGE, LAST_SELECTED_MATCH, LAST_HIGHLIGHT_MODE === 'best');
   });
-  const reviewChip = $('reviewSummary');
-  if (reviewChip) {
-    reviewChip.addEventListener('click', () => {
-      const summary = CURRENT_REVIEWS?.summary || {};
-      if (!summary.total) return;
-      CURRENT_CHUNK_REVIEW_FILTER = 'Reviewed';
-      switchView('inspect');
-      switchInspectTab('chunks');
-      renderChunksTab();
-    });
-  }
+  setupReviewChipHandlers();
   $('drawerClose').addEventListener('click', async () => {
     CURRENT_CHUNK_DRAWER_ID = null;
     CURRENT_ELEMENT_DRAWER_ID = null;
@@ -1299,6 +1297,7 @@ function switchInspectTab(name, skipRedraw = false) {
   if (!skipRedraw) {
     redrawOverlaysForCurrentContext();
   }
+  updateReviewSummaryChip();
 }
 
 function setupViewTabs() {
@@ -1306,6 +1305,40 @@ function setupViewTabs() {
   const i = $('viewTabInspect');
   if (m) m.addEventListener('click', () => switchView('metrics'));
   if (i) i.addEventListener('click', () => switchView('inspect'));
+}
+
+function setupReviewChipHandlers() {
+  const chunkChip = $('reviewChunksChip');
+  if (chunkChip) chunkChip.addEventListener('click', () => handleReviewChipClick('chunks'));
+  const elementChip = $('reviewElementsChip');
+  if (elementChip) elementChip.addEventListener('click', () => handleReviewChipClick('elements'));
+}
+
+function handleReviewChipClick(kind) {
+  const summary = CURRENT_REVIEWS?.summary?.[kind] || { total: 0 };
+  if (!summary.total) return;
+  const isChunks = kind === 'chunks';
+  const alreadyFocused = CURRENT_VIEW === 'inspect' && INSPECT_TAB === (isChunks ? 'chunks' : 'elements');
+  const isFilterActive = isChunks ? CURRENT_CHUNK_REVIEW_FILTER === 'Reviewed' : CURRENT_ELEMENT_REVIEW_FILTER === 'Reviewed';
+  const toggleOff = alreadyFocused && isFilterActive;
+  switchView('inspect');
+  switchInspectTab(isChunks ? 'chunks' : 'elements');
+  if (isChunks) {
+    CURRENT_CHUNK_REVIEW_FILTER = toggleOff ? 'All' : 'Reviewed';
+    const reviewSelect = $('chunkReviewFilter');
+    if (reviewSelect) reviewSelect.value = CURRENT_CHUNK_REVIEW_FILTER;
+    renderChunksTab();
+  } else {
+    CURRENT_ELEMENT_REVIEW_FILTER = toggleOff ? 'All' : 'Reviewed';
+    const reviewSelect = $('elementsReviewSelect');
+    if (reviewSelect) reviewSelect.value = CURRENT_ELEMENT_REVIEW_FILTER;
+    if (CURRENT_PAGE_BOXES) {
+      renderElementsListForCurrentPage(CURRENT_PAGE_BOXES);
+    } else {
+      drawBoxesForCurrentPage();
+    }
+  }
+  updateReviewSummaryChip();
 }
 
 function switchView(view, skipRedraw = false) {
@@ -1543,12 +1576,20 @@ function renderElementsListForCurrentPage(boxes) {
   const host = document.getElementById('elementsList');
   if (!host) return;
   host.innerHTML = '';
+  const reviewSelect = $('elementsReviewSelect');
+  if (reviewSelect) reviewSelect.value = CURRENT_ELEMENT_REVIEW_FILTER;
+  const reviewSummaryEl = $('elementsReviewSummary');
+  if (reviewSummaryEl) {
+    const counts = CURRENT_REVIEWS?.summary?.elements || { good: 0, bad: 0, total: 0 };
+    reviewSummaryEl.textContent = counts.total ? `Reviewed: ${counts.good} Good · ${counts.bad} Bad` : 'Reviewed: none';
+  }
   const entries = Object.entries(boxes || {});
   if (!entries.length) {
     const div = document.createElement('div');
     div.className = 'placeholder';
     div.textContent = 'No elements on this page for the selected filter.';
     host.appendChild(div);
+    updateReviewSummaryChip();
     return;
   }
   // Sort by type then by Y then X for a stable order
@@ -1571,6 +1612,7 @@ function renderElementsListForCurrentPage(boxes) {
     div.className = 'placeholder';
     div.textContent = 'No elements match the current review filter.';
     host.appendChild(div);
+    updateReviewSummaryChip();
     return;
   }
   for (const [id, entry, review] of filtered) {
@@ -1591,7 +1633,7 @@ function renderElementsListForCurrentPage(boxes) {
     const short = dId.length > 16 ? `${dId.slice(0,12)}…` : dId;
     metaWrap.innerHTML = `<span>${entry.type || 'Unknown'}</span><span class="meta">${short}</span>`;
     header.appendChild(metaWrap);
-    header.appendChild(buildReviewButtons('element', id, 'mini'));
+    header.appendChild(buildReviewButtons('element', id, 'card'));
     const pre = document.createElement('pre');
     pre.textContent = 'Loading preview…';
     applyDirectionalText(pre);
@@ -1634,6 +1676,7 @@ function renderElementsListForCurrentPage(boxes) {
       }
     })();
   }
+  updateReviewSummaryChip();
 }
 
 function revealElementInList(elementId, retries=12) {
@@ -1750,7 +1793,15 @@ function chunkHasReviewedElements(chunk) {
 }
 
 function _emptyReviewState(slug = CURRENT_SLUG) {
-  return { slug, items: [], summary: { good: 0, bad: 0, total: 0 } };
+  return {
+    slug,
+    items: [],
+    summary: {
+      overall: { good: 0, bad: 0, total: 0 },
+      chunks: { good: 0, bad: 0, total: 0 },
+      elements: { good: 0, bad: 0, total: 0 },
+    },
+  };
 }
 
 function setReviewState(payload) {
@@ -1758,7 +1809,11 @@ function setReviewState(payload) {
   CURRENT_REVIEWS = {
     slug: base.slug || CURRENT_SLUG,
     items: Array.isArray(base.items) ? base.items : [],
-    summary: base.summary || { good: 0, bad: 0, total: 0 },
+    summary: {
+      overall: base.summary?.overall || { good: 0, bad: 0, total: 0 },
+      chunks: base.summary?.chunks || { good: 0, bad: 0, total: 0 },
+      elements: base.summary?.elements || { good: 0, bad: 0, total: 0 },
+    },
   };
   REVIEW_LOOKUP = {};
   (CURRENT_REVIEWS.items || []).forEach((item) => {
@@ -1768,19 +1823,35 @@ function setReviewState(payload) {
 }
 
 function updateReviewSummaryChip() {
-  const chip = $('reviewSummary');
+  updateReviewChip('chunks');
+  updateReviewChip('elements');
+}
+
+function updateReviewChip(kind) {
+  const chip = kind === 'chunks' ? $('reviewChunksChip') : $('reviewElementsChip');
   if (!chip) return;
-  const summary = (CURRENT_REVIEWS && CURRENT_REVIEWS.summary) || { good: 0, bad: 0, total: 0 };
-  if (summary.total) {
-    const parts = [];
-    if (summary.good) parts.push(`${summary.good} Good`);
-    if (summary.bad) parts.push(`${summary.bad} Bad`);
-    chip.textContent = `Reviews: ${parts.join(' · ')}`;
-    chip.classList.remove('disabled');
-  } else {
-    chip.textContent = 'Reviews: none';
+  const summary = CURRENT_REVIEWS?.summary?.[kind] || { good: 0, bad: 0, total: 0 };
+  const label = kind === 'chunks' ? 'Chunks' : 'Elements';
+  const good = Number(summary.good || 0);
+  const bad = Number(summary.bad || 0);
+  chip.innerHTML = `
+    <span class="review-chip-label">${label}</span>
+    <span class="review-chip-counts">
+      <span class="review-chip-good">${good}</span>
+      <span>-</span>
+      <span class="review-chip-bad">${bad}</span>
+    </span>
+  `;
+  if (!summary.total) {
     chip.classList.add('disabled');
+    chip.classList.remove('active');
+    return;
   }
+  chip.classList.remove('disabled');
+  const active =
+    (kind === 'chunks' && CURRENT_VIEW === 'inspect' && INSPECT_TAB === 'chunks' && CURRENT_CHUNK_REVIEW_FILTER === 'Reviewed') ||
+    (kind === 'elements' && CURRENT_VIEW === 'inspect' && INSPECT_TAB === 'elements' && CURRENT_ELEMENT_REVIEW_FILTER === 'Reviewed');
+  chip.classList.toggle('active', active);
 }
 
 async function loadReviews(slug) {
@@ -1860,7 +1931,7 @@ function buildReviewButtons(kind, itemId, variant = 'card') {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = `review-btn review-${rating} review-${variant}`;
-    btn.textContent = variant === 'mini' ? (rating === 'good' ? '✓' : '!') : (rating === 'good' ? 'Good' : 'Bad');
+    btn.textContent = rating === 'good' ? 'Good' : 'Bad';
     if (current && current.rating === rating) {
       btn.classList.add('active');
     }
@@ -1992,6 +2063,8 @@ function renderChunksTab() {
     return;
   }
   const summary = CURRENT_CHUNKS.summary || {};
+  const chunkReviewCounts = CURRENT_REVIEWS?.summary?.chunks || { good: 0, bad: 0, total: 0 };
+  const chunkReviewText = chunkReviewCounts.total ? `${chunkReviewCounts.good} Good · ${chunkReviewCounts.bad} Bad` : 'none';
   const allChunks = CURRENT_CHUNKS.chunks || [];
 
   // Compute chunk types from all chunks
@@ -2059,6 +2132,7 @@ function renderChunksTab() {
         <div><span class="lab">Min chars</span><span>${summary.min_chars || 0}</span></div>
         <div><span class="lab">Max chars</span><span>${summary.max_chars || 0}</span></div>
         <div><span class="lab">Total chars</span><span>${summary.total_chars || 0}</span></div>
+        <div><span class="lab">Reviewed</span><span>${chunkReviewText}</span></div>
       </div>
     </div>
   `;
@@ -2086,6 +2160,7 @@ function renderChunksTab() {
     empty.className = 'placeholder';
     empty.textContent = 'No chunks match the current filters.';
     listEl.appendChild(empty);
+    updateReviewSummaryChip();
     return;
   }
   chunks.forEach(({ chunk, id }, idx) => {
@@ -2197,6 +2272,7 @@ function renderChunksTab() {
     });
     listEl.appendChild(card);
   });
+  updateReviewSummaryChip();
 }
 
 async function openChunkDetailsDrawer(chunkId, elementsSublist) {

@@ -48,7 +48,8 @@ header h1 { font-size: 18px; margin: 0; }
 header .controls { display: flex; gap: 12px; align-items: center; }
 .run-picker { display: inline-flex; align-items: center; gap: 8px; }
 .run-picker .lab { color: var(--muted); font-size: 12px; }
-.review-summary-chip {
+.review-chip-group { display: flex; gap: 6px; }
+.review-chip {
   background: #1f2430;
   color: var(--text);
   border: 1px solid #2a2f38;
@@ -56,15 +57,51 @@ header .controls { display: flex; gap: 12px; align-items: center; }
   padding: 6px 10px;
   font-size: 12px;
   cursor: pointer;
-  transition: filter 0.15s ease, opacity 0.15s ease;
+  transition: filter 0.15s ease, opacity 0.15s ease, border-color 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.2;
+  min-width: 80px;
 }
-.review-summary-chip.disabled {
+.review-chip.disabled {
   opacity: 0.5;
   cursor: default;
   color: var(--muted);
 }
-.review-summary-chip:not(.disabled):hover {
+.review-chip:not(.disabled):hover {
   filter: brightness(1.08);
+}
+.review-chip.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.review-chip-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.review-chip-counts {
+  font-size: 12px;
+  display: flex;
+  gap: 4px;
+  align-items: baseline;
+}
+.review-chip-good {
+  color: var(--ok);
+}
+.review-chip-bad {
+  color: var(--danger);
+}
+.review-chip.disabled .review-chip-good,
+.review-chip.disabled .review-chip-bad {
+  color: var(--muted);
+}
+.review-inline-count {
+  color: var(--muted);
+  font-size: 12px;
+  margin-left: auto;
 }
 
 /* Settings Recap Bar */
@@ -316,9 +353,6 @@ section.right {
   display: inline-flex;
   gap: 6px;
 }
-.review-buttons.review-mini {
-  gap: 4px;
-}
 .review-btn {
   background: #1f2430;
   color: var(--muted);
@@ -328,10 +362,6 @@ section.right {
   font-size: 12px;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-}
-.review-btn.review-mini {
-  padding: 2px 6px;
-  font-size: 11px;
 }
 .review-btn.review-drawer {
   padding: 4px 12px;
