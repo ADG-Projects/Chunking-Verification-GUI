@@ -531,10 +531,10 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
     run_info = {
         "slug": f"{run_slug}.{pages_tag}",
         "page_tag": pages_tag,
-        "tables_file": str(tables_out.relative_to(ROOT)) if tables_out.exists() else None,
-        "pdf_file": str(trimmed_out.relative_to(ROOT)) if trimmed_out.exists() else None,
-        "matches_file": str(matches_out.relative_to(ROOT)) if matches_out.exists() else None,
-        "chunks_file": str(chunk_out.relative_to(ROOT)) if chunk_out.exists() else None,
+        "tables_file": _relative_to_root(tables_out) if tables_out.exists() else None,
+        "pdf_file": _relative_to_root(trimmed_out) if trimmed_out.exists() else None,
+        "matches_file": _relative_to_root(matches_out) if matches_out.exists() else None,
+        "chunks_file": _relative_to_root(chunk_out) if chunk_out.exists() else None,
     }
     return {"status": "ok", "run": run_info}
 
@@ -1150,4 +1150,3 @@ def ensure_chartjs_assets() -> None:
 
 
 ensure_chartjs_assets()
-
