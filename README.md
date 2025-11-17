@@ -64,6 +64,11 @@ Use `--input-jsonl` when you want to re-evaluate matches from a previously saved
 
 ## Release history
 
+- **v2.0 (2025-11-17)** – Introduced chunk/element review workflows (Good/Bad ratings with notes, filters, and summary chips) while refactoring the frontend into modular scripts so overlays, metrics, and drawers stay in lockstep.
+  - Verification steps:
+    1. `uv run uvicorn main:app --reload --host 127.0.0.1 --port 8765` and confirm you can add/edit chunk + element reviews, filter by rating, see the header chip update instantly, and watch chunk overlays hide/show with the Inspect filters.
+    2. `uv run python scripts/preview_unstructured_pages.py --input res/<pdf>.pdf --pages 4-6 --only-tables --output outputs/unstructured/<slug>.pagesX-Y.tables.jsonl --gold dataset/gold.jsonl --emit-matches outputs/unstructured/<slug>.matches.json` to ensure the backend chunk exports driving the UI remain unchanged.
+
 - **v1.1 (2025-11-17)** – Polished chunk overlays and drawer interactions so Metrics highlights respect the selected chunk, drawer-close restores the same chunk context, and highlight-all/best redraws from a clean slate before rerunning.
   - Verification steps:
     1. `uv run python scripts/preview_unstructured_pages.py --input res/<pdf>.pdf --pages 4-6 --only-tables --output outputs/unstructured/<slug>.pagesX-Y.tables.jsonl --gold dataset/gold.jsonl --emit-matches outputs/unstructured/<slug>.matches.json`
@@ -72,6 +77,8 @@ Use `--input-jsonl` when you want to re-evaluate matches from a previously saved
 ## Web UI (Chunking Visualizer)
 
 Spin up a small local UI to inspect PDFs, table matching, and chunker performance without juggling multiple files. The server reads `PDF_DIR` to find a writable location for PDFs (defaults to `res/` locally). When deployed to Fly.io with a volume mounted at `/data`, set `PDF_DIR=/data/res` to persist uploads.
+
+The UI assets are now composed from targeted modules (`app-state.js`, `app-ui.js`, `app-reviews.js`, `app-overlays.js`, `app-metrics.js`, `app-elements.js`, `app-chunks.js`, `app-runs.js`, and a thin `app.js` entry) so each concern (state, overlays, reviews, element/chunk panels, run wiring) can evolve independently while `index.html` pulls them in sequentially.
 
 Quickstart:
 
@@ -91,9 +98,12 @@ What you get:
   - Hover any overlay to see a tooltip with ID, type, page, and for chunks the character length.
   - Overlay colors are hardcoded per element type (consistent across views and runs).
   - Table chunks derive per-row bounding boxes from their source tables, so multi-chunk highlights no longer stack on top of each other.
+  - Chunk overlays now honor the Type/Review filters from the Inspect → Chunks panel and redraw immediately to keep the PDF boxes in sync with the list.
 - Drilldown: click "Details" on any table to preview the extracted HTML table for the best chunk (and switch among all selected chunks).
 - Inspect → Chunks: review chunk output (summary + list); selecting a chunk jumps to its page and shows its boxes.
+  - Chunk cards now size themselves to the amount of text they contain so short entries stay compact and long excerpts expand naturally.
 - Inspect → Elements: browse element types and overlay boxes for the current page; filter by type.
+  - Leave quick Good/Bad reviews (and keep optional notes in the drawer) for any chunk or element, filter by review state, and use the header review chip to jump straight into previously scored chunks.
   - Elements list shows colored cards per type and an inline text preview; cards display the source element’s original ID for clarity.
   - Overlays now follow the active Inspect tab: select Chunks to show chunk overlays, or Elements to show element overlays. The redundant quick controls were removed.
   - Interactions: click an overlay on the PDF to open its details (element or chunk). In Chunks, clicking a chunk expands a sublist of its elements; clicking an element there opens its details and focuses its overlay.

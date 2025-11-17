@@ -68,7 +68,7 @@
       <div class="header-left">
         <div class="title-stack">
           <h1>Chunking Visualizer</h1>
-          <span class="version-badge">v1.1</span>
+          <span class="version-badge">v2.0</span>
         </div>
         <div class="view-tabs" role="tablist" aria-label="Primary view">
           <button id="viewTabMetrics" class="tab active" data-view="metrics" role="tab" aria-selected="true">Metrics</button>
@@ -80,6 +80,7 @@
           <span class="lab">Run</span>
           <select id="runSelect"></select>
         </label>
+        <button id="reviewSummaryChip" class="review-chip disabled" type="button" title="Click Elements or Chunks to focus reviews"></button>
         <button id="openRunModal" class="btn">New Run</button>
         <button id="deleteRunBtn" class="btn" title="Delete current run">Delete run</button>
       </div>
@@ -215,6 +216,16 @@
                 <span class="lab">Type</span>
                 <select id="elementsTypeSelect"></select>
               </label>
+              <label>
+                <span class="lab">Review</span>
+                <select id="elementsReviewSelect">
+                  <option value="All">All</option>
+                  <option value="Reviewed">Reviewed</option>
+                  <option value="Good">Good only</option>
+                  <option value="Bad">Bad only</option>
+                </select>
+              </label>
+              <span id="elementsReviewSummary" class="review-inline-count">Reviewed: none</span>
             </div>
             <div id="typesList" class="types"></div>
             <div class="elements-list" id="elementsList"></div>
@@ -383,6 +394,14 @@
       </div>
     </div>
 
-    <script src="/app.js?v=20251114-1" defer></script>
+    <script src="/app-state.js?v=20251117-2" defer></script>
+    <script src="/app-ui.js?v=20251117-2" defer></script>
+    <script src="/app-reviews.js?v=20251117-2" defer></script>
+    <script src="/app-overlays.js?v=20251117-2" defer></script>
+    <script src="/app-metrics.js?v=20251117-2" defer></script>
+    <script src="/app-elements.js?v=20251117-2" defer></script>
+    <script src="/app-chunks.js?v=20251117-2" defer></script>
+    <script src="/app-runs.js?v=20251117-2" defer></script>
+    <script src="/app.js?v=20251117-2" defer></script>
   </body>
   </html>

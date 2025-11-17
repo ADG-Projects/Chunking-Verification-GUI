@@ -2,6 +2,7 @@
 
 The project does not persist to a database yet. Instead, Unstructured parses each PDF into JSON documents stored under `outputs/`. Source PDFs are read from a configurable directory:
 
+- **v2.0 (2025-11-17)** – Chunk/element review workflows and the modularized frontend keep overlays/cards in sync while leaving stored outputs and API payloads untouched.
 - **v1.1 (2025-11-17)** – Chunk overlay/drawer refinements and Metrics view redraws introduced here leave the stored JSON layout unchanged.
 
 - `PDF_DIR` environment variable points to where PDFs live. Locally it defaults to `res/`. In Fly deployments with a volume mounted at `/data`, use `PDF_DIR=/data/res` so uploads persist across deploys.
@@ -52,6 +53,21 @@ The project does not persist to a database yet. Instead, Unstructured parses eac
 The local web UI (served by `main.py`) consumes the same artifacts:
 - Tables JSONL for per-chunk coordinates (`metadata.coordinates.points`, `layout_width`, `layout_height`, `page_number`).
 - Matches JSON for per-table `selected_elements` (with `page_trimmed`/`page_original`) and overall metrics.
- - Chunks JSONL is currently not visualized, but generation is available from the “New Run” card for tuning text chunking parameters.
+- Chunks JSONL is currently not visualized, but generation is available from the “New Run” card for tuning text chunking parameters.
+- The Inspect → Chunks panel now sizes each list card to match its text and keeps chunk overlays filtered by the same type/review selectors so the PDF view mirrors the list.
 
 No schema changes are introduced; these endpoints are thin wrappers over the files on disk.
+
+The static UI client now assembles behavior from modular scripts (`app-state.js`, `app-ui.js`, `app-reviews.js`, `app-overlays.js`, `app-metrics.js`, `app-elements.js`, `app-chunks.js`, `app-runs.js`, and the entry `app.js`) so state, overlays, reviews, elements, chunks, metrics, and run wiring stay focused.
+
+## Review storage
+
+Reviewer feedback stays on disk alongside run artifacts:
+
+- `outputs/unstructured/reviews/<slug>.reviews.json` — JSON object persisted per UI slug.
+  - `slug`: matches the run slug (e.g., `V3_0_EN_4.pages4-6`).
+  - `items`: dictionary keyed by `<kind>:<item_id>` (`kind` is `chunk` or `element`).
+    - Each entry includes `kind`, `item_id`, `rating` (`good` or `bad`), optional `note`, and `updated_at` (UTC ISO timestamp).
+  - `summary`: cached counts `{ good, bad, total }` for quick header chips.
+
+The FastAPI endpoints (`GET/POST /api/reviews/{slug}`) read/write these files atomically so the UI can show live filters, summary chips, and drawer editors without a database.

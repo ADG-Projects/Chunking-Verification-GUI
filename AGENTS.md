@@ -54,3 +54,8 @@ Write imperative, scope-focused commits (e.g., “Add Unstructured preview helpe
 - Server caches a minimal element index per slug — reuse it; do not add heavy per-request scans.
 - pdf.js is vendor-pinned to `3.11.174`; if you upgrade, update `ensure_pdfjs_assets()` and test Safari.
 - Avoid committing large artifacts in `outputs/` — reference repro commands in PRs instead.
+
+## Deployment Guide
+1. Before tagging, bump the visible GUI version text (header badge) and update every other version reference in code and metadata (pyproject/uv.lock, README release history, database-schema notes, TODO, etc.).
+2. Draft the GitHub release description so it clearly summarizes what’s new in the version you are tagging.
+3. Merge the PR into `main` to kick off deployment once the version text and metadata are updated.
