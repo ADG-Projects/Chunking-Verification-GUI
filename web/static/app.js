@@ -1835,22 +1835,23 @@ function updateReviewSummaryChip() {
   const elementsGood = Number(elements.good || 0);
   const elementsBad = Number(elements.bad || 0);
   chip.innerHTML = `
-    <div class="review-chip-line" data-kind="elements">
+    <span class="review-chip-line ${elements.total ? 'segment-enabled' : 'segment-disabled'}" data-kind="elements">
       <span class="review-chip-label">Elements</span>
       <span class="review-chip-counts">
         <span class="review-chip-good">${elementsGood}</span>
         <span>-</span>
         <span class="review-chip-bad">${elementsBad}</span>
       </span>
-    </div>
-    <div class="review-chip-line" data-kind="chunks">
+    </span>
+    <span class="review-chip-sep">|</span>
+    <span class="review-chip-line ${chunks.total ? 'segment-enabled' : 'segment-disabled'}" data-kind="chunks">
       <span class="review-chip-label">Chunks</span>
       <span class="review-chip-counts">
         <span class="review-chip-good">${chunksGood}</span>
         <span>-</span>
         <span class="review-chip-bad">${chunksBad}</span>
       </span>
-    </div>
+    </span>
   `;
   const anyTotal = (chunks.total || 0) + (elements.total || 0);
   chip.classList.toggle('disabled', !anyTotal);
