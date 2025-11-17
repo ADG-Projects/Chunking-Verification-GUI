@@ -151,12 +151,12 @@ def discover_runs() -> List[Dict[str, Any]]:
         runs.append(
             {
                 "slug": ui_slug,
-                "matches_file": str(m.relative_to(ROOT)),
-                "tables_file": str(tables_path.relative_to(ROOT)) if tables_path else None,
-                "pdf_file": str(pdf_path.relative_to(ROOT)) if pdf_path else None,
+                "matches_file": _relative_to_root(m),
+                "tables_file": _relative_to_root(tables_path) if tables_path else None,
+                "pdf_file": _relative_to_root(pdf_path) if pdf_path else None,
                 "page_range": page_range,
                 "overall": overall,
-                "chunks_file": str(chunk_path.relative_to(ROOT)) if chunk_path else None,
+                "chunks_file": _relative_to_root(chunk_path) if chunk_path else None,
                 "chunk_summary": chunk_summary,
                 "run_config": run_config,
             }
@@ -179,17 +179,17 @@ def api_delete_run(slug: str) -> Dict[str, Any]:
             p = OUT_DIR / f"{slug}.{suff}"
             if p.exists():
                 p.unlink()
-                removed.append(str(p.relative_to(ROOT)))
+                removed.append(_relative_to_root(p))
     else:
         # Legacy style: matches file + any pages* artifacts
         m = OUT_DIR / f"{slug}.matches.json"
         if m.exists():
             m.unlink()
-            removed.append(str(m.relative_to(ROOT)))
+            removed.append(_relative_to_root(m))
         for globpat in [f"{slug}.pages*.tables.jsonl", f"{slug}.pages*.pdf", f"{slug}.pages*.chunks.jsonl"]:
             for p in OUT_DIR.glob(globpat):
                 p.unlink()
-                removed.append(str(p.relative_to(ROOT)))
+                removed.append(_relative_to_root(p))
     # Clear cache entries
     _INDEX_CACHE.pop(slug, None)
     return {"status": "ok", "removed": removed}
