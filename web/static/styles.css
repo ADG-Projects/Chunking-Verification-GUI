@@ -311,7 +311,7 @@ section.right {
 .elements { padding: 12px; display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
 .elements .row { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
 .types { display: grid; gap: 6px; color: var(--muted); font-size: 12px; flex-shrink: 0; }
-.elements-list { display: grid; gap: 6px; margin-top: 6px; flex: 1; overflow: auto; min-height: 0; }
+.elements-list { display: grid; gap: 6px; margin-top: 6px; flex: 1; overflow: auto; min-height: 0; align-content: flex-start; }
 .element-item { display: flex; justify-content: space-between; align-items: center; background: var(--panel); border: 1px solid #2a2f38; border-radius: 8px; padding: 8px 10px; cursor: pointer; font-size: 12px; color: var(--text); }
 .element-item .meta { color: var(--muted); }
 .element-item:hover { filter: brightness(1.05); }

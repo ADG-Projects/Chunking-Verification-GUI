@@ -421,28 +421,26 @@ function drawChunksModeForPage(pageNum) {
       }
     }
   } else {
-    // No chunk selected - show all chunks on this page
-    const allChunks = (CURRENT_CHUNKS && CURRENT_CHUNKS.chunks) || [];
+    // No chunk selected - show chunks that match current filters on this page
+    const chunksToShow = filterChunksForCurrentPage(getChunksForCurrentPage());
     if (SHOW_CHUNK_OVERLAYS) {
-      for (const chunk of allChunks) {
+      for (const { chunk } of chunksToShow) {
         const box = chunkBox(chunk);
-        if (box && box.page_trimmed === pageNum) {
-          const meta = { kind: 'chunk', id: chunk.element_id, type: chunk.type, page: box.page_trimmed, chars: chunk.char_len };
-          addBox({ x: box.x, y: box.y, w: box.w, h: box.h }, box.layout_w, box.layout_h, false, chunk.type, null, 'chunk', meta);
-          if (chunk.type) chunkTypesPresent.add(chunk.type);
-        }
+        if (!box || box.page_trimmed !== pageNum) continue;
+        const meta = { kind: 'chunk', id: chunk.element_id, type: chunk.type, page: box.page_trimmed, chars: chunk.char_len };
+        addBox({ x: box.x, y: box.y, w: box.w, h: box.h }, box.layout_w, box.layout_h, false, chunk.type, null, 'chunk', meta);
+        if (chunk.type) chunkTypesPresent.add(chunk.type);
       }
     }
     if (SHOW_ELEMENT_OVERLAYS) {
-      for (const chunk of allChunks) {
+      for (const { chunk } of chunksToShow) {
         const box = chunkBox(chunk);
-        if (box && box.page_trimmed === pageNum && chunk.element_id) {
-          drawOrigBoxesForChunk(chunk.element_id, pageNum, null);
-          if (chunk.orig_boxes) {
-            for (const origBox of chunk.orig_boxes) {
-              if (origBox.page_trimmed === pageNum && origBox.type) {
-                elementTypesPresent.add(origBox.type);
-              }
+        if (!box || box.page_trimmed !== pageNum || !chunk.element_id) continue;
+        drawOrigBoxesForChunk(chunk.element_id, pageNum, null);
+        if (chunk.orig_boxes) {
+          for (const origBox of chunk.orig_boxes) {
+            if (origBox.page_trimmed === pageNum && origBox.type) {
+              elementTypesPresent.add(origBox.type);
             }
           }
         }
@@ -832,11 +830,11 @@ async function renderPage(num) {
   $('pageNum').textContent = num;
   clearBoxes();
   await page.render({ canvasContext: ctx, viewport }).promise;
-  redrawOverlaysForCurrentContext();
-  // Update chunks list if in chunks view
+  // Update chunks list before redrawing overlays so filters stay in sync
   if (CURRENT_VIEW === 'inspect' && INSPECT_TAB === 'chunks') {
     renderChunksTab();
   }
+  redrawOverlaysForCurrentContext();
 }
 
 async function init() {
@@ -1337,6 +1335,7 @@ function handleReviewChipClick(kind) {
     if (reviewSelect) reviewSelect.value = CURRENT_ELEMENT_REVIEW_FILTER;
     if (CURRENT_PAGE_BOXES) {
       renderElementsListForCurrentPage(CURRENT_PAGE_BOXES);
+      refreshElementOverlaysForCurrentPage();
     } else {
       drawBoxesForCurrentPage();
     }
@@ -1529,34 +1528,12 @@ async function drawBoxesForCurrentPage() {
   try {
     const boxes = await fetchJSON(`/api/boxes/${encodeURIComponent(CURRENT_SLUG)}?page=${CURRENT_PAGE}${param}`) || {};
     CURRENT_PAGE_BOXES = boxes || {};
-    clearBoxes();
-    const entries = Object.entries(boxes);
-    const typesPresent = new Set();
+    const entries = sortElementEntries(Object.entries(CURRENT_PAGE_BOXES));
     const availableTypes = new Set();
     for (const [, entry] of entries) {
       if (entry && entry.type) availableTypes.add(entry.type);
     }
-    const selectedId = CURRENT_INSPECT_ELEMENT_ID;
-    if (SHOW_ELEMENT_OVERLAYS) {
-      if (selectedId && boxes[selectedId]) {
-        // A specific element is selected - show only that element's overlay
-        const entry = boxes[selectedId];
-        const rect = { x: entry.x, y: entry.y, w: entry.w, h: entry.h };
-        const meta = { kind: 'element', id: selectedId, origId: entry.orig_id, type: entry.type, page: entry.page_trimmed };
-        addBox(rect, entry.layout_w, entry.layout_h, true, entry.type, null, 'element', meta);
-        if (entry.type) typesPresent.add(entry.type);
-      } else if (!selectedId) {
-        // No element selected - show all elements on this page
-        for (const [id, entry] of entries) {
-          const rect = { x: entry.x, y: entry.y, w: entry.w, h: entry.h };
-          const meta = { kind: 'element', id: id, origId: entry.orig_id, type: entry.type, page: entry.page_trimmed };
-          addBox(rect, entry.layout_w, entry.layout_h, false, entry.type, null, 'element', meta);
-          if (entry.type) typesPresent.add(entry.type);
-        }
-      }
-    }
-    const present = Array.from(typesPresent.values());
-    updateLegend(SHOW_ELEMENT_OVERLAYS ? present : []);
+    refreshElementOverlaysForCurrentPage();
     renderElementsListForCurrentPage(boxes);
     if (!entries.length) {
       showToast('No boxes found on this page for the current run and filter.', 'err', 2000);
@@ -1575,6 +1552,60 @@ async function drawBoxesForCurrentPage() {
   }
 }
 
+function sortElementEntries(entries) {
+  const list = Array.isArray(entries) ? entries.slice() : [];
+  list.sort((a,b) => {
+    const ea = a[1]||{}; const eb = b[1]||{};
+    const ta = (ea.type||'').localeCompare(eb.type||'');
+    if (ta !== 0) return ta;
+    const ya = Number(ea.y||0) - Number(eb.y||0);
+    if (ya !== 0) return ya;
+    return Number(ea.x||0) - Number(eb.x||0);
+  });
+  return list;
+}
+
+function filterElementEntriesByReview(entries) {
+  const filtered = [];
+  for (const [id, entry] of entries) {
+    const review = getReview('element', id);
+    if (!reviewMatchesFilter(review, CURRENT_ELEMENT_REVIEW_FILTER)) continue;
+    filtered.push([id, entry, review]);
+  }
+  return filtered;
+}
+
+function refreshElementOverlaysForCurrentPage() {
+  clearBoxes();
+  if (!CURRENT_PAGE_BOXES || !SHOW_ELEMENT_OVERLAYS) {
+    updateLegend([]);
+    return;
+  }
+  const entries = sortElementEntries(Object.entries(CURRENT_PAGE_BOXES));
+  const filtered = filterElementEntriesByReview(entries);
+  const filteredIds = new Set(filtered.map(([id]) => id));
+  const typesPresent = new Set();
+  const selectedId = CURRENT_INSPECT_ELEMENT_ID;
+  if (selectedId && CURRENT_PAGE_BOXES[selectedId]) {
+    const entry = CURRENT_PAGE_BOXES[selectedId];
+    if (entry && entry.layout_w && entry.layout_h) {
+      const rect = { x: entry.x, y: entry.y, w: entry.w, h: entry.h };
+      const meta = { kind: 'element', id: selectedId, origId: entry.orig_id, type: entry.type, page: entry.page_trimmed };
+      addBox(rect, entry.layout_w, entry.layout_h, true, entry.type, null, 'element', meta);
+      if (entry.type) typesPresent.add(entry.type);
+    }
+  } else if (!selectedId) {
+    for (const [id, entry] of entries) {
+      if (!entry || !filteredIds.has(id)) continue;
+      if (!(entry.layout_w && entry.layout_h)) continue;
+      const rect = { x: entry.x, y: entry.y, w: entry.w, h: entry.h };
+      const meta = { kind: 'element', id, origId: entry.orig_id, type: entry.type, page: entry.page_trimmed };
+      addBox(rect, entry.layout_w, entry.layout_h, false, entry.type, null, 'element', meta);
+      if (entry.type) typesPresent.add(entry.type);
+    }
+  }
+  updateLegend(Array.from(typesPresent));
+}
 function renderElementsListForCurrentPage(boxes) {
   const host = document.getElementById('elementsList');
   if (!host) return;
@@ -1586,7 +1617,7 @@ function renderElementsListForCurrentPage(boxes) {
     const counts = CURRENT_REVIEWS?.summary?.elements || { good: 0, bad: 0, total: 0 };
     reviewSummaryEl.textContent = counts.total ? `Reviewed: ${counts.good} Good · ${counts.bad} Bad` : 'Reviewed: none';
   }
-  const entries = Object.entries(boxes || {});
+  const entries = sortElementEntries(Object.entries(boxes || {}));
   if (!entries.length) {
     const div = document.createElement('div');
     div.className = 'placeholder';
@@ -1595,21 +1626,11 @@ function renderElementsListForCurrentPage(boxes) {
     updateReviewSummaryChip();
     return;
   }
-  // Sort by type then by Y then X for a stable order
-  entries.sort((a,b) => {
-    const ea = a[1]||{}; const eb = b[1]||{};
-    const ta = (ea.type||'').localeCompare(eb.type||'');
-    if (ta !== 0) return ta;
-    const ya = Number(ea.y||0) - Number(eb.y||0);
-    if (ya !== 0) return ya;
-    return Number(ea.x||0) - Number(eb.x||0);
-  });
-  const filtered = [];
-  for (const [id, entry] of entries) {
-    const review = getReview('element', id);
-    if (!reviewMatchesFilter(review, CURRENT_ELEMENT_REVIEW_FILTER)) continue;
-    filtered.push([id, entry, review]);
+  const availableTypes = new Set();
+  for (const [, entry] of entries) {
+    if (entry && entry.type) availableTypes.add(entry.type);
   }
+  const filtered = filterElementEntriesByReview(entries);
   if (!filtered.length) {
     const div = document.createElement('div');
     div.className = 'placeholder';
@@ -1877,6 +1898,7 @@ async function loadReviews(slug) {
   if (CURRENT_RUN_HAS_CHUNKS) renderChunksTab();
   if (CURRENT_PAGE_BOXES) {
     renderElementsListForCurrentPage(CURRENT_PAGE_BOXES);
+    refreshElementOverlaysForCurrentPage();
   }
 }
 
@@ -1920,8 +1942,16 @@ async function saveReview(kind, itemId, overrides = {}) {
     const data = await res.json();
     setReviewState(data.reviews);
     updateReviewSummaryChip();
-    if (CURRENT_RUN_HAS_CHUNKS) renderChunksTab();
+    if (CURRENT_RUN_HAS_CHUNKS) {
+      renderChunksTab();
+    }
     renderElementsListForCurrentPage(CURRENT_PAGE_BOXES);
+    if (SHOW_ELEMENT_OVERLAYS) {
+      refreshElementOverlaysForCurrentPage();
+    }
+    if (kind === 'chunk' && CURRENT_VIEW === 'inspect' && INSPECT_TAB === 'chunks') {
+      redrawOverlaysForCurrentContext();
+    }
     if (kind === 'chunk' && CURRENT_CHUNK_DRAWER_ID === itemId) {
       await openChunkDetailsDrawer(itemId, null);
     }
@@ -2031,6 +2061,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (reviewSel) reviewSel.addEventListener('change', () => {
     CURRENT_ELEMENT_REVIEW_FILTER = reviewSel.value || 'All';
     renderElementsListForCurrentPage(CURRENT_PAGE_BOXES);
+    refreshElementOverlaysForCurrentPage();
   });
 });
 
@@ -2053,6 +2084,38 @@ async function loadChunksForRun(slug) {
     CURRENT_CHUNK_LOOKUP[fallbackId] = chunk;
   });
   renderChunksTab();
+}
+
+function getChunksForCurrentPage() {
+  const rows = [];
+  const chunkList = (CURRENT_CHUNKS && CURRENT_CHUNKS.chunks) || [];
+  chunkList.forEach((chunk, idx) => {
+    if (!chunk) return;
+    const box = chunkBox(chunk);
+    if (!box || !Number.isFinite(box.page_trimmed) || box.page_trimmed !== CURRENT_PAGE) return;
+    const id = chunk.element_id || `chunk-${idx}`;
+    rows.push({ chunk, id });
+  });
+  return rows;
+}
+
+function chunkMatchesTypeFilter(chunk) {
+  if (!CURRENT_CHUNK_TYPE_FILTER || CURRENT_CHUNK_TYPE_FILTER === 'All') return true;
+  return chunk.type === CURRENT_CHUNK_TYPE_FILTER;
+}
+
+function chunkMatchesReviewFilter(chunk, id) {
+  if (!CURRENT_CHUNK_REVIEW_FILTER || CURRENT_CHUNK_REVIEW_FILTER === 'All') return true;
+  const directReview = getReview('chunk', id);
+  if (CURRENT_CHUNK_REVIEW_FILTER === 'Reviewed') {
+    if (reviewMatchesFilter(directReview, 'Reviewed')) return true;
+    return chunkHasReviewedElements(chunk);
+  }
+  return reviewMatchesFilter(directReview, CURRENT_CHUNK_REVIEW_FILTER);
+}
+
+function filterChunksForCurrentPage(chunks) {
+  return chunks.filter(({ chunk, id }) => chunkMatchesTypeFilter(chunk) && chunkMatchesReviewFilter(chunk, id));
 }
 
 function renderChunksTab() {
@@ -2087,27 +2150,8 @@ function renderChunksTab() {
   });
   CHUNK_TYPES = Array.from(typeCount.entries()).map(([type, count]) => ({ type, count }));
 
-  const baseChunks = allChunks
-    .map((chunk, idx) => ({ chunk, id: chunk.element_id || `chunk-${idx}` }))
-    .filter(({ chunk }) => {
-      const b = chunkBox(chunk);
-      return b && Number.isFinite(b.page_trimmed) && b.page_trimmed === CURRENT_PAGE;
-    });
-
-  let chunks = baseChunks.slice();
-  if (CURRENT_CHUNK_TYPE_FILTER && CURRENT_CHUNK_TYPE_FILTER !== 'All') {
-    chunks = chunks.filter(({ chunk }) => chunk.type === CURRENT_CHUNK_TYPE_FILTER);
-  }
-  if (CURRENT_CHUNK_REVIEW_FILTER && CURRENT_CHUNK_REVIEW_FILTER !== 'All') {
-    chunks = chunks.filter(({ chunk, id }) => {
-      const directReview = getReview('chunk', id);
-      if (CURRENT_CHUNK_REVIEW_FILTER === 'Reviewed') {
-        if (reviewMatchesFilter(directReview, 'Reviewed')) return true;
-        return chunkHasReviewedElements(chunk);
-      }
-      return reviewMatchesFilter(directReview, CURRENT_CHUNK_REVIEW_FILTER);
-    });
-  }
+  const baseChunks = getChunksForCurrentPage();
+  const chunks = filterChunksForCurrentPage(baseChunks);
 
   // Build type dropdown options
   const typeOpts = ['All', ...CHUNK_TYPES.map(t => t.type)];
@@ -2163,6 +2207,7 @@ function renderChunksTab() {
     reviewSelect.addEventListener('change', () => {
       CURRENT_CHUNK_REVIEW_FILTER = reviewSelect.value || 'All';
       renderChunksTab();
+      redrawOverlaysForCurrentContext();
     });
   }
 

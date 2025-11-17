@@ -4,6 +4,7 @@
 - [ ] Compare output quality between Unstructured and the Azure Document Intelligence SDK.
 
 ## Completed
+- [x] 2025-11-17 Respect element review filters in overlays and keep the element list grid from stretching cards by aligning content to the top.
 - [x] 2025-11-17 Add chunk/element reviews (Good/Bad buttons, optional notes, filters, and header summary chip backed by the reviews API/files).
 - [x] 2025-11-17 Release v1.1 (chunk overlay/drawer polish plus metrics highlight cleanup).
 - [x] 2025-11-17 Fix Inspect chunk overlays so closing an element drilled down from a chunk restores the same chunk context and re-draws its overlay on the PDF.
