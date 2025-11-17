@@ -80,22 +80,15 @@ async function fetchJSON(url) {
 }
 
 function applyLanguageDirection() {
-  const body = document.body;
-  const preview = $('preview');
-  if (!body || !preview) return;
   const isArabic = isArabicDocument();
   console.log('[RTL Debug] applyLanguageDirection called:', {
     CURRENT_DOC_LANGUAGE,
     isArabic,
-    hasBodyClass: body.classList.contains('rtl-preview'),
-    hasPreviewClass: preview.classList.contains('rtl-preview')
   });
-  body.classList.remove('rtl-preview');
-  preview.classList.toggle('rtl-preview', isArabic);
   refreshDirectionalElements();
   console.log('[RTL Debug] After toggle:', {
-    hasBodyClass: body.classList.contains('rtl-preview'),
-    hasPreviewClass: preview.classList.contains('rtl-preview')
+    CURRENT_DOC_LANGUAGE,
+    isArabic,
   });
 }
 
@@ -389,29 +382,81 @@ function drawChunksModeForPage(pageNum) {
   clearBoxes();
   const chunkTypesPresent = new Set();
   const elementTypesPresent = new Set();
-  const selectedChunk = CURRENT_ELEMENT_ID ? CURRENT_CHUNK_LOOKUP[CURRENT_ELEMENT_ID] : null;
-  if (SHOW_CHUNK_OVERLAYS && selectedChunk) {
-    const box = chunkBox(selectedChunk);
-    if (box && box.page_trimmed === pageNum) {
-      const meta = { kind: 'chunk', id: selectedChunk.element_id, type: selectedChunk.type, page: box.page_trimmed, chars: selectedChunk.char_len };
-      addBox({ x: box.x, y: box.y, w: box.w, h: box.h }, box.layout_w, box.layout_h, true, selectedChunk.type, null, 'chunk', meta);
-      if (selectedChunk.type) chunkTypesPresent.add(selectedChunk.type);
+  const selectedChunk = CURRENT_INSPECT_ELEMENT_ID ? CURRENT_CHUNK_LOOKUP[CURRENT_INSPECT_ELEMENT_ID] : null;
+
+  if (selectedChunk) {
+    // A specific chunk is selected - show only that chunk's overlay
+    if (SHOW_CHUNK_OVERLAYS) {
+      const box = chunkBox(selectedChunk);
+      if (box && box.page_trimmed === pageNum) {
+        const meta = { kind: 'chunk', id: selectedChunk.element_id, type: selectedChunk.type, page: box.page_trimmed, chars: selectedChunk.char_len };
+        addBox({ x: box.x, y: box.y, w: box.w, h: box.h }, box.layout_w, box.layout_h, true, selectedChunk.type, null, 'chunk', meta);
+        if (selectedChunk.type) chunkTypesPresent.add(selectedChunk.type);
+      }
     }
-  }
-  if (SHOW_ELEMENT_OVERLAYS && selectedChunk) {
-    drawOrigBoxesForChunk(selectedChunk.element_id, pageNum, null);
-    if (selectedChunk.orig_boxes) {
-      for (const box of selectedChunk.orig_boxes) {
-        if (box.page_trimmed === pageNum && box.type) {
-          elementTypesPresent.add(box.type);
+    if (SHOW_ELEMENT_OVERLAYS) {
+      drawOrigBoxesForChunk(selectedChunk.element_id, pageNum, null);
+      if (selectedChunk.orig_boxes) {
+        for (const box of selectedChunk.orig_boxes) {
+          if (box.page_trimmed === pageNum && box.type) {
+            elementTypesPresent.add(box.type);
+          }
+        }
+      }
+    }
+  } else {
+    // No chunk selected - show all chunks on this page
+    const allChunks = (CURRENT_CHUNKS && CURRENT_CHUNKS.chunks) || [];
+    if (SHOW_CHUNK_OVERLAYS) {
+      for (const chunk of allChunks) {
+        const box = chunkBox(chunk);
+        if (box && box.page_trimmed === pageNum) {
+          const meta = { kind: 'chunk', id: chunk.element_id, type: chunk.type, page: box.page_trimmed, chars: chunk.char_len };
+          addBox({ x: box.x, y: box.y, w: box.w, h: box.h }, box.layout_w, box.layout_h, false, chunk.type, null, 'chunk', meta);
+          if (chunk.type) chunkTypesPresent.add(chunk.type);
+        }
+      }
+    }
+    if (SHOW_ELEMENT_OVERLAYS) {
+      for (const chunk of allChunks) {
+        const box = chunkBox(chunk);
+        if (box && box.page_trimmed === pageNum && chunk.element_id) {
+          drawOrigBoxesForChunk(chunk.element_id, pageNum, null);
+          if (chunk.orig_boxes) {
+            for (const origBox of chunk.orig_boxes) {
+              if (origBox.page_trimmed === pageNum && origBox.type) {
+                elementTypesPresent.add(origBox.type);
+              }
+            }
+          }
         }
       }
     }
   }
+
   // Update legend based on what's being shown
   const typesToShow = SHOW_ELEMENT_OVERLAYS && elementTypesPresent.size > 0
     ? Array.from(elementTypesPresent)
     : Array.from(chunkTypesPresent);
+  updateLegend(typesToShow);
+}
+
+function drawChunkOverlayForId(chunkId, pageNum) {
+  if (!chunkId || !CURRENT_CHUNK_LOOKUP) return;
+  const chunk = CURRENT_CHUNK_LOOKUP[chunkId];
+  if (!chunk) return;
+  const box = chunkBox(chunk);
+  if (!box || box.page_trimmed !== pageNum) return;
+  clearBoxes();
+  const meta = {
+    kind: 'chunk',
+    id: chunk.element_id,
+    type: chunk.type,
+    page: box.page_trimmed,
+    chars: chunk.char_len,
+  };
+  addBox({ x: box.x, y: box.y, w: box.w, h: box.h }, box.layout_w, box.layout_h, true, chunk.type, null, 'chunk', meta);
+  const typesToShow = chunk.type ? [chunk.type] : [];
   updateLegend(typesToShow);
 }
 
@@ -634,6 +679,7 @@ async function openDetails(tableMatch) {
     picker.appendChild(chip);
   }
   $('drawer').classList.remove('hidden');
+  document.body.classList.add('drawer-open');
   $('preview').innerHTML = '<div class="placeholder">Loading…</div>';
   if (bestId) {
     CURRENT_ELEMENT_ID = bestId;
@@ -817,16 +863,24 @@ async function init() {
       const chunkId = RETURN_TO.id;
       const scrollTop = RETURN_TO.scrollTop;
       RETURN_TO = null;
-      switchView('inspect');
-      switchInspectTab('chunks');
+      // Set the chunk ID before switching tabs so overlays render correctly
+      if (chunkId) {
+        CURRENT_INSPECT_ELEMENT_ID = chunkId;
+      }
+      // Skip automatic redraws during view/tab switches to avoid race conditions
+      switchView('inspect', true);
+      switchInspectTab('chunks', true);
       const listEl = document.getElementById('chunkList');
       if (listEl && scrollTop != null) listEl.scrollTop = scrollTop;
       if (chunkId) {
         await openChunkDetailsDrawer(chunkId, null);
+        // Perform a single, final overlay redraw now that state is consistent
+        drawChunksModeForPage(CURRENT_PAGE);
       }
     } else {
       RETURN_TO = null;
       $('drawer').classList.add('hidden');
+      document.body.classList.remove('drawer-open');
       CURRENT_ELEMENT_ID = null;
       CURRENT_INSPECT_ELEMENT_ID = null;
       redrawOverlaysForCurrentContext();
@@ -1205,7 +1259,7 @@ function setupInspectTabs() {
   }
 }
 
-function switchInspectTab(name) {
+function switchInspectTab(name, skipRedraw = false) {
   INSPECT_TAB = (name === 'elements') ? 'elements' : 'chunks';
   document.querySelectorAll('.inspect-tabs .tab').forEach(el => el.classList.toggle('active', el.dataset.inspect === INSPECT_TAB));
   document.querySelectorAll('#right-inspect .pane').forEach(el => el.classList.toggle('active', el.id === `pane-inspect-${INSPECT_TAB}`));
@@ -1213,7 +1267,9 @@ function switchInspectTab(name) {
   SHOW_CHUNK_OVERLAYS = (INSPECT_TAB === 'chunks');
   SHOW_ELEMENT_OVERLAYS = (INSPECT_TAB === 'elements');
   // On switching to Elements, render page boxes; to Chunks, render chunk bboxes
-  redrawOverlaysForCurrentContext();
+  if (!skipRedraw) {
+    redrawOverlaysForCurrentContext();
+  }
 }
 
 function setupViewTabs() {
@@ -1223,7 +1279,7 @@ function setupViewTabs() {
   if (i) i.addEventListener('click', () => switchView('inspect'));
 }
 
-function switchView(view) {
+function switchView(view, skipRedraw = false) {
   CURRENT_VIEW = (view === 'inspect') ? 'inspect' : 'metrics';
   const m = $('viewTabMetrics');
   const i = $('viewTabInspect');
@@ -1242,7 +1298,9 @@ function switchView(view) {
     SHOW_CHUNK_OVERLAYS = (INSPECT_TAB === 'chunks');
     SHOW_ELEMENT_OVERLAYS = (INSPECT_TAB === 'elements');
   }
-  redrawOverlaysForCurrentContext();
+  if (!skipRedraw) {
+    redrawOverlaysForCurrentContext();
+  }
 }
 
 function wireModal() {
@@ -1413,12 +1471,23 @@ async function drawBoxesForCurrentPage() {
       if (entry && entry.type) availableTypes.add(entry.type);
     }
     const selectedId = CURRENT_INSPECT_ELEMENT_ID;
-    if (SHOW_ELEMENT_OVERLAYS && selectedId && boxes[selectedId]) {
-      const entry = boxes[selectedId];
-      const rect = { x: entry.x, y: entry.y, w: entry.w, h: entry.h };
-      const meta = { kind: 'element', id: selectedId, origId: entry.orig_id, type: entry.type, page: entry.page_trimmed };
-      addBox(rect, entry.layout_w, entry.layout_h, true, entry.type, null, 'element', meta);
-      if (entry.type) typesPresent.add(entry.type);
+    if (SHOW_ELEMENT_OVERLAYS) {
+      if (selectedId && boxes[selectedId]) {
+        // A specific element is selected - show only that element's overlay
+        const entry = boxes[selectedId];
+        const rect = { x: entry.x, y: entry.y, w: entry.w, h: entry.h };
+        const meta = { kind: 'element', id: selectedId, origId: entry.orig_id, type: entry.type, page: entry.page_trimmed };
+        addBox(rect, entry.layout_w, entry.layout_h, true, entry.type, null, 'element', meta);
+        if (entry.type) typesPresent.add(entry.type);
+      } else if (!selectedId) {
+        // No element selected - show all elements on this page
+        for (const [id, entry] of entries) {
+          const rect = { x: entry.x, y: entry.y, w: entry.w, h: entry.h };
+          const meta = { kind: 'element', id: id, origId: entry.orig_id, type: entry.type, page: entry.page_trimmed };
+          addBox(rect, entry.layout_w, entry.layout_h, false, entry.type, null, 'element', meta);
+          if (entry.type) typesPresent.add(entry.type);
+        }
+      }
     }
     const present = Array.from(typesPresent.values());
     updateLegend(SHOW_ELEMENT_OVERLAYS ? present : []);
@@ -1534,6 +1603,7 @@ async function openElementDetails(elementId) {
     $('drawerSummary').innerHTML = '';
     $('elementPicker').innerHTML = '';
     $('drawer').classList.remove('hidden');
+    document.body.classList.add('drawer-open');
     container.innerHTML = '';
     const head = document.createElement('div');
     head.className = 'preview-meta';
@@ -1747,6 +1817,9 @@ function renderChunksTab() {
         row.innerHTML = `<span>${b.type || 'Element'} · p${b.page_trimmed ?? '?'}</span><span class="meta">${short}</span>`;
         row.addEventListener('click', async (ev) => {
           ev.stopPropagation();
+          // Remember chunk context so closing the element drawer can restore this chunk
+          const listElRef = document.getElementById('chunkList');
+          RETURN_TO = { kind: 'chunk', id: chunkId, scrollTop: (listElRef ? listElRef.scrollTop : 0) };
           const p = Number(b.page_trimmed || CURRENT_PAGE);
           // Try to map original id to stable id by reading page boxes
           let stable = await findStableIdByOrig(b.orig_id || b.element_id, p);
@@ -1773,7 +1846,7 @@ function renderChunksTab() {
     card.appendChild(pre);
     card.addEventListener('click', async () => {
       // Open chunk details in drawer
-      CURRENT_ELEMENT_ID = chunk.element_id || null;
+      CURRENT_INSPECT_ELEMENT_ID = chunk.element_id || null;
       const b = chunkBox(chunk);
       if (b && Number.isFinite(b.page_trimmed)) {
         const p = Number(b.page_trimmed);
@@ -1876,7 +1949,8 @@ async function openChunkDetailsDrawer(chunkId, elementsSublist) {
       row.addEventListener('click', async (ev) => {
         ev.stopPropagation();
         // Remember we came from chunk details to return here on close
-        RETURN_TO = { kind: 'chunk', id: chunkId };
+        const listElRef = document.getElementById('chunkList');
+        RETURN_TO = { kind: 'chunk', id: chunkId, scrollTop: (listElRef ? listElRef.scrollTop : 0) };
         const p = Number(b.page_trimmed || CURRENT_PAGE);
         let stable = await findStableIdByOrig(b.orig_id || b.element_id, p);
         if (p && p !== CURRENT_PAGE) await renderPage(p);
@@ -1902,6 +1976,7 @@ async function openChunkDetailsDrawer(chunkId, elementsSublist) {
   }
 
   $('drawer').classList.remove('hidden');
+  document.body.classList.add('drawer-open');
 }
 
 async function openChunkDetails(chunkId) {
