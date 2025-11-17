@@ -52,9 +52,12 @@ The project does not persist to a database yet. Instead, Unstructured parses eac
 The local web UI (served by `main.py`) consumes the same artifacts:
 - Tables JSONL for per-chunk coordinates (`metadata.coordinates.points`, `layout_width`, `layout_height`, `page_number`).
 - Matches JSON for per-table `selected_elements` (with `page_trimmed`/`page_original`) and overall metrics.
- - Chunks JSONL is currently not visualized, but generation is available from the “New Run” card for tuning text chunking parameters.
+- Chunks JSONL is currently not visualized, but generation is available from the “New Run” card for tuning text chunking parameters.
+- The Inspect → Chunks panel now sizes each list card to match its text and keeps chunk overlays filtered by the same type/review selectors so the PDF view mirrors the list.
 
 No schema changes are introduced; these endpoints are thin wrappers over the files on disk.
+
+The static UI client now assembles behavior from modular scripts (`app-state.js`, `app-ui.js`, `app-reviews.js`, `app-overlays.js`, `app-metrics.js`, `app-elements.js`, `app-chunks.js`, `app-runs.js`, and the entry `app.js`) so state, overlays, reviews, elements, chunks, metrics, and run wiring stay focused.
 
 ## Review storage
 

@@ -4,6 +4,8 @@
 - [ ] Compare output quality between Unstructured and the Azure Document Intelligence SDK.
 
 ## Completed
+- [x] 2025-11-17 Size chunk cards by their text and keep chunk overlays synced with the type/review filters.
+- [x] 2025-11-17 Refactor Chunking Visualizer frontend into modular scripts (app-state/ui/overlays/metrics/elements/chunks/reviews/runs) and a small entry loader so each concern stays focused.
 - [x] 2025-11-17 Respect element review filters in overlays and keep the element list grid from stretching cards by aligning content to the top.
 - [x] 2025-11-17 Add chunk/element reviews (Good/Bad buttons, optional notes, filters, and header summary chip backed by the reviews API/files).
 - [x] 2025-11-17 Release v1.1 (chunk overlay/drawer polish plus metrics highlight cleanup).
