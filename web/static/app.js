@@ -1737,6 +1737,18 @@ function getReview(kind, itemId) {
   return REVIEW_LOOKUP[reviewKey(kind, itemId)] || null;
 }
 
+function chunkHasReviewedElements(chunk) {
+  if (!chunk) return false;
+  const boxes = Array.isArray(chunk.orig_boxes) ? chunk.orig_boxes : [];
+  for (const box of boxes) {
+    const elementId = box.orig_id || box.element_id;
+    if (!elementId) continue;
+    const review = getReview('element', elementId);
+    if (review && review.rating) return true;
+  }
+  return false;
+}
+
 function _emptyReviewState(slug = CURRENT_SLUG) {
   return { slug, items: [], summary: { good: 0, bad: 0, total: 0 } };
 }
@@ -2002,7 +2014,14 @@ function renderChunksTab() {
     chunks = chunks.filter(({ chunk }) => chunk.type === CURRENT_CHUNK_TYPE_FILTER);
   }
   if (CURRENT_CHUNK_REVIEW_FILTER && CURRENT_CHUNK_REVIEW_FILTER !== 'All') {
-    chunks = chunks.filter(({ id }) => reviewMatchesFilter(getReview('chunk', id), CURRENT_CHUNK_REVIEW_FILTER));
+    chunks = chunks.filter(({ chunk, id }) => {
+      const directReview = getReview('chunk', id);
+      if (CURRENT_CHUNK_REVIEW_FILTER === 'Reviewed') {
+        if (reviewMatchesFilter(directReview, 'Reviewed')) return true;
+        return chunkHasReviewedElements(chunk);
+      }
+      return reviewMatchesFilter(directReview, CURRENT_CHUNK_REVIEW_FILTER);
+    });
   }
 
   // Build type dropdown options
@@ -2076,10 +2095,14 @@ function renderChunksTab() {
     card.dataset.chunkId = chunkId;
     const color = typeBorderColor(chunk.type || '');
     card.style.borderLeft = `4px solid ${color}`;
-    const review = getReview('chunk', chunkId);
-    if (review && review.rating) {
+    const chunkReview = getReview('chunk', chunkId);
+    const derivedElementReview = chunkHasReviewedElements(chunk);
+    if (chunkReview && chunkReview.rating) {
       card.classList.add('has-review');
-      card.classList.add(review.rating === 'good' ? 'review-good' : 'review-bad');
+      card.classList.add(chunkReview.rating === 'good' ? 'review-good' : 'review-bad');
+    } else if (derivedElementReview) {
+      card.classList.add('has-review');
+      card.classList.add('review-indirect');
     }
     const header = document.createElement('div');
     header.className = 'header chunk-card-head';
@@ -2141,6 +2164,12 @@ function renderChunksTab() {
     }
     card.appendChild(header);
     const notePreview = buildNotePreview('chunk', chunkId, 'card');
+    if (!chunkReview && derivedElementReview) {
+      const hint = document.createElement('div');
+      hint.className = 'review-hint';
+      hint.textContent = 'Contains reviewed elements';
+      card.appendChild(hint);
+    }
     if (notePreview) {
       notePreview.title = 'Open chunk details to edit note';
       notePreview.addEventListener('click', (ev) => {
