@@ -55,3 +55,15 @@ The local web UI (served by `main.py`) consumes the same artifacts:
  - Chunks JSONL is currently not visualized, but generation is available from the “New Run” card for tuning text chunking parameters.
 
 No schema changes are introduced; these endpoints are thin wrappers over the files on disk.
+
+## Review storage
+
+Reviewer feedback stays on disk alongside run artifacts:
+
+- `outputs/unstructured/reviews/<slug>.reviews.json` — JSON object persisted per UI slug.
+  - `slug`: matches the run slug (e.g., `V3_0_EN_4.pages4-6`).
+  - `items`: dictionary keyed by `<kind>:<item_id>` (`kind` is `chunk` or `element`).
+    - Each entry includes `kind`, `item_id`, `rating` (`good` or `bad`), optional `note`, and `updated_at` (UTC ISO timestamp).
+  - `summary`: cached counts `{ good, bad, total }` for quick header chips.
+
+The FastAPI endpoints (`GET/POST /api/reviews/{slug}`) read/write these files atomically so the UI can show live filters, summary chips, and drawer editors without a database.

@@ -94,6 +94,7 @@ What you get:
 - Drilldown: click "Details" on any table to preview the extracted HTML table for the best chunk (and switch among all selected chunks).
 - Inspect → Chunks: review chunk output (summary + list); selecting a chunk jumps to its page and shows its boxes.
 - Inspect → Elements: browse element types and overlay boxes for the current page; filter by type.
+  - Leave quick Good/Bad reviews (and keep optional notes in the drawer) for any chunk or element, filter by review state, and use the header review chip to jump straight into previously scored chunks.
   - Elements list shows colored cards per type and an inline text preview; cards display the source element’s original ID for clarity.
   - Overlays now follow the active Inspect tab: select Chunks to show chunk overlays, or Elements to show element overlays. The redundant quick controls were removed.
   - Interactions: click an overlay on the PDF to open its details (element or chunk). In Chunks, clicking a chunk expands a sublist of its elements; clicking an element there opens its details and focuses its overlay.
