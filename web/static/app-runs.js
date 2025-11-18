@@ -205,6 +205,52 @@ async function loadPdfs(preferredName = null) {
   }
 }
 
+function setRunInProgress(isRunning, context = {}) {
+  const modal = $('runModal');
+  const runBtn = $('runBtn');
+  const cancelBtn = $('cancelRunBtn');
+  const openBtn = $('openRunModal');
+  const status = $('runStatus');
+  const hint = $('runProgressHint');
+   const formGrid = $('runFormGrid');
+   const previewPane = $('runPreviewPane');
+   const progressPane = $('runProgressPane');
+  if (!modal || !runBtn || !status) return;
+
+  if (isRunning) {
+    modal.classList.add('running');
+    if (formGrid) formGrid.style.display = 'none';
+    if (previewPane) previewPane.style.display = 'none';
+    if (progressPane) progressPane.style.display = 'block';
+    runBtn.disabled = true;
+    runBtn.textContent = 'Running…';
+    if (cancelBtn) cancelBtn.disabled = true;
+    if (openBtn) {
+      openBtn.disabled = true;
+      openBtn.textContent = 'Running…';
+    }
+    const pdfName = context.pdf || $('pdfSelect')?.value || '';
+    if (hint) {
+      hint.textContent = pdfName
+        ? `Processing ${pdfName}. This window will close when the run finishes.`
+        : 'Processing PDF. This window will close when the run finishes.';
+    }
+    status.textContent = '';
+  } else {
+    modal.classList.remove('running');
+    if (formGrid) formGrid.style.display = '';
+    if (previewPane) previewPane.style.display = '';
+    if (progressPane) progressPane.style.display = '';
+    runBtn.disabled = false;
+    runBtn.textContent = 'Run';
+    if (cancelBtn) cancelBtn.disabled = false;
+    if (openBtn) {
+      openBtn.disabled = false;
+      openBtn.textContent = 'New Run';
+    }
+  }
+}
+
 function wireRunForm() {
   const chunkSel = $('chunkingSelect');
   const combineRow = $('chunkCombineRow');
@@ -353,8 +399,7 @@ function wireRunForm() {
       languages: payload.languages,
       detect_language_per_element: payload.detect_language_per_element,
     };
-    const btn = $('runBtn');
-    btn.disabled = true; btn.textContent = 'Running…';
+    setRunInProgress(true, { pdf: payload.pdf });
     try {
       const r = await fetch('/api/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const data = await r.json();
@@ -372,7 +417,7 @@ function wireRunForm() {
     } catch (e) {
       status.textContent = `Failed: ${e.message}`;
     } finally {
-      btn.disabled = false; btn.textContent = 'Run';
+      setRunInProgress(false);
     }
   });
 
@@ -541,7 +586,14 @@ function wireModal() {
   const closeBtn = $('closeRunModal');
   const backdrop = $('runModalBackdrop');
   const modal = $('runModal');
-  openBtn.addEventListener('click', () => { const s=$('pdfSelect'); if(s) s.disabled=false; modal.classList.remove('hidden'); });
+  openBtn.addEventListener('click', () => {
+    const s = $('pdfSelect');
+    if (s) s.disabled = false;
+    modal.classList.remove('hidden');
+    modal.classList.remove('running');
+    const status = $('runStatus');
+    if (status) status.textContent = '';
+  });
   if (deleteBtn) {
     deleteBtn.addEventListener('click', async () => {
       if (!CURRENT_SLUG) return;
@@ -564,7 +616,10 @@ function wireModal() {
 
 function closeRunModal() {
   const modal = $('runModal');
-  if (modal) modal.classList.add('hidden');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('running');
+  }
 }
 
 async function ensurePdfjsReady(maxMs = 5000) {

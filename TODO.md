@@ -4,6 +4,7 @@
 - [ ] Compare output quality between Unstructured and the Azure Document Intelligence SDK.
 
 ## Completed
+- [x] 2025-11-18 Collapse New Run modal inputs into a compact “Running…” view (with header button feedback) while runs are in progress so the dialog focuses on status instead of parameters.
 - [x] 2025-11-17 Release v2.0 (chunk/element review workflows plus modular frontend scripts).
 - [x] 2025-11-17 Size chunk cards by their text and keep chunk overlays synced with the type/review filters.
 - [x] 2025-11-17 Refactor Chunking Visualizer frontend into modular scripts (app-state/ui/overlays/metrics/elements/chunks/reviews/runs) and a small entry loader so each concern stays focused.

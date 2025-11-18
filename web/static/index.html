@@ -267,7 +267,7 @@
           <div class="modal-title">New Run</div>
           <button id="closeRunModal" class="btn">Close</button>
         </div>
-        <div class="run-grid">
+        <div class="run-grid" id="runFormGrid">
           <label>
             <div class="lab">PDF <span class="info" tabindex="0">i</span><div class="tip">Pick a source PDF from <code>res/</code>. Use Delete to remove the selected file from the server.</div></div>
             <div class="upload-row">
@@ -376,7 +376,7 @@
             <span id="runStatus" class="muted"></span>
           </div>
         </div>
-        <div class="run-preview">
+        <div class="run-preview" id="runPreviewPane">
           <div class="run-preview-controls">
             <button id="runPrev" class="btn">◀</button>
             <span>Page <span id="runPageNum">-</span> / <span id="runPageCount">-</span></span>
@@ -389,6 +389,13 @@
           </div>
           <div class="run-canvas-wrap">
             <canvas id="runPdfCanvas"></canvas>
+          </div>
+        </div>
+        <div class="run-progress" id="runProgressPane">
+          <div class="run-progress-inner">
+            <div class="run-spinner" aria-hidden="true"></div>
+            <div class="run-progress-text">Running…</div>
+            <div class="run-progress-subtitle muted" id="runProgressHint"></div>
           </div>
         </div>
       </div>

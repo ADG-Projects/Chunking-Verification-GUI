@@ -644,6 +644,47 @@ body.drawer-open #right-metrics {
 .run-canvas-wrap { display: flex; align-items: center; justify-content: center; background: #0d0f14; border: 1px solid #22262d; border-radius: 6px; padding: 6px; max-height: 60vh; overflow: auto; }
 #runPdfCanvas { display: block; background: #fff; border-radius: 4px; max-width: 100%; height: auto; }
 
+/* Run modal: compact running state */
+.run-progress {
+  display: none;
+  padding: 40px 16px 24px;
+  text-align: center;
+}
+.run-progress-inner {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.run-spinner {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid rgba(135, 182, 255, 0.25);
+  border-top-color: var(--accent);
+  animation: run-spin 0.7s linear infinite;
+}
+.run-progress-text {
+  font-size: 14px;
+  font-weight: 500;
+}
+.run-progress-subtitle {
+  max-width: 360px;
+}
+.modal.running #runFormGrid,
+.modal.running #runPreviewPane {
+  display: none;
+}
+.modal.running #runProgressPane {
+  display: block;
+}
+
+@keyframes run-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
 /* Toast */
 .toast { position: fixed; right: 16px; bottom: 16px; z-index: 10002; display: grid; gap: 8px; }
 .toast .t { background: #1b2029; color: var(--text); border: 1px solid #2a2f38; border-left: 4px solid var(--accent); border-radius: 6px; padding: 8px 10px; box-shadow: 0 6px 20px rgba(0,0,0,0.35); min-width: 220px; }

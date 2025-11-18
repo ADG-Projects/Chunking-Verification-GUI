@@ -6,6 +6,7 @@ The project does not persist to a database yet. Instead, Unstructured parses eac
 - **v1.1 (2025-11-17)** – Chunk overlay/drawer refinements and Metrics view redraws introduced here leave the stored JSON layout unchanged.
 
 - `PDF_DIR` environment variable points to where PDFs live. Locally it defaults to `res/`. In Fly deployments with a volume mounted at `/data`, use `PDF_DIR=/data/res` so uploads persist across deploys.
+  - New UI runs now also record a compact “Running” state in the frontend only: while `/api/run` is processing, the New Run modal hides its fields and the header button reflects the in-flight status, but the persisted `run_config.form_snapshot` continues to store the full parameter set as before.
 
 ## Document JSON layout
 - `source_file`: Absolute path to the processed PDF.

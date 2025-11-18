@@ -79,6 +79,7 @@ Use `--input-jsonl` when you want to re-evaluate matches from a previously saved
 Spin up a small local UI to inspect PDFs, table matching, and chunker performance without juggling multiple files. The server reads `PDF_DIR` to find a writable location for PDFs (defaults to `res/` locally). When deployed to Fly.io with a volume mounted at `/data`, set `PDF_DIR=/data/res` to persist uploads.
 
 The UI assets are now composed from targeted modules (`app-state.js`, `app-ui.js`, `app-reviews.js`, `app-overlays.js`, `app-metrics.js`, `app-elements.js`, `app-chunks.js`, `app-runs.js`, and a thin `app.js` entry) so each concern (state, overlays, reviews, element/chunk panels, run wiring) can evolve independently while `index.html` pulls them in sequentially.
+When you start a run, the “New Run” modal collapses into a compact Running state: the form and preview hide, a small status block shows the current PDF name plus a hint that the window will close on completion, and the header “New Run” button switches to `Running…` while the request is in flight. Parameters are still captured in the backend `form_snapshot` and reflected in the Settings Recap bar once the run completes.
 
 Quickstart:
 
