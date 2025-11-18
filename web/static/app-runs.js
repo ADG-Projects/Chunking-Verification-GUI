@@ -114,6 +114,35 @@ async function renderPage(num) {
   redrawOverlaysForCurrentContext();
 }
 
+function resetPdfViewer() {
+  PDF_DOC = null;
+  PAGE_COUNT = 0;
+  CURRENT_PAGE = 1;
+  CURRENT_PAGE_BOXES = null;
+  LAST_SELECTED_MATCH = null;
+  const canvas = $('pdfCanvas');
+  if (canvas) {
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      const w = canvas.width || 0;
+      const h = canvas.height || 0;
+      ctx.clearRect(0, 0, w, h);
+    }
+    canvas.width = 0;
+    canvas.height = 0;
+  }
+  const overlay = $('overlay');
+  if (overlay) {
+    overlay.style.width = '0px';
+    overlay.style.height = '0px';
+    overlay.innerHTML = '';
+  }
+  const pageNumEl = $('pageNum');
+  if (pageNumEl) pageNumEl.textContent = '-';
+  const pageCountEl = $('pageCount');
+  if (pageCountEl) pageCountEl.textContent = '-';
+}
+
 async function init() {
   await loadPdfs();
   wireRunForm();
@@ -206,6 +235,7 @@ async function refreshRuns() {
     CURRENT_CHUNKS = null;
     CURRENT_CHUNK_SUMMARY = null;
     CURRENT_CHUNK_LOOKUP = {};
+    resetPdfViewer();
     const ctx = document.getElementById('chart')?.getContext?.('2d');
     if (CHART_INSTANCE) { try { CHART_INSTANCE.destroy(); } catch(e){} CHART_INSTANCE=null; }
     document.getElementById('matchList').innerHTML = '';
