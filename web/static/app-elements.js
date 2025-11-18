@@ -270,6 +270,9 @@ async function openElementDetails(elementId) {
       const wrapper = document.createElement('div');
       wrapper.innerHTML = html;
       scroll.appendChild(wrapper);
+      if (wrapper.querySelector('table')) {
+        applyTablePreviewDirection(wrapper);
+      }
       applyDirectionalText(scroll);
       registerDrawerScrollTarget(scroll);
       container.appendChild(scroll);

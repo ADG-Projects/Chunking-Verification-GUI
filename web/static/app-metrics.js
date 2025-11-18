@@ -223,7 +223,12 @@ async function openDetails(tableMatch) {
   preview.appendChild(buildDrawerReviewSection('table', tableMatch.gold_table_id));
   const tableSection = document.createElement('div');
   tableSection.className = 'table-preview';
-  tableSection.textContent = tableMatch.table_html || 'No preview available';
+  if (tableMatch.table_html) {
+    tableSection.innerHTML = tableMatch.table_html;
+    applyTablePreviewDirection(tableSection);
+  } else {
+    tableSection.textContent = 'No preview available';
+  }
   preview.appendChild(tableSection);
   $('drawer').classList.remove('hidden');
   document.body.classList.add('drawer-open');

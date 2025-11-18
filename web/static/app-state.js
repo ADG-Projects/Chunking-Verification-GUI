@@ -59,6 +59,7 @@ let CURRENT_RUN_JOB_ID = null;
 let CURRENT_RUN_JOB_STATUS = null;
 
 const RTL_AWARE_ELEMENTS = new Set();
+const TABLE_PREVIEW_ELEMENTS = new Set();
 
 const $ = (id) => document.getElementById(id);
 
@@ -84,6 +85,43 @@ function applyDirectionalText(element, options = {}) {
   if (track) RTL_AWARE_ELEMENTS.add(element);
 }
 
+function applyTablePreviewDirection(element, options = {}) {
+  if (!element) return;
+  const { track = true } = options;
+  const rtl = isArabicDocument();
+  try {
+    element.setAttribute('dir', 'ltr');
+  } catch (_) {}
+  if (element.style) {
+    element.style.direction = 'ltr';
+    element.style.unicodeBidi = 'plaintext';
+  }
+  const cells = element.querySelectorAll('td, th');
+  if (cells.length) {
+    cells.forEach((cell) => {
+      if (cell.style) {
+        cell.style.direction = rtl ? 'rtl' : 'ltr';
+        cell.style.textAlign = rtl ? 'right' : 'left';
+        cell.style.unicodeBidi = 'plaintext';
+      }
+      try {
+        cell.setAttribute('dir', rtl ? 'rtl' : 'ltr');
+      } catch (_) {}
+    });
+  }
+  if (track) TABLE_PREVIEW_ELEMENTS.add(element);
+}
+
+function refreshTablePreviewDirections() {
+  for (const tableEl of Array.from(TABLE_PREVIEW_ELEMENTS)) {
+    if (!tableEl.isConnected) {
+      TABLE_PREVIEW_ELEMENTS.delete(tableEl);
+      continue;
+    }
+    applyTablePreviewDirection(tableEl, { track: false });
+  }
+}
+
 function refreshDirectionalElements() {
   for (const el of Array.from(RTL_AWARE_ELEMENTS)) {
     if (!el.isConnected) {
@@ -107,6 +145,7 @@ function applyLanguageDirection() {
     isArabic,
   });
   refreshDirectionalElements();
+  refreshTablePreviewDirections();
   console.log('[RTL Debug] After toggle:', {
     CURRENT_DOC_LANGUAGE,
     isArabic,

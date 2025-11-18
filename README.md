@@ -68,6 +68,10 @@ Use `--input-jsonl` when you want to re-evaluate matches from a previously saved
   - Verification steps:
     1. `uv run python scripts/run_chunking_pipeline.py --input res/<pdf>.pdf --pages 4-6 --emit-matches outputs/unstructured/<slug>.matches.json`
     2. Confirm the resulting `matches.json` `run_config.chunk_params` object lists the default values even when no chunking flags were passed.
+- **Unreleased (2025-11-18, Table previews)** – Keep drawer table previews rendering the chunker’s column sequence while RTL documents still right-align text inside each cell.
+  - Verification steps:
+    1. `uv run uvicorn main:app --reload --host 127.0.0.1 --port 8765` and open the Metrics tab.
+    2. Use an RTL run (Arabic) and open a table’s details drawer; confirm the column order matches the PDF and cells align right while English cells stay left-aligned.
 
 - **v2.0 (2025-11-17)** – Introduced chunk/element review workflows (Good/Bad ratings with notes, filters, and summary chips) while refactoring the frontend into modular scripts so overlays, metrics, and drawers stay in lockstep.
   - Verification steps:
