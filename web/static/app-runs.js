@@ -13,6 +13,7 @@ async function loadRun(slug) {
   PDF_DOC = await loadingTask.promise;
   PAGE_COUNT = PDF_DOC.numPages;
   CURRENT_PAGE = 1;
+  SCALE_IS_MANUAL = false;
   $('pageCount').textContent = PAGE_COUNT;
   await renderPage(CURRENT_PAGE);
 
@@ -48,20 +49,62 @@ async function renderPage(num) {
   const page = await PDF_DOC.getPage(num);
   const rotation = page.rotate || 0;
   const container = $('pdfContainer');
-  const containerHeight = container.clientHeight - 24;
+  const containerHeight = Math.max(0, (container?.clientHeight || 0) - 24);
   const baseViewport = page.getViewport({ scale: 1, rotation });
   const scaleToFit = containerHeight / baseViewport.height;
-  const finalScale = Math.min(scaleToFit, SCALE);
-  const viewport = page.getViewport({ scale: finalScale, rotation });
+  if (!SCALE_IS_MANUAL) {
+    SCALE = scaleToFit;
+    const zoomInput = $('zoom');
+    if (zoomInput) {
+      let pct = Math.round(SCALE * 100);
+      const min = zoomInput.min ? Number(zoomInput.min) : null;
+      const max = zoomInput.max ? Number(zoomInput.max) : null;
+      if (min !== null && pct < min) pct = min;
+      if (max !== null && pct > max) pct = max;
+      zoomInput.value = String(pct);
+    }
+  }
+  const viewport = page.getViewport({ scale: SCALE, rotation });
   const canvas = $('pdfCanvas');
+  if (!canvas) return;
   const ctx = canvas.getContext('2d');
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
-  $('overlay').style.width = `${viewport.width}px`;
-  $('overlay').style.height = `${viewport.height}px`;
+  if (!ctx) return;
+  const deviceScale = window.devicePixelRatio || 1;
+  canvas.style.width = `${viewport.width}px`;
+  canvas.style.height = `${viewport.height}px`;
+  canvas.width = Math.floor(viewport.width * deviceScale);
+  canvas.height = Math.floor(viewport.height * deviceScale);
+  const overlay = $('overlay');
+  if (overlay) {
+    overlay.style.width = `${viewport.width}px`;
+    overlay.style.height = `${viewport.height}px`;
+  }
   $('pageNum').textContent = num;
+  const inflightTask = window.CURRENT_RENDER_TASK;
+  if (inflightTask?.cancel) {
+    try {
+      inflightTask.cancel();
+    } catch (err) {
+      console.warn('Failed to cancel in-flight render', err);
+    }
+  }
   clearBoxes();
-  await page.render({ canvasContext: ctx, viewport }).promise;
+  const renderContext = { canvasContext: ctx, viewport };
+  if (deviceScale !== 1) {
+    renderContext.transform = [deviceScale, 0, 0, deviceScale, 0, 0];
+  }
+  const renderTask = page.render(renderContext);
+  window.CURRENT_RENDER_TASK = renderTask;
+  try {
+    await renderTask.promise;
+  } catch (err) {
+    if (err?.name !== 'RenderingCancelledException') throw err;
+    return;
+  } finally {
+    if (window.CURRENT_RENDER_TASK === renderTask) {
+      window.CURRENT_RENDER_TASK = null;
+    }
+  }
   if (CURRENT_VIEW === 'inspect' && INSPECT_TAB === 'chunks') {
     renderChunksTab();
   }
@@ -98,6 +141,7 @@ async function init() {
     if (LAST_SELECTED_MATCH) drawTargetsOnPage(n, LAST_SELECTED_MATCH, LAST_HIGHLIGHT_MODE === 'best');
   });
   $('zoom').addEventListener('input', async (e) => {
+    SCALE_IS_MANUAL = true;
     SCALE = Number(e.target.value) / 100;
     await renderPage(CURRENT_PAGE);
     if (LAST_SELECTED_MATCH) drawTargetsOnPage(CURRENT_PAGE, LAST_SELECTED_MATCH, LAST_HIGHLIGHT_MODE === 'best');

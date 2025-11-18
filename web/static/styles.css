@@ -178,12 +178,17 @@ select {
   border-radius: 6px;
 }
 
-main { display: grid; grid-template-columns: 1fr 700px; height: calc(100vh - 58px - 60px); }
+main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 700px);
+  height: calc(100vh - 58px - 60px);
+}
 
 section.left {
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-width: 0; /* allow PDF pane to scroll instead of forcing right drawer to shrink */
 }
 .page-controls {
   display: flex;
@@ -213,14 +218,14 @@ section.left {
   padding: 8px;
   z-index: 1; /* keep below drawer/tooltips */
   min-height: 0;
+  width: 100%;
 }
 .page-layer {
   position: relative;
   z-index: 1;
   display: flex;
   align-items: flex-start;
-  max-height: 100%;
-  max-width: 100%;
+  flex: 0 0 auto; /* keep canvas size independent of container width */
 }
 #pdfCanvas {
   position: relative;
@@ -228,6 +233,7 @@ section.left {
   display: block;
   background: #fff;
   border-radius: 6px;
+  flex: 0 0 auto;
 }
 #overlay {
   position: absolute;

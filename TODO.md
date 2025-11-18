@@ -4,6 +4,7 @@
 - [ ] Compare output quality between Unstructured and the Azure Document Intelligence SDK.
 
 ## Completed
+- [x] 2025-11-18 Auto-condense chunk/element drawers based on preview scroll, fade drawer chips/mini-metrics to reclaim space, and reset drawer state whenever new content is opened.
 - [x] 2025-11-18 Collapse New Run modal inputs into a compact “Running…” view (with header button feedback) while runs are in progress so the dialog focuses on status instead of parameters.
 - [x] 2025-11-17 Release v2.0 (chunk/element review workflows plus modular frontend scripts).
 - [x] 2025-11-17 Size chunk cards by their text and keep chunk overlays synced with the type/review filters.
