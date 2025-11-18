@@ -278,13 +278,22 @@
           <button id="closeRunModal" class="btn">Close</button>
         </div>
         <div class="run-grid" id="runFormGrid">
-          <label>
-            <div class="lab">PDF <span class="info" tabindex="0">i</span><div class="tip">Pick a source PDF from <code>res/</code>. Use Delete to remove the selected file from the server.</div></div>
-            <div class="upload-row">
-              <select id="pdfSelect"></select>
-              <button id="pdfDeleteBtn" class="btn btn-secondary" type="button" title="Delete selected PDF from server">Delete</button>
-            </div>
-          </label>
+          <div class="pdf-lang-row">
+            <label class="pdf-picker">
+              <div class="lab">PDF <span class="info" tabindex="0">i</span><div class="tip">Pick a source PDF from <code>res/</code>. Use Delete to remove the selected file from the server.</div></div>
+              <div class="upload-row">
+                <select id="pdfSelect"></select>
+                <button id="pdfDeleteBtn" class="btn btn-secondary" type="button" title="Delete selected PDF from server">Delete</button>
+              </div>
+            </label>
+            <label class="lang-picker">
+              <div class="lab">Primary language <span class="info" tabindex="0">i</span><div class="tip">Hints OCR and display alignment. Arabic prioritizes Arabic OCR and right-aligns previews.</div></div>
+              <select id="docLanguage">
+                <option value="eng" selected>English (LTR)</option>
+                <option value="ara">Arabic (RTL)</option>
+              </select>
+            </label>
+          </div>
           <div class="upload-row">
             <label>
               <div class="lab">Upload PDF <span class="info" tabindex="0">i</span><div class="tip">Choose a file and it uploads immediately to the server's <code>PDF_DIR</code> (Fly volume mount) so future runs can reuse it.</div></div>
@@ -303,13 +312,6 @@
               <option value="auto">auto</option>
               <option value="fast">fast</option>
               <option value="hi_res">hi_res</option>
-            </select>
-          </label>
-          <label>
-            <div class="lab">Primary language <span class="info" tabindex="0">i</span><div class="tip">Hints OCR and display alignment. Arabic prioritizes Arabic OCR and right-aligns previews.</div></div>
-            <select id="docLanguage">
-              <option value="eng" selected>English (LTR)</option>
-              <option value="ara">Arabic (RTL)</option>
             </select>
           </label>
           <label class="checkbox">
