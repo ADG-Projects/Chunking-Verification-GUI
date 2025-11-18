@@ -1,5 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
   applyLanguageDirection();
+  initDrawerAutoCondense();
   const sel = $('elementsTypeSelect');
   if (sel) sel.addEventListener('change', async () => {
     CURRENT_TYPE_FILTER = sel.value || 'All';

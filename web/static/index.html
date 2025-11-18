@@ -210,24 +210,29 @@
           <button class="tab" data-inspect="chunks">Chunks</button>
         </div>
         <div id="pane-inspect-elements" class="pane active">
-          <div class="elements">
-            <div class="row">
-              <label>
-                <span class="lab">Type</span>
-                <select id="elementsTypeSelect"></select>
-              </label>
-              <label>
-                <span class="lab">Review</span>
-                <select id="elementsReviewSelect">
-                  <option value="All">All</option>
-                  <option value="Reviewed">Reviewed</option>
-                  <option value="Good">Good only</option>
-                  <option value="Bad">Bad only</option>
-                </select>
-              </label>
-              <span id="elementsReviewSummary" class="review-inline-count">Reviewed: none</span>
+          <div class="elements-view">
+            <div class="card element-summary">
+              <div class="row">
+                <label>
+                  <span class="lab">Type</span>
+                  <select id="elementsTypeSelect"></select>
+                </label>
+                <label>
+                  <span class="lab">Review</span>
+                  <select id="elementsReviewSelect">
+                    <option value="All">All</option>
+                    <option value="Reviewed">Reviewed</option>
+                    <option value="Good">Good only</option>
+                    <option value="Bad">Bad only</option>
+                  </select>
+                </label>
+              </div>
+              <div id="elementPagination" class="element-pagination"></div>
+              <div class="collapsible-stats">
+                <div id="typesList" class="types element-types"></div>
+                <div id="elementsReviewSummary" class="element-stats-detail"></div>
+              </div>
             </div>
-            <div id="typesList" class="types"></div>
             <div class="elements-list" id="elementsList"></div>
           </div>
         </div>
@@ -401,14 +406,14 @@
       </div>
     </div>
 
-    <script src="/app-state.js?v=20251117-2" defer></script>
-    <script src="/app-ui.js?v=20251117-2" defer></script>
-    <script src="/app-reviews.js?v=20251117-2" defer></script>
-    <script src="/app-overlays.js?v=20251117-2" defer></script>
-    <script src="/app-metrics.js?v=20251117-2" defer></script>
-    <script src="/app-elements.js?v=20251117-2" defer></script>
-    <script src="/app-chunks.js?v=20251117-2" defer></script>
-    <script src="/app-runs.js?v=20251117-2" defer></script>
-    <script src="/app.js?v=20251117-2" defer></script>
+    <script src="/app-state.js?v=20251117-3" defer></script>
+    <script src="/app-ui.js?v=20251117-3" defer></script>
+    <script src="/app-reviews.js?v=20251117-3" defer></script>
+    <script src="/app-overlays.js?v=20251117-3" defer></script>
+    <script src="/app-metrics.js?v=20251117-3" defer></script>
+    <script src="/app-elements.js?v=20251117-3" defer></script>
+    <script src="/app-chunks.js?v=20251117-3" defer></script>
+    <script src="/app-runs.js?v=20251117-3" defer></script>
+    <script src="/app.js?v=20251117-3" defer></script>
   </body>
   </html>

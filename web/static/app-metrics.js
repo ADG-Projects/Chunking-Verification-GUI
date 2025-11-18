@@ -144,6 +144,7 @@ function updateRunConfigCard() {
 }
 
 async function openDetails(tableMatch) {
+  resetDrawerScrollState();
   $('drawerTitle').textContent = tableMatch.gold_title || tableMatch.gold_table_id || 'Details';
   $('drawerMeta').textContent = `Rows ${tableMatch.gold_rows?.join(', ') || '-'}`;
   $('drawerSummary').innerHTML = `
