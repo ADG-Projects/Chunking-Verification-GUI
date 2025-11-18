@@ -296,7 +296,6 @@ function wireRunForm() {
     }
     const tagVal = $('variantTag')?.value?.trim();
     if (tagVal) payload.tag = tagVal;
-    if (!payload.pages) { status.textContent = 'Enter pages (e.g., 4-6)'; return; }
     const parseNumber = (id) => {
       const input = $(id);
       if (!input) return null;
