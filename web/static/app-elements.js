@@ -227,6 +227,18 @@ function renderElementsListForCurrentPage(boxes) {
   initElementsViewAutoCondense();
 }
 
+function containerChildTypes(parentType) {
+  const map = {
+    Table: ['Paragraph', 'Line'],
+    pageHeader: ['Line', 'Paragraph'],
+    title: ['Line', 'Paragraph'],
+    sectionHeading: ['Line', 'Paragraph'],
+    pageNumber: ['Line', 'Paragraph'],
+  };
+  const vals = map[parentType || ''];
+  return vals ? new Set(vals) : null;
+}
+
 function renderElementOutline(host, filtered) {
   const pageNum = Number(filtered[0]?.[1]?.page_trimmed || CURRENT_PAGE || 1);
   const collapse = outlineCollapseState(pageNum);
@@ -250,8 +262,10 @@ function renderElementOutline(host, filtered) {
   const childIds = new Set();
   for (const item of sorted) {
     const [id, entry] = item;
-    if (!entry || entry.type !== 'Table') continue;
-    const children = findContainedElements(entry, sorted);
+    if (!entry) continue;
+    const allowedChildren = containerChildTypes(entry.type);
+    if (!allowedChildren) continue;
+    const children = findContainedElements(entry, sorted, allowedChildren);
     if (children.length) {
       childMap.set(id, children);
       children.forEach(([cid]) => childIds.add(cid));
@@ -500,8 +514,8 @@ function buildElementCard(id, entry, review, opts = {}) {
   })();
   return card;
 }
-function findContainedElements(parentEntry, items) {
-  if (!parentEntry) return [];
+function findContainedElements(parentEntry, items, allowedTypes) {
+  if (!parentEntry || !(allowedTypes && allowedTypes.size)) return [];
   const px = Number(parentEntry.x || 0);
   const py = Number(parentEntry.y || 0);
   const pw = Number(parentEntry.w || 0);
@@ -515,6 +529,7 @@ function findContainedElements(parentEntry, items) {
     const [id, entry, review] = item;
     if (!entry || entry === parentEntry) continue;
     if ((entry.page_trimmed || entry.page) !== page) continue;
+    if (!allowedTypes.has(entry.type || '')) continue;
     const cx = Number(entry.x || 0);
     const cy = Number(entry.y || 0);
     const cw = Number(entry.w || 0);
@@ -529,9 +544,7 @@ function findContainedElements(parentEntry, items) {
       cx2 <= pw2 + margin &&
       cy2 <= ph2 + margin;
     if (!fits) continue;
-    if (entry.type === 'Paragraph' || entry.type === 'Line') {
-      inside.push(item);
-    }
+    inside.push(item);
   }
   inside.sort((a, b) => {
     const ea = a[1] || {};
