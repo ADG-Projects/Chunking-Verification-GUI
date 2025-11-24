@@ -246,6 +246,17 @@ function renderElementOutline(host, filtered) {
     if (ya !== 0) return ya;
     return Number(ea.x || 0) - Number(eb.x || 0);
   });
+  const childMap = new Map();
+  const childIds = new Set();
+  for (const item of sorted) {
+    const [id, entry] = item;
+    if (!entry || entry.type !== 'Table') continue;
+    const children = findContainedElements(entry, sorted);
+    if (children.length) {
+      childMap.set(id, children);
+      children.forEach(([cid]) => childIds.add(cid));
+    }
+  }
   const wrap = document.createElement('div');
   wrap.className = 'elements-outline-page';
   const head = document.createElement('div');
@@ -280,6 +291,7 @@ function renderElementOutline(host, filtered) {
   if (collapsed) body.classList.add('collapsed');
   const counters = {};
   for (const [id, entry, review] of sorted) {
+    if (childIds.has(id)) continue;
     const t = entry?.type || 'Unknown';
     const orderMeta = order.find((o) => o.type === t);
     const label = orderMeta ? orderMeta.label : t;
@@ -297,12 +309,9 @@ function renderElementOutline(host, filtered) {
     cardWrap.className = 'elements-outline-card';
     const card = buildElementCard(id, entry, review);
     const canExpand = entry && entry.type === 'Table';
-    let children = [];
-    if (canExpand) {
-      children = findContainedElements(entry, sorted);
-      if (children.length) row.classList.add('outline-has-children');
-    }
+    const children = childMap.get(id) || [];
     if (canExpand && children.length) {
+      row.classList.add('outline-has-children');
       const state = outlineExpansionState(id);
       const expanded = state.get();
       const toggle = document.createElement('button');
