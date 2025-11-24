@@ -356,9 +356,9 @@ function describeJobStatus(detail) {
   if (status === 'running') {
     if (detail?.started_at) {
       const secs = Math.max(1, Math.round(nowSec - detail.started_at));
-      return `Chunker is running (${secs}s elapsed)`;
+      return `Provider is running (${secs}s elapsed)`;
     }
-    return 'Chunker is running…';
+    return 'Provider is running…';
   }
   if (status === 'queued') {
     if (detail?.created_at) {
@@ -382,7 +382,7 @@ function updateRunJobProgress(detail) {
   const statusEl = $('runProgressStatus');
   const logsEl = $('runProgressLogs');
   if (titleEl) {
-    if (status === 'running') titleEl.textContent = 'Chunker is running…';
+    if (status === 'running') titleEl.textContent = 'Provider is running…';
     else if (status === 'queued') titleEl.textContent = 'Queued…';
     else if (status === 'failed') titleEl.textContent = 'Run failed';
     else if (status === 'succeeded') titleEl.textContent = 'Run completed';
