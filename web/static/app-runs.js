@@ -403,7 +403,16 @@ async function pollRunJob(jobId) {
     try {
       detail = await fetchJSON(`/api/run-jobs/${encodeURIComponent(jobId)}`);
     } catch (err) {
-      if (statusSpan) statusSpan.textContent = `Polling job… ${err?.message || err}`;
+      const msg = err?.message || String(err || '');
+      if (msg.includes('404')) {
+        if (statusSpan) statusSpan.textContent = 'Job not found (assuming finished)';
+        try { await refreshRuns(); } catch (_) {}
+        setRunInProgress(false);
+        closeRunModal();
+        CURRENT_RUN_JOB_ID = null;
+        return;
+      }
+      if (statusSpan) statusSpan.textContent = `Polling job… ${msg}`;
       await sleep(RUN_JOB_POLL_INTERVAL_MS);
       continue;
     }
