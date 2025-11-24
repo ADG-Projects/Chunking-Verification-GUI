@@ -314,10 +314,13 @@ function renderElementOutline(host, filtered) {
       row.classList.add('outline-has-children');
       const state = outlineExpansionState(id);
       const expanded = state.get();
+      const summary = summarizeChildren(children);
       const toggle = document.createElement('button');
       toggle.type = 'button';
       toggle.className = 'outline-child-toggle';
-      toggle.textContent = expanded ? 'Hide contents' : 'Show contents';
+      toggle.textContent = expanded
+        ? summary ? `Hide contents (${summary})` : 'Hide contents'
+        : summary ? `Show contents (${summary})` : 'Show contents';
       toggle.addEventListener('click', (ev) => {
         ev.stopPropagation();
         state.set(!expanded);
@@ -525,4 +528,17 @@ function findContainedElements(parentEntry, items) {
     return Number(ea.x || 0) - Number(eb.x || 0);
   });
   return inside;
+}
+
+function summarizeChildren(children) {
+  if (!children || !children.length) return '';
+  const counts = {};
+  for (const [, entry] of children) {
+    const t = entry?.type || 'Element';
+    counts[t] = (counts[t] || 0) + 1;
+  }
+  const parts = Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([t, n]) => `${n} ${t.toLowerCase()}${n > 1 ? 's' : ''}`);
+  return parts.join(', ');
 }
