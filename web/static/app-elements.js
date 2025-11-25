@@ -229,11 +229,13 @@ function renderElementsListForCurrentPage(boxes) {
 
 function containerChildTypes(parentType) {
   const map = {
-    Table: ['Paragraph', 'Line'],
-    pageHeader: ['Line', 'Paragraph'],
-    title: ['Line', 'Paragraph'],
-    sectionHeading: ['Line', 'Paragraph'],
-    pageNumber: ['Line', 'Paragraph'],
+    Table: ['TableCell', 'Paragraph', 'Line', 'Word'],
+    Paragraph: ['Line', 'Word'],
+    pageHeader: ['Paragraph', 'Line', 'Word'],
+    title: ['Paragraph', 'Line', 'Word'],
+    sectionHeading: ['Paragraph', 'Line', 'Word'],
+    pageNumber: ['Paragraph', 'Line', 'Word'],
+    Line: ['Word'],
   };
   const vals = map[parentType || ''];
   return vals ? new Set(vals) : null;
