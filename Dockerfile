@@ -2,7 +2,7 @@
 
 ARG PYTHON_VERSION=3.11
 
-FROM python:${PYTHON_VERSION}-slim AS runtime
+FROM public.ecr.aws/docker/library/python:${PYTHON_VERSION}-slim AS runtime
 
 ARG WITH_HIRES=1
 ARG DISABLE_HI_RES=0
