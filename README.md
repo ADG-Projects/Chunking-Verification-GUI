@@ -65,7 +65,7 @@ Use `--input-jsonl` when you want to re-evaluate matches from a previously saved
 Set the Azure credentials before running either via CLI or the UI. You can drop them into a local `.env` (see `.env.example`) and they will be auto-loaded by the app and the CLI helpers. Foundry deployments use a single endpoint/key for both providers:
 - `AZURE_FT_ENDPOINT` / `AZURE_FT_KEY`
 
-When Azure language detection is enabled (e.g., including `languages` in the features), detected locales are captured in `run_config` and the UI will flip previews to RTL automatically for Arabic-heavy documents.
+When Azure language detection is enabled (e.g., including `languages` in the features), detected locales are captured in `run_config` (persisted from the pipeline output) so reloading a run flips previews to RTL automatically for Arabic-heavy documents.
 When Azure returns markdown (e.g., `output_content_format=markdown`), the Inspect drawers render the formatted markdown directly and fall back to plain text only when no richer content is present; table HTML still prefers `text_as_html` for accurate column order.
 
 Document Intelligence runs target `api-version=2024-11-30` (v4.0); older service versions are not supported.
