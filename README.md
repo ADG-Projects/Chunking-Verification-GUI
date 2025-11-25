@@ -109,6 +109,11 @@ If you ever see Azure `.tables.jsonl` files that are empty, rerun the slice: the
 
 ## Release history
 
+- **v3.1 (2025-11-25)** – Azure Inspect outline now treats paragraphs as containers for lines/words, keeps table/header/section parents consistent, and defaults nested children to collapsed so opening a parent only reveals one level at a time.
+  - Verification steps:
+    1. `uv run uvicorn main:app --host 127.0.0.1 --port 8765`, load an Azure Document Intelligence run (e.g., `V3-0_Reviewed.pages1-8`), switch Elements to Outline, and confirm paragraphs nest lines while tables and headers preserve their children lists.
+    2. Expand a parent (table/paragraph/header) and verify only its direct children show; deeper descendants stay collapsed until manually toggled, and per-node expansion state persists while navigating pages.
+
 - **v3.0 (2025-11-24)** – Azure providers now render markdown in drawers, honor detected languages for RTL, expose outline grouping and Document Intelligence paragraph roles, and overlays stay aligned after switching to chunk-only artifacts (Metrics/tables pipeline removed).
   - Verification steps:
     1. `uv run uvicorn main:app --host 127.0.0.1 --port 8765`, load an Azure run, and confirm Inspect overlays line up with trimmed PDFs while pageHeader/pageNumber/title types appear in filters and the Elements outline toggle groups items per page.

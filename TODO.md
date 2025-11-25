@@ -5,6 +5,7 @@
 - [ ] Remove leftover references to metrics/tables in UI modules (app-metrics.js import vestigial; ensure CSS/tooling stay lean).
 
 ## Completed
+- [x] 2025-11-25 Collapse Azure element outline by default and allow paragraph/line nesting so parents only expand one level at a time.
 - [x] 2025-11-24 Release v3.0 (Azure markdown/RTL + outline/roles, chunk-only artifacts after removing Metrics/tables pipeline).
 - [x] 2025-11-24 Remove table metrics/matches pipeline and Metrics view; runs now emit only trimmed PDFs, chunks JSONL, and run metadata.
 - [x] 2025-11-24 Render markdown from Azure providers in chunk/element drawers (sanitized, falls back to text/html tables).
