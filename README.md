@@ -121,6 +121,11 @@ If you ever see Azure `.tables.jsonl` files that are empty, rerun the slice: the
 
 ## Release history
 
+- **v4.0 (2025-11-25)** – Added the Unstructured Partition (hosted) provider for elements-only runs in the UI/API and switched the Docker base image to ECR Public to avoid Docker Hub rate limits.
+  - Verification steps:
+    1. `uv run uvicorn main:app --host 127.0.0.1 --port 8765`, start a New Run with provider `Unstructured Partition (API)`, and confirm the UI processes elements-only (chunks tab hidden) while overlays render from returned elements.
+    2. Inspect the generated artifacts under `outputs/unstructured/partition_api/` to confirm the run JSON and elements JSONL are stored without chunk outputs.
+    3. `docker build -t chunking-tests:4.0 .` and verify the base image pulls from ECR Public without Docker Hub rate limit warnings.
 - **v3.2 (2025-11-25)** – Bundled markdown/DOMPurify assets locally with a favicon, persisted Azure detected-language metadata for RTL-aware reloads, and fixed Azure tooltip positioning.
   - Verification steps:
     1. `uv run uvicorn main:app --host 127.0.0.1 --port 8765`, load an Azure run with markdown drawers and verify markdown still renders via the bundled assets and favicon shows in the tab.
