@@ -5,9 +5,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (sel) sel.addEventListener('change', async () => {
     CURRENT_TYPE_FILTER = sel.value || 'All';
     populateTypeSelectors();
-    if (LAST_SELECTED_MATCH && CURRENT_VIEW === 'metrics') {
-      drawTargetsOnPage(CURRENT_PAGE, LAST_SELECTED_MATCH, LAST_HIGHLIGHT_MODE === 'best');
-    }
     await drawBoxesForCurrentPage();
   });
   const reviewSel = $('elementsReviewSelect');
@@ -16,6 +13,17 @@ document.addEventListener('DOMContentLoaded', () => {
     renderElementsListForCurrentPage(CURRENT_PAGE_BOXES);
     refreshElementOverlaysForCurrentPage();
   });
+  const elementViewToggle = $('elementViewToggle');
+  if (elementViewToggle) {
+    elementViewToggle.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('button[data-mode]');
+      if (!btn) return;
+      const mode = btn.dataset.mode === 'outline' ? 'outline' : 'flat';
+      setElementViewMode(mode);
+      syncElementViewToggle();
+      renderElementsListForCurrentPage(CURRENT_PAGE_BOXES);
+    });
+  }
   const langSel = $('settingPrimaryLang');
   if (langSel) langSel.addEventListener('change', () => {
     const nextLang = normalizeLangCode(langSel.value) || 'eng';

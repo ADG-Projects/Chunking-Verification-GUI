@@ -1,6 +1,6 @@
-async function loadChunksForRun(slug) {
+async function loadChunksForRun(slug, provider = CURRENT_PROVIDER) {
   try {
-    const data = await fetchJSON(`/api/chunks/${encodeURIComponent(slug)}`);
+    const data = await fetchJSON(withProvider(`/api/chunks/${encodeURIComponent(slug)}`, provider));
     CURRENT_CHUNKS = data;
   } catch (e) {
     CURRENT_CHUNKS = { error: e.message, summary: null, chunks: [] };
@@ -279,13 +279,27 @@ async function openChunkDetailsDrawer(chunkId, elementsSublist) {
   textHeader.style.fontSize = '14px';
   textHeader.style.fontWeight = '600';
   textSection.appendChild(textHeader);
-  const pre = document.createElement('pre');
-  pre.style.maxHeight = '200px';
-  pre.style.overflow = 'auto';
-  pre.textContent = ch.text || '(empty)';
-  applyDirectionalText(pre);
-  registerDrawerScrollTarget(pre);
-  textSection.appendChild(pre);
+  const md = await renderMarkdownSafe(ch.text);
+  if (md) {
+    const scroll = document.createElement('div');
+    scroll.className = 'scrollbox drawer-markdown';
+    scroll.style.maxHeight = '240px';
+    const body = document.createElement('div');
+    body.className = 'markdown-body';
+    body.innerHTML = md;
+    scroll.appendChild(body);
+    applyDirectionalText(body);
+    registerDrawerScrollTarget(scroll);
+    textSection.appendChild(scroll);
+  } else {
+    const pre = document.createElement('pre');
+    pre.style.maxHeight = '200px';
+    pre.style.overflow = 'auto';
+    pre.textContent = ch.text || '(empty)';
+    applyDirectionalText(pre);
+    registerDrawerScrollTarget(pre);
+    textSection.appendChild(pre);
+  }
   container.appendChild(textSection);
   const uniq = new Map();
   (ch.orig_boxes || []).forEach((b, i2) => {

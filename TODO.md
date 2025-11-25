@@ -1,9 +1,18 @@
 # TODO
 
 ## Upcoming
-- [ ] Compare output quality between Unstructured and the Azure Document Intelligence SDK.
+- [ ] Verify Azure Content Understanding overlays align with trimmed PDFs and log any analyzer-specific quirks.
+- [ ] Remove leftover references to metrics/tables in UI modules (app-metrics.js import vestigial; ensure CSS/tooling stay lean).
 
 ## Completed
+- [x] 2025-11-24 Release v3.0 (Azure markdown/RTL + outline/roles, chunk-only artifacts after removing Metrics/tables pipeline).
+- [x] 2025-11-24 Remove table metrics/matches pipeline and Metrics view; runs now emit only trimmed PDFs, chunks JSONL, and run metadata.
+- [x] 2025-11-24 Render markdown from Azure providers in chunk/element drawers (sanitized, falls back to text/html tables).
+- [x] 2025-11-24 Capture Azure detected languages in run_config and flip the UI to RTL when detection reports Arabic-heavy documents.
+- [x] 2025-11-24 Add Azure element outline toggle in the UI with per-type grouping and drawer breadcrumbs.
+- [x] 2025-11-24 Emit Azure Document Intelligence paragraph roles as element types so UI overlays and filters show pageHeader/pageNumber/title classifications.
+- [x] 2025-11-24 Fix Azure Document Intelligence overlays by converting AnalyzeResult payloads to dicts and scaling polygons to PDF points so tables/elements render in the UI.
+- [x] 2025-11-20 Add Azure Document Intelligence + Content Understanding providers (UI toggle, provider-aware API paths, new `run_azure_pipeline.py`, and outputs under `outputs/azure`).
 - [x] 2025-11-18 Release v2.1 (persist chunking defaults in `run_config` and ship drawer table previews that keep the chunker column order while still aligning RTL cell text per document direction).
 - [x] 2025-11-18 Keep drawer table previews in the chunker column order while aligning RTL cell text per document direction.
 - [x] 2025-11-18 Persist chunking defaults in `run_config` so the UI header shows actual parameter values instead of "-".

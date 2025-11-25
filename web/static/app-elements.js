@@ -1,10 +1,57 @@
-async function loadElementTypes(slug) {
+async function loadElementTypes(slug, provider = CURRENT_PROVIDER) {
   try {
-    const res = await fetchJSON(`/api/element_types/${encodeURIComponent(slug)}`);
+    const res = await fetchJSON(withProvider(`/api/element_types/${encodeURIComponent(slug)}`, provider));
     ELEMENT_TYPES = (res.types || []).map(t => ({ type: t.type, count: Number(t.count || 0) }));
   } catch (e) {
     ELEMENT_TYPES = [];
   }
+}
+
+function isAzureProvider(provider = CURRENT_PROVIDER) {
+  const p = provider || '';
+  return p.startsWith('azure');
+}
+
+function outlineCollapseState(page) {
+  const pageKey = String(page || CURRENT_PAGE || 1);
+  const map = ELEMENT_OUTLINE_STATE?.collapsedByPage || {};
+  return {
+    get: () => !!map[pageKey],
+    set: (v) => {
+      ELEMENT_OUTLINE_STATE.collapsedByPage = { ...map, [pageKey]: !!v };
+    },
+  };
+}
+
+function outlineExpansionState(id) {
+  const map = ELEMENT_OUTLINE_STATE?.expanded || {};
+  return {
+    get: () => !!map[id],
+    set: (v) => {
+      ELEMENT_OUTLINE_STATE.expanded = { ...map, [id]: !!v };
+    },
+  };
+}
+
+function setElementViewMode(mode) {
+  const isAzure = isAzureProvider();
+  CURRENT_ELEMENT_VIEW_MODE = (mode === 'outline' && isAzure) ? 'outline' : 'flat';
+}
+
+function syncElementViewToggle() {
+  const host = $('elementViewToggle');
+  if (!host) return;
+  const isAzure = isAzureProvider();
+  if (!isAzure && CURRENT_ELEMENT_VIEW_MODE !== 'flat') {
+    CURRENT_ELEMENT_VIEW_MODE = 'flat';
+  }
+  const mode = isAzure ? CURRENT_ELEMENT_VIEW_MODE : 'flat';
+  host.classList.toggle('hidden', !isAzure);
+  const buttons = host.querySelectorAll('button[data-mode]');
+  buttons.forEach((btn) => {
+    const active = (btn.dataset.mode === mode);
+    btn.classList.toggle('active', active);
+  });
 }
 
 function populateTypeSelectors() {
@@ -36,7 +83,7 @@ async function drawBoxesForCurrentPage() {
   const type = CURRENT_TYPE_FILTER;
   const param = type && type !== 'All' ? `&types=${encodeURIComponent(type)}` : '';
   try {
-    const boxes = await fetchJSON(`/api/boxes/${encodeURIComponent(CURRENT_SLUG)}?page=${CURRENT_PAGE}${param}`) || {};
+    const boxes = await fetchJSON(withProvider(`/api/boxes/${encodeURIComponent(CURRENT_SLUG)}?page=${CURRENT_PAGE}${param}`)) || {};
     CURRENT_PAGE_BOXES = boxes || {};
     const entries = sortElementEntries(Object.entries(CURRENT_PAGE_BOXES));
     const availableTypes = new Set();
@@ -124,6 +171,7 @@ function renderElementsListForCurrentPage(boxes) {
   host.innerHTML = '';
   const reviewSelect = $('elementsReviewSelect');
   if (reviewSelect) reviewSelect.value = CURRENT_ELEMENT_REVIEW_FILTER;
+  syncElementViewToggle();
 
   // Update elements pagination
   const paginationEl = $('elementPagination');
@@ -164,69 +212,152 @@ function renderElementsListForCurrentPage(boxes) {
     updateReviewSummaryChip();
     return;
   }
+  const effectiveMode = isAzureProvider() ? CURRENT_ELEMENT_VIEW_MODE : 'flat';
+  if (effectiveMode === 'outline') {
+    renderElementOutline(host, filtered);
+    updateReviewSummaryChip();
+    initElementsViewAutoCondense();
+    return;
+  }
   for (const [id, entry, review] of filtered) {
-    const card = document.createElement('div');
-    card.className = 'chunk-card element-card';
-    if (review && review.rating) {
-      card.classList.add('has-review');
-      card.classList.add(review.rating === 'good' ? 'review-good' : 'review-bad');
-    }
-    card.dataset.elementId = id;
-    const color = typeBorderColor(entry.type || '');
-    card.style.borderLeft = `4px solid ${color}`;
-    const header = document.createElement('div');
-    header.className = 'header element-card-head';
-    const metaWrap = document.createElement('div');
-    metaWrap.className = 'element-card-meta';
-    const dId = entry.orig_id || id;
-    const short = dId.length > 16 ? `${dId.slice(0,12)}…` : dId;
-    metaWrap.innerHTML = `<span>${entry.type || 'Unknown'}</span><span class="meta">${short}</span>`;
-    header.appendChild(metaWrap);
-    header.appendChild(buildReviewButtons('element', id, 'card'));
-    const pre = document.createElement('pre');
-    pre.textContent = 'Loading preview…';
-    applyDirectionalText(pre);
-    card.appendChild(header);
-    const notePreview = buildNotePreview('element', id, 'mini');
-    if (notePreview) {
-      notePreview.title = 'Open element details to edit note';
-      notePreview.addEventListener('click', (ev) => {
-        ev.stopPropagation();
-        card.click();
-      });
-      card.appendChild(notePreview);
-    }
-    card.appendChild(pre);
-    if (id === CURRENT_INSPECT_ELEMENT_ID) card.classList.add('focused');
-    card.addEventListener('click', async () => {
-      CURRENT_INSPECT_ELEMENT_ID = id;
-      const p = Number(entry.page_trimmed || CURRENT_PAGE);
-      if (p && p !== CURRENT_PAGE) {
-        await renderPage(p);
-      }
-      await drawBoxesForCurrentPage();
-      openElementDetails(id);
-    });
+    const card = buildElementCard(id, entry, review);
     host.appendChild(card);
-    (async () => {
-      try {
-        const data = await fetchJSON(`/api/element/${encodeURIComponent(CURRENT_SLUG)}/${encodeURIComponent(id)}`);
-        let txt = data.text || '';
-        if (!txt && data.text_as_html) {
-          txt = String(data.text_as_html).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-        }
-        if (!txt) txt = '(no text)';
-        pre.textContent = txt;
-        const displayId = data.original_element_id || id;
-        const shortId = displayId.length > 16 ? `${displayId.slice(0,12)}…` : displayId;
-        metaWrap.innerHTML = `<span>${data.type || entry.type || 'Element'}</span><span class="meta">${shortId}</span>`;
-      } catch (e) {
-        pre.textContent = `(failed to load preview: ${e.message})`;
-      }
-    })();
   }
   updateReviewSummaryChip();
   initElementsViewAutoCondense();
+}
+
+function containerChildTypes(parentType) {
+  const map = {
+    Table: ['Paragraph', 'Line'],
+    pageHeader: ['Line', 'Paragraph'],
+    title: ['Line', 'Paragraph'],
+    sectionHeading: ['Line', 'Paragraph'],
+    pageNumber: ['Line', 'Paragraph'],
+  };
+  const vals = map[parentType || ''];
+  return vals ? new Set(vals) : null;
+}
+
+function renderElementOutline(host, filtered) {
+  const pageNum = Number(filtered[0]?.[1]?.page_trimmed || CURRENT_PAGE || 1);
+  const collapse = outlineCollapseState(pageNum);
+  const collapsed = collapse.get();
+  const order = [
+    { type: 'pageHeader', label: 'Page header' },
+    { type: 'pageNumber', label: 'Page number' },
+    { type: 'Table', label: 'Tables' },
+    { type: 'Paragraph', label: 'Paragraphs' },
+    { type: 'Line', label: 'Lines' },
+  ];
+  const byTypeCounts = {};
+  const sorted = filtered.slice().sort((a, b) => {
+    const ea = a[1] || {};
+    const eb = b[1] || {};
+    const ya = Number(ea.y || 0) - Number(eb.y || 0);
+    if (ya !== 0) return ya;
+    return Number(ea.x || 0) - Number(eb.x || 0);
+  });
+  const childMap = new Map();
+  const childIds = new Set();
+  for (const item of sorted) {
+    const [id, entry] = item;
+    if (!entry) continue;
+    const allowedChildren = containerChildTypes(entry.type);
+    if (!allowedChildren) continue;
+    const children = findContainedElements(entry, sorted, allowedChildren);
+    if (children.length) {
+      childMap.set(id, children);
+      children.forEach(([cid]) => childIds.add(cid));
+    }
+  }
+  const wrap = document.createElement('div');
+  wrap.className = 'elements-outline-page';
+  const head = document.createElement('div');
+  head.className = 'elements-outline-page-head';
+  const title = document.createElement('div');
+  title.className = 'elements-outline-title';
+  title.textContent = `Page ${pageNum}`;
+  head.appendChild(title);
+  const counts = document.createElement('div');
+  counts.className = 'elements-outline-counts';
+  counts.textContent = order
+    .map((o) => {
+      const count = sorted.filter(([, entry]) => (entry?.type || '') === o.type).length;
+      if (count) byTypeCounts[o.type] = count;
+      return count ? `${o.label} ${count}` : null;
+    })
+    .filter(Boolean)
+    .join(' · ');
+  head.appendChild(counts);
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'outline-toggle';
+  toggle.textContent = collapsed ? 'Expand' : 'Collapse';
+  toggle.addEventListener('click', () => {
+    collapse.set(!collapsed);
+    renderElementsListForCurrentPage(CURRENT_PAGE_BOXES);
+  });
+  head.appendChild(toggle);
+  wrap.appendChild(head);
+  const body = document.createElement('div');
+  body.className = 'elements-outline-body';
+  if (collapsed) body.classList.add('collapsed');
+  const counters = {};
+  for (const [id, entry, review] of sorted) {
+    if (childIds.has(id)) continue;
+    const t = entry?.type || 'Unknown';
+    const orderMeta = order.find((o) => o.type === t);
+    const label = orderMeta ? orderMeta.label : t;
+    counters[t] = (counters[t] || 0) + 1;
+    const row = document.createElement('div');
+    row.className = 'elements-outline-row';
+    const left = document.createElement('div');
+    left.className = 'elements-outline-left';
+    const badge = document.createElement('span');
+    badge.className = 'outline-badge';
+    badge.textContent = `${label} ${counters[t]}`;
+    left.appendChild(badge);
+    row.appendChild(left);
+    const cardWrap = document.createElement('div');
+    cardWrap.className = 'elements-outline-card';
+    const card = buildElementCard(id, entry, review);
+    const children = childMap.get(id) || [];
+    if (children.length) {
+      row.classList.add('outline-has-children');
+      const state = outlineExpansionState(id);
+      const expanded = state.get();
+      const summary = summarizeChildren(children);
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'outline-child-toggle';
+      toggle.textContent = expanded
+        ? summary ? `Hide contents (${summary})` : 'Hide contents'
+        : summary ? `Show contents (${summary})` : 'Show contents';
+      toggle.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        state.set(!expanded);
+        renderElementsListForCurrentPage(CURRENT_PAGE_BOXES);
+      });
+      cardWrap.appendChild(toggle);
+      if (expanded) {
+        const childWrap = document.createElement('div');
+        childWrap.className = 'elements-outline-children';
+        for (const child of children) {
+          const [cid, centry, creview] = child;
+          const childCard = buildElementCard(cid, centry, creview, { compact: true });
+          childWrap.appendChild(childCard);
+        }
+        cardWrap.appendChild(childWrap);
+      }
+    }
+    cardWrap.appendChild(card);
+    row.appendChild(cardWrap);
+    body.appendChild(row);
+  }
+  if (!counts.textContent) counts.textContent = `${sorted.length} elements`;
+  wrap.appendChild(body);
+  host.appendChild(wrap);
 }
 
 function revealElementInList(elementId, retries = 12) {
@@ -245,7 +376,7 @@ function revealElementInList(elementId, retries = 12) {
 
 async function openElementDetails(elementId) {
   try {
-    const data = await fetchJSON(`/api/element/${encodeURIComponent(CURRENT_SLUG)}/${encodeURIComponent(elementId)}`);
+    const data = await fetchJSON(withProvider(`/api/element/${encodeURIComponent(CURRENT_SLUG)}/${encodeURIComponent(elementId)}`));
     const container = $('preview');
     resetDrawerScrollState();
     CURRENT_ELEMENT_DRAWER_ID = elementId;
@@ -262,11 +393,20 @@ async function openElementDetails(elementId) {
     head.className = 'preview-meta';
     head.innerHTML = `<span class="badge">Element</span><span>page: ${data.page_number ?? '-'}</span>`;
     container.appendChild(head);
+    const structure = document.createElement('div');
+    structure.className = 'element-structure';
+    const crumbs = [
+      '<span class="crumb">Document</span>',
+      `<span class="crumb">Page ${data.page_number ?? '-'}</span>`,
+      `<span class="crumb">${data.type || 'Element'}</span>`,
+    ];
+    structure.innerHTML = crumbs.join(' › ');
+    container.appendChild(structure);
     container.appendChild(buildDrawerReviewSection('element', elementId));
     const html = data.text_as_html;
     if (html) {
       const scroll = document.createElement('div');
-      scroll.className = 'scrollbox';
+      scroll.className = 'scrollbox drawer-markdown';
       const wrapper = document.createElement('div');
       wrapper.innerHTML = html;
       scroll.appendChild(wrapper);
@@ -277,10 +417,23 @@ async function openElementDetails(elementId) {
       registerDrawerScrollTarget(scroll);
       container.appendChild(scroll);
     } else {
-      const pre = document.createElement('pre');
-      pre.textContent = data.text || '(no text)';
-      applyDirectionalText(pre);
-      container.appendChild(pre);
+      const md = await renderMarkdownSafe(data.text);
+      if (md) {
+        const scroll = document.createElement('div');
+        scroll.className = 'scrollbox drawer-markdown';
+        const body = document.createElement('div');
+        body.className = 'markdown-body';
+        body.innerHTML = md;
+        scroll.appendChild(body);
+        applyDirectionalText(body);
+        registerDrawerScrollTarget(scroll);
+        container.appendChild(scroll);
+      } else {
+        const pre = document.createElement('pre');
+        pre.textContent = data.text || '(no text)';
+        applyDirectionalText(pre);
+        container.appendChild(pre);
+      }
     }
   } catch (e) {
     showToast(`Failed to load element: ${e.message}`, 'err');
@@ -289,10 +442,128 @@ async function openElementDetails(elementId) {
 
 async function findStableIdByOrig(origId, page) {
   try {
-    const boxes = await fetchJSON(`/api/boxes/${encodeURIComponent(CURRENT_SLUG)}?page=${page}`);
+    const boxes = await fetchJSON(withProvider(`/api/boxes/${encodeURIComponent(CURRENT_SLUG)}?page=${page}`));
     for (const [eid, entry] of Object.entries(boxes)) {
       if (entry.orig_id && entry.orig_id === origId) return eid;
     }
   } catch (e) {}
   return null;
+}
+
+function buildElementCard(id, entry, review, opts = {}) {
+  const compact = !!opts.compact;
+  const card = document.createElement('div');
+  card.className = 'chunk-card element-card';
+  if (compact) card.classList.add('element-card-compact');
+  if (review && review.rating) {
+    card.classList.add('has-review');
+    card.classList.add(review.rating === 'good' ? 'review-good' : 'review-bad');
+  }
+  card.dataset.elementId = id;
+  const color = typeBorderColor(entry.type || '');
+  card.style.borderLeft = `4px solid ${color}`;
+  const header = document.createElement('div');
+  header.className = 'header element-card-head';
+  const metaWrap = document.createElement('div');
+  metaWrap.className = 'element-card-meta';
+  const dId = entry.orig_id || id;
+  const short = dId.length > 16 ? `${dId.slice(0,12)}…` : dId;
+  metaWrap.innerHTML = `<span>${entry.type || 'Unknown'}</span><span class="meta">${short}</span>`;
+  header.appendChild(metaWrap);
+  header.appendChild(buildReviewButtons('element', id, 'card'));
+  const pre = document.createElement('pre');
+  pre.textContent = 'Loading preview…';
+  applyDirectionalText(pre);
+  card.appendChild(header);
+  const notePreview = buildNotePreview('element', id, 'mini');
+  if (notePreview) {
+    notePreview.title = 'Open element details to edit note';
+    notePreview.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      card.click();
+    });
+    card.appendChild(notePreview);
+  }
+  card.appendChild(pre);
+  if (id === CURRENT_INSPECT_ELEMENT_ID) card.classList.add('focused');
+  card.addEventListener('click', async () => {
+    CURRENT_INSPECT_ELEMENT_ID = id;
+    const p = Number(entry.page_trimmed || CURRENT_PAGE);
+    if (p && p !== CURRENT_PAGE) {
+      await renderPage(p);
+    }
+    await drawBoxesForCurrentPage();
+    openElementDetails(id);
+  });
+  (async () => {
+    try {
+      const data = await fetchJSON(withProvider(`/api/element/${encodeURIComponent(CURRENT_SLUG)}/${encodeURIComponent(id)}`));
+      let txt = data.text || '';
+      if (!txt && data.text_as_html) {
+        txt = String(data.text_as_html).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      }
+      if (!txt) txt = '(no text)';
+      pre.textContent = txt;
+      const displayId = data.original_element_id || id;
+      const shortId = displayId.length > 16 ? `${displayId.slice(0,12)}…` : displayId;
+      metaWrap.innerHTML = `<span>${data.type || entry.type || 'Element'}</span><span class="meta">${shortId}</span>`;
+    } catch (e) {
+      pre.textContent = `(failed to load preview: ${e.message})`;
+    }
+  })();
+  return card;
+}
+function findContainedElements(parentEntry, items, allowedTypes) {
+  if (!parentEntry || !(allowedTypes && allowedTypes.size)) return [];
+  const px = Number(parentEntry.x || 0);
+  const py = Number(parentEntry.y || 0);
+  const pw = Number(parentEntry.w || 0);
+  const ph = Number(parentEntry.h || 0);
+  const pw2 = px + pw;
+  const ph2 = py + ph;
+  const page = parentEntry.page_trimmed || parentEntry.page || CURRENT_PAGE;
+  if (!(pw && ph)) return [];
+  const inside = [];
+  for (const item of items) {
+    const [id, entry, review] = item;
+    if (!entry || entry === parentEntry) continue;
+    if ((entry.page_trimmed || entry.page) !== page) continue;
+    if (!allowedTypes.has(entry.type || '')) continue;
+    const cx = Number(entry.x || 0);
+    const cy = Number(entry.y || 0);
+    const cw = Number(entry.w || 0);
+    const ch = Number(entry.h || 0);
+    if (!(cw && ch)) continue;
+    const cx2 = cx + cw;
+    const cy2 = cy + ch;
+    const margin = 2;
+    const fits =
+      cx >= px - margin &&
+      cy >= py - margin &&
+      cx2 <= pw2 + margin &&
+      cy2 <= ph2 + margin;
+    if (!fits) continue;
+    inside.push(item);
+  }
+  inside.sort((a, b) => {
+    const ea = a[1] || {};
+    const eb = b[1] || {};
+    const ya = Number(ea.y || 0) - Number(eb.y || 0);
+    if (ya !== 0) return ya;
+    return Number(ea.x || 0) - Number(eb.x || 0);
+  });
+  return inside;
+}
+
+function summarizeChildren(children) {
+  if (!children || !children.length) return '';
+  const counts = {};
+  for (const [, entry] of children) {
+    const t = entry?.type || 'Element';
+    counts[t] = (counts[t] || 0) + 1;
+  }
+  const parts = Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([t, n]) => `${n} ${t.toLowerCase()}${n > 1 ? 's' : ''}`);
+  return parts.join(', ');
 }

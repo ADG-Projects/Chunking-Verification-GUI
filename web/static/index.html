@@ -42,24 +42,35 @@
           }
           return window.pdfjsLib;
         })();
-        window.__chartReady = (async function ensureChartJs(){
-          const sources = [
-            '/vendor/chartjs/chart.umd.min.js',
-            'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js',
-            'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js',
-            'https://unpkg.com/chart.js@4.4.1/dist/chart.umd.min.js',
-          ];
-          for (const src of sources) {
-            try {
-              await loadScript(src);
-              if (window.Chart) return window.Chart;
-            } catch (e) {}
+        window.__mdReady = (async function ensureMarkdown(){
+          async function loadAny(sources, globalName) {
+            for (const src of sources) {
+              try {
+                await loadScript(src);
+                if (window[globalName]) return window[globalName];
+              } catch (e) {}
+            }
+            return null;
           }
-          throw new Error('Chart.js failed to load');
-        })().catch(function(err){
-          console.warn('Chart.js failed to load', err);
-          return null;
-        });
+          const dompurify = await loadAny([
+            '/vendor/dompurify/purify.min.js',
+            'https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js',
+            'https://unpkg.com/dompurify@3.1.6/dist/purify.min.js'
+          ], 'DOMPurify');
+          const marked = await loadAny([
+            '/vendor/marked/marked.min.js',
+            'https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js',
+            'https://unpkg.com/marked@12.0.2/marked.min.js'
+          ], 'marked');
+          if (!dompurify || !marked) {
+            console.warn('Markdown rendering unavailable; falling back to plain text');
+            return null;
+          }
+          try {
+            marked.setOptions({ breaks: true });
+          } catch (_) {}
+          return { DOMPurify: dompurify, marked };
+        })();
       })();
     </script>
   </head>
@@ -68,11 +79,10 @@
       <div class="header-left">
         <div class="title-stack">
           <h1>Chunking Visualizer</h1>
-          <span class="version-badge">v2.1</span>
+          <span class="version-badge">v3.0</span>
         </div>
         <div class="view-tabs" role="tablist" aria-label="Primary view">
-          <button id="viewTabMetrics" class="tab active" data-view="metrics" role="tab" aria-selected="true">Metrics</button>
-          <button id="viewTabInspect" class="tab" data-view="inspect" role="tab" aria-selected="false">Inspect</button>
+          <button id="viewTabInspect" class="tab active" data-view="inspect" role="tab" aria-selected="true">Inspect</button>
         </div>
       </div>
       <div class="controls">
@@ -88,6 +98,22 @@
 
     <!-- Settings Recap Bar -->
     <div id="settingsRecap" class="settings-recap">
+      <div class="setting-item">
+        <span class="setting-label">PROV <span class="info" tabindex="0">i</span><div class="tip">Run provider: Unstructured chunker or Azure Document Intelligence Layout (Content Understanding is disabled in the UI).</div></span>
+        <span class="setting-value" id="settingProvider">-</span>
+      </div>
+      <div class="setting-item">
+        <span class="setting-label">MODEL <span class="info" tabindex="0">i</span><div class="tip">Model/analyzer id used for this run (e.g., prebuilt-layout, prebuilt-documentSearch).</div></span>
+        <span class="setting-value" id="settingModel">-</span>
+      </div>
+      <div class="setting-item">
+        <span class="setting-label">API <span class="info" tabindex="0">i</span><div class="tip">API version sent to the provider (DI defaults to 2024-07-31-preview; CU defaults to 2025-11-01).</div></span>
+        <span class="setting-value" id="settingApiVersion">-</span>
+      </div>
+      <div class="setting-item">
+        <span class="setting-label">FEAT <span class="info" tabindex="0">i</span><div class="tip">Feature flags passed to the provider (comma-separated).</div></span>
+        <span class="setting-value" id="settingFeatures">-</span>
+      </div>
       <div class="setting-item">
         <span class="setting-label">STRAT <span class="info" tabindex="0">i</span><div class="tip">Extraction strategy in Unstructured: auto lets the library pick, fast is lighter, hi_res uses high‑resolution vision for layout accuracy.</div></span>
         <span class="setting-value" id="settingStrategy">-</span>
@@ -172,44 +198,8 @@
         </div>
       </section>
 
-      <!-- Right panel: Metrics view -->
-      <section class="right" id="right-metrics" aria-labelledby="viewTabMetrics">
-        <div class="metrics">
-          <div class="metric">
-            <div class="label">Avg Coverage <span class="info" tabindex="0">i</span><div class="tip">Macro average of per-table coverage (recall): share of gold rows covered by the selected chunks.</div></div>
-            <div class="bar"><div id="mcov" class="fill"></div></div>
-            <div id="mcovv" class="value">-</div>
-          </div>
-          <div class="metric">
-            <div class="label">Avg Cohesion <span class="info" tabindex="0">i</span><div class="tip">Macro average of per-table cohesion = 1 / selected_chunk_count. Maximized when a table stays in a single chunk.</div></div>
-            <div class="bar"><div id="mcoh" class="fill"></div></div>
-            <div id="mcohv" class="value">-</div>
-          </div>
-          <div class="metric">
-            <div class="label">Avg F1 <span class="info" tabindex="0">i</span><div class="tip">Macro average of per-table F1 where F1 = harmonic mean of coverage and cohesion.</div></div>
-            <div class="bar"><div id="mf1" class="fill"></div></div>
-            <div id="mf1v" class="value">-</div>
-          </div>
-          <div class="metric">
-            <div class="label">Micro Coverage <span class="info" tabindex="0">i</span><div class="tip">Coverage weighted by gold-row counts across tables (larger tables contribute more).</div></div>
-            <div class="bar"><div id="mmicro" class="fill"></div></div>
-            <div id="mmicrov" class="value">-</div>
-          </div>
-        </div>
-        <div class="chart">
-          <canvas id="chart"></canvas>
-        </div>
-        <div class="matches">
-          <h2>Tables</h2>
-          <div class="row controls-row">
-            <label class="checkbox"><input id="showUnmatched" type="checkbox" /> Show unmatched gold tables</label>
-          </div>
-          <div id="matchList" class="list"></div>
-        </div>
-      </section>
-
       <!-- Right panel: Inspect view -->
-      <section class="right hidden" id="right-inspect" aria-labelledby="viewTabInspect">
+      <section class="right" id="right-inspect" aria-labelledby="viewTabInspect">
         <div class="tabs inspect-tabs">
           <button class="tab active" data-inspect="elements">Elements</button>
           <button class="tab" data-inspect="chunks">Chunks</button>
@@ -231,6 +221,12 @@
                     <option value="Bad">Bad only</option>
                   </select>
                 </label>
+                <div id="elementViewToggle" class="view-toggle hidden" role="group" aria-label="Element view mode">
+                  <button type="button" class="toggle-btn active" data-mode="flat">Flat</button>
+                  <button type="button" class="toggle-btn" data-mode="outline">Outline</button>
+                  <span class="info" tabindex="0">i</span>
+                  <div class="tip">Outline (Azure runs only) orders elements by reading position per page, groups into Page Header/Number, Tables, Paragraphs, and Lines, numbers each type, and lets you collapse long pages.</div>
+                </div>
               </div>
               <div id="elementPagination" class="element-pagination"></div>
               <div class="collapsible-stats">
@@ -277,130 +273,192 @@
           <div class="modal-title">New Run</div>
           <button id="closeRunModal" class="btn">Close</button>
         </div>
-        <div class="run-grid" id="runFormGrid">
-          <div class="pdf-lang-row">
-            <label class="pdf-picker">
-              <div class="lab">PDF <span class="info" tabindex="0">i</span><div class="tip">Pick a source PDF from <code>res/</code>. Use Delete to remove the selected file from the server.</div></div>
-              <div class="upload-row">
-                <select id="pdfSelect"></select>
-                <button id="pdfDeleteBtn" class="btn btn-secondary" type="button" title="Delete selected PDF from server">Delete</button>
-              </div>
-            </label>
-            <label class="lang-picker">
-              <div class="lab">Primary language <span class="info" tabindex="0">i</span><div class="tip">Hints OCR and display alignment. Arabic prioritizes Arabic OCR and right-aligns previews.</div></div>
-              <select id="docLanguage">
-                <option value="eng" selected>English (LTR)</option>
-                <option value="ara">Arabic (RTL)</option>
-              </select>
-            </label>
+        <div class="run-modal-body">
+          <div class="run-preview" id="runPreviewPane">
+            <div class="run-preview-controls">
+              <button id="runPrev" class="btn">◀</button>
+              <span>Page <span id="runPageNum">-</span> / <span id="runPageCount">-</span></span>
+              <button id="runNext" class="btn">▶</button>
+              <span class="sep"></span>
+              <button id="addPageBtn" class="btn">Add page</button>
+              <button id="markStartBtn" class="btn">Mark start</button>
+              <button id="markEndBtn" class="btn">Mark end</button>
+              <span id="rangeHint" class="muted"></span>
+            </div>
+            <div class="run-canvas-wrap">
+              <canvas id="runPdfCanvas"></canvas>
+            </div>
           </div>
-          <div class="upload-row">
+          <div class="run-grid" id="runFormGrid">
+            <div class="pdf-lang-row">
+              <label class="pdf-picker">
+                <div class="lab">PDF <span class="info" tabindex="0">i</span><div class="tip">Pick a source PDF from <code>res/</code>. Use Delete to remove the selected file from the server.</div></div>
+                <div class="upload-row">
+                  <select id="pdfSelect"></select>
+                  <button id="pdfDeleteBtn" class="btn btn-secondary" type="button" title="Delete selected PDF from server">Delete</button>
+                </div>
+              </label>
+              <label class="lang-picker azure-hidden">
+                <div class="lab">UI primary language <span class="info" tabindex="0">i</span><div class="tip">Affects preview direction only. Azure runs rely on built-in language detection; Unstructured also forwards OCR hints.</div></div>
+                <select id="docLanguage">
+                  <option value="eng" selected>English (LTR)</option>
+                  <option value="ara">Arabic (RTL)</option>
+                </select>
+              </label>
+              <label class="provider-picker">
+                <div class="lab">Provider <span class="info" tabindex="0">i</span><div class="tip">Unstructured keeps chunking; Azure runs use Document Intelligence (Document Understanding is currently disabled in the UI).</div></div>
+                <select id="providerSelect">
+                  <option value="unstructured">Unstructured</option>
+                  <option value="azure-di">Azure Document Intelligence (Layout)</option>
+                  <option value="azure-cu" disabled>Azure Content Understanding (disabled)</option>
+                </select>
+              </label>
+            </div>
+            <div class="upload-row">
+              <label>
+                <div class="lab">Upload PDF <span class="info" tabindex="0">i</span><div class="tip">Choose a file and it uploads immediately to the server's <code>PDF_DIR</code> (Fly volume mount) so future runs can reuse it.</div></div>
+                <input id="pdfUploadInput" type="file" accept=".pdf" />
+              </label>
+              <button id="pdfUploadBtn" class="btn" type="button" style="display:none;">Upload</button>
+              <span id="pdfUploadStatus" class="muted"></span>
+            </div>
             <label>
-              <div class="lab">Upload PDF <span class="info" tabindex="0">i</span><div class="tip">Choose a file and it uploads immediately to the server's <code>PDF_DIR</code> (Fly volume mount) so future runs can reuse it.</div></div>
-              <input id="pdfUploadInput" type="file" accept=".pdf" />
+              <div class="lab">Pages <span class="info" tabindex="0">i</span><div class="tip">Comma‑separated pages and ranges, e.g., <code>5-7,12</code>. Leave blank to process the entire document.</div></div>
+              <input id="pagesInput" placeholder="e.g. 4-6 or 4,5,6 (blank = all)" />
             </label>
-            <button id="pdfUploadBtn" class="btn" type="button" style="display:none;">Upload</button>
-            <span id="pdfUploadStatus" class="muted"></span>
-          </div>
-          <label>
-            <div class="lab">Pages <span class="info" tabindex="0">i</span><div class="tip">Comma‑separated pages and ranges, e.g., <code>5-7,12</code>. Leave blank to process the entire document.</div></div>
-            <input id="pagesInput" placeholder="e.g. 4-6 or 4,5,6 (blank = all)" />
-          </label>
-          <label>
-            <div class="lab">Strategy <span class="info" tabindex="0">i</span><div class="tip">Unstructured extraction mode: <b>auto</b> (choose for you), <b>fast</b> (lighter), <b>hi_res</b> (vision‑heavy, better layout).</div></div>
-            <select id="strategySelect">
-              <option value="auto">auto</option>
-              <option value="fast">fast</option>
-              <option value="hi_res">hi_res</option>
-            </select>
-          </label>
-          <label class="checkbox">
-            <input id="inferTables" type="checkbox" checked />
-            <span class="lab">Infer table structure <span class="info" tabindex="0">i</span><div class="tip">Rebuild table rows and cells from lines/glyphs for more accurate tables.</div></span>
-          </label>
-          <label>
-            <div class="lab">Chunking <span class="info" tabindex="0">i</span><div class="tip">Group output into chunks: <b>by_title</b> uses section titles; <b>basic</b> uses size‑only chunking.</div></div>
-            <select id="chunkingSelect">
-              <option value="by_title" selected>by_title</option>
-              <option value="basic">basic</option>
-            </select>
-          </label>
-          <label>
-            <div class="lab">Variant tag (optional) <span class="info" tabindex="0">i</span><div class="tip">Optional label appended to the run slug for side‑by‑side comparisons (e.g., <code>hires-2k</code>).</div></div>
-            <input id="variantTag" placeholder="e.g. hi-res-tuned" />
-          </label>
-          <div id="chunkAdv" class="chunk-adv">
-            <details>
-              <summary>Advanced chunking</summary>
-              <div class="adv-grid">
+            <div id="unstructuredSettings" class="unstructured-settings unstructured-only">
+              <div class="lab">Unstructured options</div>
+              <div class="unstructured-options">
                 <label>
-                  <div class="lab">max_tokens <span class="info" tabindex="0">i</span><div class="tip">Target tokens per chunk. When set, <code>max_characters</code> is derived as <code>tokens × 4</code>.</div></div>
-                  <input id="chunkMaxTokens" type="number" min="50" step="10" placeholder="e.g. 500" />
-                </label>
-                <label>
-                  <div class="lab">max_characters <span class="info" tabindex="0">i</span><div class="tip">Hard character cap per chunk. Used when <code>max_tokens</code> is not provided.</div></div>
-                  <input id="chunkMaxChars" type="number" min="50" step="10" placeholder="e.g. 2000" />
-                </label>
-                <label>
-                  <div class="lab">new_after_n_chars <span class="info" tabindex="0">i</span><div class="tip">Start a new chunk after N characters have been appended.</div></div>
-                  <input id="chunkNewAfter" type="number" min="50" step="10" placeholder="e.g. 1500" />
-                </label>
-                <label id="chunkCombineRow">
-                  <div class="lab">combine_under_n_chars <span class="info" tabindex="0">i</span><div class="tip">Merge small chunks below N characters with the next chunk. Applies to <b>by_title</b>.</div></div>
-                  <input id="chunkCombineUnder" type="number" min="0" step="10" placeholder="e.g. 500" />
-                </label>
-                <label>
-                  <div class="lab">overlap <span class="info" tabindex="0">i</span><div class="tip">Overlap N trailing characters between adjacent chunks to preserve context.</div></div>
-                  <input id="chunkOverlap" type="number" min="0" step="10" placeholder="e.g. 100" />
-                </label>
-              </div>
-              <div class="adv-grid">
-                <label>
-                  <div class="lab">include_orig_elements <span class="info" tabindex="0">i</span><div class="tip">Include original atomic elements alongside chunk spans in outputs/overlays.</div></div>
-                  <select id="chunkIncludeOrig">
-                    <option value="">default (true)</option>
-                    <option value="true">true</option>
-                    <option value="false">false</option>
+                  <div class="lab">Strategy <span class="info" tabindex="0">i</span><div class="tip">Unstructured extraction mode: <b>auto</b> (choose for you), <b>fast</b> (lighter), <b>hi_res</b> (vision‑heavy, better layout).</div></div>
+                  <select id="strategySelect">
+                    <option value="auto">auto</option>
+                    <option value="fast">fast</option>
+                    <option value="hi_res">hi_res</option>
                   </select>
                 </label>
-                <label>
-                  <div class="lab">overlap_all <span class="info" tabindex="0">i</span><div class="tip">Apply overlap to all boundaries, including section breaks.</div></div>
-                  <select id="chunkOverlapAll">
-                    <option value="">default (false)</option>
-                    <option value="true">true</option>
-                    <option value="false">false</option>
-                  </select>
+                <label class="checkbox">
+                  <input id="inferTables" type="checkbox" checked />
+                  <span class="lab">Infer table structure <span class="info" tabindex="0">i</span><div class="tip">Rebuild table rows and cells from lines/glyphs for more accurate tables.</div></span>
                 </label>
-                <label id="chunkMultipageRow">
-                  <div class="lab">multipage_sections <span class="info" tabindex="0">i</span><div class="tip">Allow <b>by_title</b> chunks to span multiple pages until the next title.</div></div>
-                  <select id="chunkMultipage">
-                    <option value="">default (true)</option>
-                    <option value="true">true</option>
-                    <option value="false">false</option>
+                <label>
+                  <div class="lab">Chunking <span class="info" tabindex="0">i</span><div class="tip">Group output into chunks: <b>by_title</b> uses section titles; <b>basic</b> uses size‑only chunking.</div></div>
+                  <select id="chunkingSelect">
+                    <option value="none" selected>none (elements only)</option>
+                    <option value="by_title">by_title</option>
+                    <option value="basic">basic</option>
                   </select>
                 </label>
               </div>
-            </details>
-          </div>
-          <div class="run-actions">
-            <button id="cancelRunBtn" class="btn btn-secondary" type="button">Cancel</button>
-            <button id="runBtn" class="btn">Run</button>
-            <span id="runStatus" class="muted"></span>
-          </div>
-        </div>
-        <div class="run-preview" id="runPreviewPane">
-          <div class="run-preview-controls">
-            <button id="runPrev" class="btn">◀</button>
-            <span>Page <span id="runPageNum">-</span> / <span id="runPageCount">-</span></span>
-            <button id="runNext" class="btn">▶</button>
-            <span class="sep"></span>
-            <button id="addPageBtn" class="btn">Add page</button>
-            <button id="markStartBtn" class="btn">Mark start</button>
-            <button id="markEndBtn" class="btn">Mark end</button>
-            <span id="rangeHint" class="muted"></span>
-          </div>
-          <div class="run-canvas-wrap">
-            <canvas id="runPdfCanvas"></canvas>
+              <div id="chunkAdv" class="chunk-adv">
+                <div class="adv-grid">
+                  <label>
+                    <div class="lab">max_tokens <span class="info" tabindex="0">i</span><div class="tip">Target tokens per chunk. When set, <code>max_characters</code> is derived as <code>tokens × 4</code>.</div></div>
+                    <input id="chunkMaxTokens" type="number" min="50" step="10" placeholder="e.g. 500" />
+                  </label>
+                  <label>
+                    <div class="lab">max_characters <span class="info" tabindex="0">i</span><div class="tip">Hard character cap per chunk. Used when <code>max_tokens</code> is not provided.</div></div>
+                    <input id="chunkMaxChars" type="number" min="50" step="10" placeholder="e.g. 2000" />
+                  </label>
+                  <label>
+                    <div class="lab">new_after_n_chars <span class="info" tabindex="0">i</span><div class="tip">Start a new chunk after N characters have been appended.</div></div>
+                    <input id="chunkNewAfter" type="number" min="50" step="10" placeholder="e.g. 1500" />
+                  </label>
+                  <label id="chunkCombineRow">
+                    <div class="lab">combine_under_n_chars <span class="info" tabindex="0">i</span><div class="tip">Merge small chunks below N characters with the next chunk. Applies to <b>by_title</b>.</div></div>
+                    <input id="chunkCombineUnder" type="number" min="0" step="10" placeholder="e.g. 500" />
+                  </label>
+                  <label>
+                    <div class="lab">overlap <span class="info" tabindex="0">i</span><div class="tip">Overlap N trailing characters between adjacent chunks to preserve context.</div></div>
+                    <input id="chunkOverlap" type="number" min="0" step="10" placeholder="e.g. 100" />
+                  </label>
+                </div>
+                <div class="adv-grid">
+                  <label>
+                    <div class="lab">include_orig_elements <span class="info" tabindex="0">i</span><div class="tip">Include original atomic elements alongside chunk spans in outputs/overlays.</div></div>
+                    <select id="chunkIncludeOrig">
+                      <option value="">default (true)</option>
+                      <option value="true">true</option>
+                      <option value="false">false</option>
+                    </select>
+                  </label>
+                  <label>
+                    <div class="lab">overlap_all <span class="info" tabindex="0">i</span><div class="tip">Apply overlap to all boundaries, including section breaks.</div></div>
+                    <select id="chunkOverlapAll">
+                      <option value="">default (false)</option>
+                      <option value="true">true</option>
+                      <option value="false">false</option>
+                    </select>
+                  </label>
+                  <label id="chunkMultipageRow">
+                    <div class="lab">multipage_sections <span class="info" tabindex="0">i</span><div class="tip">Allow <b>by_title</b> chunks to span multiple pages until the next title.</div></div>
+                    <select id="chunkMultipage">
+                      <option value="">default (true)</option>
+                      <option value="true">true</option>
+                      <option value="false">false</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <label>
+              <div class="lab">Variant tag (optional) <span class="info" tabindex="0">i</span><div class="tip">Optional label appended to the run slug for side‑by‑side comparisons (e.g., <code>hires-2k</code>).</div></div>
+              <input id="variantTag" placeholder="e.g. hi-res-tuned" />
+            </label>
+            <div id="azureSettings" class="azure-settings hidden">
+              <div class="lab">Azure Analyze options</div>
+              <div class="azure-options">
+                <div class="opt-group">
+                  <div class="lab sm">Output format</div>
+                  <label class="radio"><input type="radio" name="azureOutputFormat" value="text" /> Text</label>
+                  <label class="radio"><input type="radio" name="azureOutputFormat" value="markdown" checked /> Markdown</label>
+                </div>
+                <div class="opt-group">
+                  <div class="lab sm">Optional output</div>
+                  <label class="checkbox"><input type="checkbox" id="azureFigureImage" /> Figure image</label>
+                </div>
+                <div class="opt-group">
+                  <div class="lab sm">Optional detection</div>
+                  <label class="checkbox"><input type="checkbox" id="azureBarcodes" /> Barcodes</label>
+                  <label class="checkbox"><input type="checkbox" id="azureLanguage" checked /> Language</label>
+                  <label class="checkbox"><input type="checkbox" id="azureKvp" /> Key-value pairs</label>
+                </div>
+                <div class="opt-group">
+                  <div class="lab sm">Premium detection</div>
+                  <label class="checkbox"><input type="checkbox" id="azureHighRes" /> High resolution</label>
+                  <label class="checkbox"><input type="checkbox" id="azureStyleFont" /> Style font</label>
+                  <label class="checkbox"><input type="checkbox" id="azureFormulas" /> Formulas</label>
+                </div>
+              </div>
+              <details class="azure-advanced">
+                <summary>Advanced (model, API version, locale…)</summary>
+                <label>
+                  <div class="lab">Model id <span class="info" tabindex="0">i</span><div class="tip">Document Intelligence defaults to <code>prebuilt-layout</code>.</div></div>
+                  <input id="azureModelId" placeholder="prebuilt-layout" />
+                </label>
+                <label>
+                  <div class="lab">API version <span class="info" tabindex="0">i</span><div class="tip">Document Intelligence default: 2024-11-30.</div></div>
+                  <input id="azureApiVersion" placeholder="e.g. 2024-11-30" />
+                </label>
+                <label>
+                  <div class="lab">Locale <span class="info" tabindex="0">i</span><div class="tip">Locale hint for OCR/analysis (e.g., <code>en-US</code>, <code>ar-AE</code>).</div></div>
+                  <input id="azureLocale" placeholder="e.g. en-US" />
+                </label>
+                <label>
+                  <div class="lab">String index type <span class="info" tabindex="0">i</span><div class="tip">String index type (e.g., <code>unicodeCodePoint</code>).</div></div>
+                  <input id="azureStringIndexType" placeholder="e.g. unicodeCodePoint" />
+                </label>
+                <label>
+                  <div class="lab">Query fields <span class="info" tabindex="0">i</span><div class="tip">Comma-separated fields when using query-based extraction.</div></div>
+                  <input id="azureQueryFields" placeholder="e.g. invoiceDate,total" />
+                </label>
+              </details>
+            </div>
+            <div class="run-actions">
+              <button id="cancelRunBtn" class="btn btn-secondary" type="button">Cancel</button>
+              <button id="runBtn" class="btn">Run</button>
+              <span id="runStatus" class="muted"></span>
+            </div>
           </div>
         </div>
         <div class="run-progress" id="runProgressPane">
@@ -415,14 +473,14 @@
       </div>
     </div>
 
-    <script src="/app-state.js?v=20251118-2" defer></script>
-    <script src="/app-ui.js?v=20251118-2" defer></script>
-    <script src="/app-reviews.js?v=20251118-2" defer></script>
-    <script src="/app-overlays.js?v=20251118-2" defer></script>
-    <script src="/app-metrics.js?v=20251118-2" defer></script>
-    <script src="/app-elements.js?v=20251118-2" defer></script>
-    <script src="/app-chunks.js?v=20251118-2" defer></script>
-    <script src="/app-runs.js?v=20251118-2" defer></script>
-    <script src="/app.js?v=20251118-2" defer></script>
+    <script src="/app-state.js?v=20251124" defer></script>
+    <script src="/app-ui.js?v=20251124" defer></script>
+    <script src="/app-reviews.js?v=20251124" defer></script>
+    <script src="/app-overlays.js?v=20251124" defer></script>
+    <script src="/app-metrics.js?v=20251124" defer></script>
+    <script src="/app-elements.js?v=20251124" defer></script>
+    <script src="/app-chunks.js?v=20251124" defer></script>
+    <script src="/app-runs.js?v=20251124" defer></script>
+    <script src="/app.js?v=20251124" defer></script>
   </body>
   </html>

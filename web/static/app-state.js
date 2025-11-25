@@ -6,20 +6,14 @@ let SCALE_IS_MANUAL = false;
 let CURRENT_RENDER_TASK = null;
 let CURRENT_SLUG = null;
 let BOX_INDEX = {}; // element_id -> {page_trimmed, layout_w,h, x,y,w,h}
-let MATCHES = null;
-let LAST_SELECTED_MATCH = null;
-let CHART_INSTANCE = null;
-let LAST_CHART_MATCHES = [];
 let CURRENT_ELEMENT_ID = null;
 let CHIP_META = {}; // element_id -> meta from /api/elements
-let LAST_HIGHLIGHT_MODE = 'all'; // 'all' | 'best'
 let KNOWN_PDFS = [];
 let CURRENT_TAB = 'overview';
 let ELEMENT_TYPES = [];
 let CHUNK_TYPES = [];
 let CURRENT_TYPE_FILTER = 'All';
 let CURRENT_CHUNK_TYPE_FILTER = 'All';
-let SHOW_UNMATCHED = false;
 let RUNS_CACHE = [];
 let CURRENT_RUN = null;
 let CURRENT_RUN_CONFIG = null;
@@ -29,7 +23,7 @@ let CURRENT_CHUNK_LOOKUP = {};
 let CURRENT_CHUNK_SUMMARY = null;
 let SHOW_CHUNK_OVERLAYS = true;
 let SHOW_ELEMENT_OVERLAYS = true;
-let CURRENT_VIEW = 'metrics';
+let CURRENT_VIEW = 'inspect';
 let INSPECT_TAB = 'elements';
 let CURRENT_INSPECT_ELEMENT_ID = null;
 let RUN_PREVIEW_DOC = null;
@@ -57,6 +51,9 @@ let CURRENT_CHUNK_DRAWER_ID = null;
 let CURRENT_ELEMENT_DRAWER_ID = null;
 let CURRENT_RUN_JOB_ID = null;
 let CURRENT_RUN_JOB_STATUS = null;
+let CURRENT_PROVIDER = 'unstructured';
+let CURRENT_ELEMENT_VIEW_MODE = 'flat'; // 'flat' | 'outline'
+let ELEMENT_OUTLINE_STATE = { collapsedByPage: {}, expanded: {} };
 
 const RTL_AWARE_ELEMENTS = new Set();
 const TABLE_PREVIEW_ELEMENTS = new Set();
@@ -164,24 +161,56 @@ function normalizeLangCode(value) {
 function extractLangFromList(value) {
   if (!value) return null;
   if (Array.isArray(value)) {
+    let fallback = null;
     for (const part of value) {
-      const code = normalizeLangCode(part);
-      if (code) return code;
+      if (part && typeof part === 'object') {
+        const candidate =
+          part.locale ||
+          part.language ||
+          part.language_code ||
+          part.languageCode ||
+          part.code;
+        const code = normalizeLangCode(candidate);
+        if (code === 'ara') return 'ara';
+        if (!fallback && code) fallback = code;
+      } else {
+        const code = normalizeLangCode(part);
+        if (code === 'ara') return 'ara';
+        if (!fallback && code) fallback = code;
+      }
     }
-    return null;
+    return fallback;
   }
   if (typeof value === 'string') {
     const parts = value.split(/[\s,;+]+/);
+    let fallback = null;
     for (const part of parts) {
       const code = normalizeLangCode(part);
-      if (code) return code;
+      if (code === 'ara') return 'ara';
+      if (!fallback && code) fallback = code;
     }
+    if (fallback) return fallback;
+  }
+  if (value && typeof value === 'object') {
+    const code = normalizeLangCode(
+      value.locale ||
+      value.language ||
+      value.language_code ||
+      value.languageCode ||
+      value.code,
+    );
+    if (code === 'ara') return 'ara';
+    if (code) return code;
   }
   return null;
 }
 
 function resolvePrimaryLanguage(cfg, snap) {
   return (
+    normalizeLangCode(cfg?.detected_primary_language) ||
+    normalizeLangCode(snap?.detected_primary_language) ||
+    extractLangFromList(cfg?.detected_languages) ||
+    extractLangFromList(snap?.detected_languages) ||
     normalizeLangCode(snap?.primary_language) ||
     normalizeLangCode(cfg?.primary_language) ||
     extractLangFromList(snap?.languages) ||
@@ -190,6 +219,16 @@ function resolvePrimaryLanguage(cfg, snap) {
     normalizeLangCode(cfg?.ocr_languages) ||
     'eng'
   );
+}
+
+function providerParam(provider = CURRENT_PROVIDER || 'unstructured') {
+  const p = provider || 'unstructured';
+  return `provider=${encodeURIComponent(p)}`;
+}
+
+function withProvider(url, provider = CURRENT_PROVIDER || 'unstructured') {
+  const param = providerParam(provider);
+  return url.includes('?') ? `${url}&${param}` : `${url}?${param}`;
 }
 
 function pxRect(points) {

@@ -4,6 +4,12 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function loadRun(slug) {
   CURRENT_SLUG = slug;
   CURRENT_RUN = (RUNS_CACHE || []).find(r => r.slug === slug) || null;
+  CURRENT_PROVIDER = (CURRENT_RUN && CURRENT_RUN.provider) || CURRENT_PROVIDER || 'unstructured';
+  const providerSel = $('providerSelect');
+  if (providerSel) {
+    providerSel.value = CURRENT_PROVIDER;
+    providerSel.dispatchEvent(new Event('change'));
+  }
   CURRENT_RUN_HAS_CHUNKS = Boolean(CURRENT_RUN && CURRENT_RUN.chunks_file);
   CURRENT_CHUNK_LOOKUP = {};
   CURRENT_CHUNK_TYPE_FILTER = 'All';
@@ -11,7 +17,7 @@ async function loadRun(slug) {
   CURRENT_ELEMENT_REVIEW_FILTER = 'All';
   BOX_INDEX = {};
   CURRENT_PAGE_BOXES = null;
-  const pdfUrl = `/pdf/${encodeURIComponent(slug)}`;
+  const pdfUrl = withProvider(`/pdf/${encodeURIComponent(slug)}`, CURRENT_PROVIDER);
   const loadingTask = window['pdfjsLib'].getDocument(pdfUrl);
   PDF_DOC = await loadingTask.promise;
   PAGE_COUNT = PDF_DOC.numPages;
@@ -20,31 +26,20 @@ async function loadRun(slug) {
   $('pageCount').textContent = PAGE_COUNT;
   await renderPage(CURRENT_PAGE);
 
-  const matches = await fetchJSON(`/api/matches/${encodeURIComponent(slug)}`);
-  MATCHES = matches;
-  CURRENT_RUN_CONFIG = matches.run_config || CURRENT_RUN?.run_config || null;
-  CURRENT_CHUNK_SUMMARY = matches.chunk_summary || CURRENT_RUN?.chunk_summary || null;
-  if (!CURRENT_RUN_HAS_CHUNKS) {
-    CURRENT_RUN_HAS_CHUNKS = Boolean(CURRENT_CHUNK_SUMMARY);
-  }
-  refreshMatchesView();
+  CURRENT_RUN_CONFIG = CURRENT_RUN?.run_config || null;
+  CURRENT_CHUNK_SUMMARY = CURRENT_RUN?.chunk_summary || null;
   updateRunConfigCard();
   if (CURRENT_RUN_HAS_CHUNKS) {
-    await loadChunksForRun(slug);
+    await loadChunksForRun(slug, CURRENT_PROVIDER);
   } else {
     CURRENT_CHUNKS = null;
     renderChunksTab();
   }
-  const showUnmatchedCb = $('showUnmatched');
-  if (showUnmatchedCb && !showUnmatchedCb._wired) {
-    showUnmatchedCb._wired = true;
-    showUnmatchedCb.addEventListener('change', () => { SHOW_UNMATCHED = showUnmatchedCb.checked; refreshMatchesView(); });
-  }
-  await loadElementTypes(slug);
+  await loadElementTypes(slug, CURRENT_PROVIDER);
   populateTypeSelectors();
   const elemReviewSel = $('elementsReviewSelect');
   if (elemReviewSel) elemReviewSel.value = CURRENT_ELEMENT_REVIEW_FILTER;
-  await loadReviews(slug);
+  await loadReviews(slug, CURRENT_PROVIDER);
 }
 
 async function renderPage(num) {
@@ -119,7 +114,6 @@ function resetPdfViewer() {
   PAGE_COUNT = 0;
   CURRENT_PAGE = 1;
   CURRENT_PAGE_BOXES = null;
-  LAST_SELECTED_MATCH = null;
   const canvas = $('pdfCanvas');
   if (canvas) {
     const ctx = canvas.getContext('2d');
@@ -146,7 +140,6 @@ function resetPdfViewer() {
 async function init() {
   await loadPdfs();
   wireRunForm();
-  setupViewTabs();
   setupInspectTabs();
   wireModal();
   await (async function waitForPdfjs(maxMs = 5000) {
@@ -164,19 +157,16 @@ async function init() {
     if (!PDF_DOC) return;
     const n = Math.max(1, CURRENT_PAGE - 1);
     await renderPage(n);
-    if (LAST_SELECTED_MATCH) drawTargetsOnPage(n, LAST_SELECTED_MATCH, LAST_HIGHLIGHT_MODE === 'best');
   });
   $('nextPage').addEventListener('click', async () => {
     if (!PDF_DOC) return;
     const n = Math.min(PAGE_COUNT, CURRENT_PAGE + 1);
     await renderPage(n);
-    if (LAST_SELECTED_MATCH) drawTargetsOnPage(n, LAST_SELECTED_MATCH, LAST_HIGHLIGHT_MODE === 'best');
   });
   $('zoom').addEventListener('input', async (e) => {
     SCALE_IS_MANUAL = true;
     SCALE = Number(e.target.value) / 100;
     await renderPage(CURRENT_PAGE);
-    if (LAST_SELECTED_MATCH) drawTargetsOnPage(CURRENT_PAGE, LAST_SELECTED_MATCH, LAST_HIGHLIGHT_MODE === 'best');
   });
   setupReviewChipHandlers();
   $('drawerClose').addEventListener('click', async () => {
@@ -206,7 +196,7 @@ async function init() {
       redrawOverlaysForCurrentContext();
     }
   });
-  switchView(CURRENT_VIEW);
+  switchView('inspect', true);
 }
 
 async function refreshRuns() {
@@ -218,15 +208,17 @@ async function refreshRuns() {
     const opt = document.createElement('option');
     opt.value = r.slug;
     const tag = r.page_range ? ` · pages ${r.page_range}` : '';
-    opt.textContent = `${r.slug}${tag}`;
+    const providerLabel = r.provider ? ` · ${r.provider}` : '';
+    opt.textContent = `${r.slug}${providerLabel}${tag}`;
     sel.appendChild(opt);
   }
   if (runs.length) {
     const exists = runs.find(r => r.slug === CURRENT_SLUG);
-    const chosen = exists ? CURRENT_SLUG : runs[0].slug;
-    CURRENT_SLUG = chosen;
-    sel.value = chosen;
-    await loadRun(chosen);
+    const chosenRun = exists ? runs.find(r => r.slug === CURRENT_SLUG) : runs[0];
+    CURRENT_SLUG = chosenRun.slug;
+    CURRENT_PROVIDER = chosenRun.provider || 'unstructured';
+    sel.value = CURRENT_SLUG;
+    await loadRun(CURRENT_SLUG);
   } else {
     CURRENT_SLUG = null;
     CURRENT_RUN = null;
@@ -236,10 +228,6 @@ async function refreshRuns() {
     CURRENT_CHUNK_SUMMARY = null;
     CURRENT_CHUNK_LOOKUP = {};
     resetPdfViewer();
-    const ctx = document.getElementById('chart')?.getContext?.('2d');
-    if (CHART_INSTANCE) { try { CHART_INSTANCE.destroy(); } catch(e){} CHART_INSTANCE=null; }
-    document.getElementById('matchList').innerHTML = '';
-    renderMetrics({ avg_coverage:0, avg_cohesion:0, avg_chunker_f1:0, micro_coverage:0 });
     clearBoxes();
     updateRunConfigCard();
     renderChunksTab();
@@ -248,6 +236,8 @@ async function refreshRuns() {
   }
   sel.onchange = async () => {
     CURRENT_SLUG = sel.value;
+    const selected = (RUNS_CACHE || []).find(r => r.slug === CURRENT_SLUG);
+    if (selected && selected.provider) CURRENT_PROVIDER = selected.provider;
     await loadRun(CURRENT_SLUG);
   };
 }
@@ -297,23 +287,25 @@ function setRunInProgress(isRunning, context = {}) {
   const logs = $('runProgressLogs');
   if (!modal || !runBtn || !status) return;
 
+  const providerName = (context.provider || $('providerSelect')?.value || CURRENT_PROVIDER || '').trim() || 'provider';
+
   if (isRunning) {
     modal.classList.add('running');
     if (formGrid) formGrid.style.display = 'none';
     if (previewPane) previewPane.style.display = 'none';
     if (progressPane) progressPane.style.display = 'block';
     runBtn.disabled = true;
-    runBtn.textContent = 'Running…';
+    runBtn.textContent = `Running (${providerName})…`;
     if (cancelBtn) cancelBtn.disabled = true;
     if (openBtn) {
       openBtn.disabled = true;
-      openBtn.textContent = 'Running…';
+      openBtn.textContent = `Running (${providerName})…`;
     }
     const pdfName = context.pdf || $('pdfSelect')?.value || '';
     if (hint) {
       hint.textContent = pdfName
-        ? `Processing ${pdfName}. This window will close when the run finishes.`
-        : 'Processing PDF. This window will close when the run finishes.';
+        ? `Processing ${pdfName} via ${providerName}. This window will close when the run finishes.`
+        : `Processing PDF via ${providerName}. This window will close when the run finishes.`;
     }
     if (progressTitle) progressTitle.textContent = 'Queued…';
     if (progressStatus) progressStatus.textContent = 'Waiting for worker…';
@@ -340,15 +332,15 @@ function setRunInProgress(isRunning, context = {}) {
   }
 }
 
-function describeJobStatus(detail) {
+function describeJobStatus(detail, providerName = 'provider') {
   const status = detail?.status || 'queued';
   const nowSec = Date.now() / 1000;
   if (status === 'running') {
     if (detail?.started_at) {
       const secs = Math.max(1, Math.round(nowSec - detail.started_at));
-      return `Chunker is running (${secs}s elapsed)`;
+      return `${providerName} is running (${secs}s elapsed)`;
     }
-    return 'Chunker is running…';
+    return `${providerName} is running…`;
   }
   if (status === 'queued') {
     if (detail?.created_at) {
@@ -367,12 +359,13 @@ function updateRunJobProgress(detail) {
   const status = detail?.status || 'queued';
   const pdfName = detail?.pdf || '';
   const pages = detail?.pages || '';
+  const providerName = (detail?.provider || detail?.result?.provider || CURRENT_PROVIDER || 'provider').trim() || 'provider';
   const titleEl = $('runProgressTitle');
   const hint = $('runProgressHint');
   const statusEl = $('runProgressStatus');
   const logsEl = $('runProgressLogs');
   if (titleEl) {
-    if (status === 'running') titleEl.textContent = 'Chunker is running…';
+    if (status === 'running') titleEl.textContent = `${providerName} is running…`;
     else if (status === 'queued') titleEl.textContent = 'Queued…';
     else if (status === 'failed') titleEl.textContent = 'Run failed';
     else if (status === 'succeeded') titleEl.textContent = 'Run completed';
@@ -380,10 +373,10 @@ function updateRunJobProgress(detail) {
   }
   if (hint) {
     const suffix = pages ? `pages ${pages}` : 'all pages';
-    hint.textContent = pdfName ? `Processing ${pdfName} (${suffix})` : 'Processing PDF';
+    hint.textContent = pdfName ? `Processing ${pdfName} (${suffix}) via ${providerName}` : `Processing PDF via ${providerName}`;
   }
   if (statusEl) {
-    statusEl.textContent = describeJobStatus(detail);
+    statusEl.textContent = describeJobStatus(detail, providerName);
   }
   if (logsEl) {
     const logText = detail?.stderr_tail || detail?.stdout_tail || '';
@@ -410,7 +403,16 @@ async function pollRunJob(jobId) {
     try {
       detail = await fetchJSON(`/api/run-jobs/${encodeURIComponent(jobId)}`);
     } catch (err) {
-      if (statusSpan) statusSpan.textContent = `Polling job… ${err?.message || err}`;
+      const msg = err?.message || String(err || '');
+      if (msg.includes('404')) {
+        if (statusSpan) statusSpan.textContent = 'Job not found (assuming finished)';
+        try { await refreshRuns(); } catch (_) {}
+        setRunInProgress(false);
+        closeRunModal();
+        CURRENT_RUN_JOB_ID = null;
+        return;
+      }
+      if (statusSpan) statusSpan.textContent = `Polling job… ${msg}`;
       await sleep(RUN_JOB_POLL_INTERVAL_MS);
       continue;
     }
@@ -419,6 +421,8 @@ async function pollRunJob(jobId) {
     if (status === 'succeeded') {
       if (statusSpan) statusSpan.textContent = 'Completed';
       const slug = detail?.result?.slug;
+      const provider = detail?.provider || detail?.result?.provider || CURRENT_PROVIDER || 'unstructured';
+      if (provider) CURRENT_PROVIDER = provider;
       if (slug) CURRENT_SLUG = slug;
       try {
         await refreshRuns();
@@ -433,14 +437,14 @@ async function pollRunJob(jobId) {
     }
     if (status === 'failed') {
       const errMsg = detail?.error || 'Run failed';
+      setRunInProgress(false);
       if (statusSpan) statusSpan.textContent = `Failed: ${errMsg}`;
       if (cancelBtn) cancelBtn.disabled = false;
       if (openBtn) {
         openBtn.disabled = false;
         openBtn.textContent = 'New Run';
       }
-      const hint = $('runProgressHint');
-      if (hint) hint.textContent = 'Run failed. Close this window to adjust parameters.';
+      showToast(`Run failed: ${errMsg}`, 'err', 3500);
       CURRENT_RUN_JOB_ID = null;
       return;
     }
@@ -449,16 +453,45 @@ async function pollRunJob(jobId) {
 }
 
 function wireRunForm() {
+  const providerSel = $('providerSelect');
   const chunkSel = $('chunkingSelect');
   const combineRow = $('chunkCombineRow');
   const multipageRow = $('chunkMultipageRow');
+  const unstructuredBlocks = document.querySelectorAll('.unstructured-only');
+  const azureHideables = document.querySelectorAll('.azure-hidden');
+  const azureSettings = $('azureSettings');
   const toggleAdv = () => {
-    const isByTitle = chunkSel.value === 'by_title';
+    const chunkVal = chunkSel ? chunkSel.value : 'by_title';
+    const isByTitle = chunkVal === 'by_title';
+    const isNone = chunkVal === 'none';
+
     if (combineRow) combineRow.classList.toggle('hidden', !isByTitle);
     if (multipageRow) multipageRow.classList.toggle('hidden', !isByTitle);
+    
+    // Hide entire advanced section if chunking is none
+    const advSection = document.querySelector('#chunkAdv');
+    if (advSection) advSection.classList.toggle('hidden', isNone);
   };
-  chunkSel.addEventListener('change', toggleAdv);
-  toggleAdv();
+  if (chunkSel) {
+    chunkSel.addEventListener('change', toggleAdv);
+    toggleAdv();
+  }
+  const handleProviderChange = () => {
+    const rawVal = providerSel ? providerSel.value : 'unstructured';
+    const val = rawVal === 'azure-cu' ? 'azure-di' : rawVal;
+    if (providerSel && providerSel.value !== val) {
+      // Keep legacy runs viewable but block new runs for the disabled provider
+      providerSel.value = val;
+    }
+    CURRENT_PROVIDER = val || 'unstructured';
+    const isUnstructured = val === 'unstructured';
+    const isAzure = !isUnstructured;
+    unstructuredBlocks.forEach((el) => { if (el) el.classList.toggle('hidden', !isUnstructured); });
+    if (azureSettings) azureSettings.classList.toggle('hidden', isUnstructured);
+    azureHideables.forEach((el) => { if (el) el.classList.toggle('hidden', isAzure); });
+  };
+  if (providerSel) providerSel.addEventListener('change', handleProviderChange);
+  handleProviderChange();
 
   const uploadInput = $('pdfUploadInput');
   const uploadStatus = $('pdfUploadStatus');
@@ -518,23 +551,35 @@ function wireRunForm() {
   $('runBtn').addEventListener('click', async () => {
     const status = $('runStatus');
     status.textContent = '';
+    const providerVal = providerSel ? providerSel.value : 'unstructured';
+    if (providerVal === 'azure-cu') {
+      status.textContent = 'Document Understanding is disabled in the UI';
+      return;
+    }
+    const provider = providerVal || 'unstructured';
+    const isAzure = provider !== 'unstructured';
     const payload = {
+      provider,
       pdf: $('pdfSelect').value,
       pages: $('pagesInput').value.trim(),
-      strategy: $('strategySelect').value,
-      infer_table_structure: $('inferTables').checked,
-      chunking: $('chunkingSelect').value,
     };
     const langSel = $('docLanguage');
     const docLang = langSel ? (langSel.value || 'eng') : 'eng';
-    payload.primary_language = docLang;
-    if (docLang === 'ara') {
-      payload.ocr_languages = 'ara+eng';
-      payload.languages = 'ar,en';
-      payload.detect_language_per_element = true;
+    if (!isAzure) {
+      payload.primary_language = docLang;
+      if (docLang === 'ara') {
+        payload.ocr_languages = 'ara+eng';
+        payload.languages = 'ar,en';
+        payload.detect_language_per_element = true;
+      } else {
+        payload.ocr_languages = 'eng+ara';
+        payload.languages = 'en,ar';
+        payload.detect_language_per_element = false;
+      }
     } else {
-      payload.ocr_languages = 'eng+ara';
-      payload.languages = 'en,ar';
+      payload.primary_language = docLang;
+      payload.ocr_languages = null;
+      payload.languages = null;
       payload.detect_language_per_element = false;
     }
     const tagVal = $('variantTag')?.value?.trim();
@@ -554,48 +599,82 @@ function wireRunForm() {
       if (val === '') return null;
       return val === 'true';
     };
-    const maxTokens = parseNumber('chunkMaxTokens');
-    const maxChars = parseNumber('chunkMaxChars');
-    if (maxTokens != null) {
-      payload.chunk_max_tokens = maxTokens;
-      payload.chunk_max_characters = Math.max(1, Math.round(maxTokens * 4));
-    } else if (maxChars != null) {
-      payload.chunk_max_characters = maxChars;
-    }
-    const newAfter = parseNumber('chunkNewAfter');
-    if (newAfter != null) payload.chunk_new_after_n_chars = newAfter;
-    const overlap = parseNumber('chunkOverlap');
-    if (overlap != null) payload.chunk_overlap = overlap;
-    const includeOrig = parseBoolSelect('chunkIncludeOrig');
-    if (includeOrig != null) payload.chunk_include_orig_elements = includeOrig;
-    const overlapAll = parseBoolSelect('chunkOverlapAll');
-    if (overlapAll != null) payload.chunk_overlap_all = overlapAll;
-    if (payload.chunking === 'by_title') {
-      const combine = parseNumber('chunkCombineUnder');
-      if (combine != null) payload.chunk_combine_under_n_chars = combine;
-      const multipage = parseBoolSelect('chunkMultipage');
-      if (multipage != null) payload.chunk_multipage_sections = multipage;
+    if (payload.provider === 'unstructured') {
+      payload.strategy = $('strategySelect').value;
+      payload.infer_table_structure = $('inferTables').checked;
+      payload.chunking = $('chunkingSelect').value;
+      const maxTokens = parseNumber('chunkMaxTokens');
+      const maxChars = parseNumber('chunkMaxChars');
+      if (maxTokens != null) {
+        payload.chunk_max_tokens = maxTokens;
+        payload.chunk_max_characters = Math.max(1, Math.round(maxTokens * 4));
+      } else if (maxChars != null) {
+        payload.chunk_max_characters = maxChars;
+      }
+      const newAfter = parseNumber('chunkNewAfter');
+      if (newAfter != null) payload.chunk_new_after_n_chars = newAfter;
+      const overlap = parseNumber('chunkOverlap');
+      if (overlap != null) payload.chunk_overlap = overlap;
+      const includeOrig = parseBoolSelect('chunkIncludeOrig');
+      if (includeOrig != null) payload.chunk_include_orig_elements = includeOrig;
+      const overlapAll = parseBoolSelect('chunkOverlapAll');
+      if (overlapAll != null) payload.chunk_overlap_all = overlapAll;
+      if (payload.chunking === 'by_title') {
+        const combine = parseNumber('chunkCombineUnder');
+        if (combine != null) payload.chunk_combine_under_n_chars = combine;
+        const multipage = parseBoolSelect('chunkMultipage');
+        if (multipage != null) payload.chunk_multipage_sections = multipage;
+      }
+    } else {
+      const azureFeatures = [];
+      const pushIf = (el, val) => { if (el && el.checked) azureFeatures.push(val); };
+      pushIf($('azureFigureImage'), 'figures');
+      pushIf($('azureBarcodes'), 'barcodes');
+      pushIf($('azureLanguage'), 'languages');
+      pushIf($('azureKvp'), 'keyValuePairs');
+      pushIf($('azureHighRes'), 'ocrHighResolution');
+      pushIf($('azureStyleFont'), 'styleFont');
+      pushIf($('azureFormulas'), 'formulas');
+      payload.features = azureFeatures.join(','); // Azure detection on by default via "languages"
+      const fmt = document.querySelector('input[name=\"azureOutputFormat\"]:checked');
+      payload.output_content_format = fmt ? fmt.value : 'markdown';
+      payload.model_id = ($('azureModelId')?.value || '').trim();
+      payload.api_version = ($('azureApiVersion')?.value || '').trim();
+      payload.locale = ($('azureLocale')?.value || '').trim();
+      payload.string_index_type = ($('azureStringIndexType')?.value || '').trim();
+      payload.query_fields = ($('azureQueryFields')?.value || '').trim();
     }
     payload.form_snapshot = {
       pdf: payload.pdf,
       pages: payload.pages,
-      strategy: payload.strategy,
-      infer_table_structure: payload.infer_table_structure,
-      chunking: payload.chunking,
       tag: tagVal || null,
-      max_tokens: parseNumber('chunkMaxTokens'),
-      max_characters: parseNumber('chunkMaxChars'),
-      new_after_n_chars: parseNumber('chunkNewAfter'),
-      combine_under_n_chars: parseNumber('chunkCombineUnder'),
-      overlap: parseNumber('chunkOverlap'),
-      include_orig_elements: parseBoolSelect('chunkIncludeOrig'),
-      overlap_all: parseBoolSelect('chunkOverlapAll'),
-      multipage_sections: parseBoolSelect('chunkMultipage'),
       primary_language: docLang,
       ocr_languages: payload.ocr_languages,
       languages: payload.languages,
       detect_language_per_element: payload.detect_language_per_element,
+      provider: payload.provider,
     };
+    if (payload.provider === 'unstructured') {
+      payload.form_snapshot.strategy = payload.strategy;
+      payload.form_snapshot.infer_table_structure = payload.infer_table_structure;
+      payload.form_snapshot.chunking = payload.chunking;
+      payload.form_snapshot.max_tokens = parseNumber('chunkMaxTokens');
+      payload.form_snapshot.max_characters = parseNumber('chunkMaxChars');
+      payload.form_snapshot.new_after_n_chars = parseNumber('chunkNewAfter');
+      payload.form_snapshot.combine_under_n_chars = parseNumber('chunkCombineUnder');
+      payload.form_snapshot.overlap = parseNumber('chunkOverlap');
+      payload.form_snapshot.include_orig_elements = parseBoolSelect('chunkIncludeOrig');
+      payload.form_snapshot.overlap_all = parseBoolSelect('chunkOverlapAll');
+      payload.form_snapshot.multipage_sections = parseBoolSelect('chunkMultipage');
+    } else {
+      payload.form_snapshot.features = payload.features;
+      payload.form_snapshot.output_content_format = payload.output_content_format;
+      payload.form_snapshot.model_id = payload.model_id;
+      payload.form_snapshot.api_version = payload.api_version;
+      payload.form_snapshot.locale = payload.locale;
+      payload.form_snapshot.string_index_type = payload.string_index_type;
+      payload.form_snapshot.query_fields = payload.query_fields;
+    }
     setRunInProgress(true, { pdf: payload.pdf });
     let jobId = null;
     try {
@@ -686,7 +765,7 @@ function setupInspectTabs() {
           let okCount = 0, failCount = 0;
           for (const rr of runs) {
             try {
-              const dr = await fetch(`/api/run/${encodeURIComponent(rr.slug)}`, { method: 'DELETE' });
+              const dr = await fetch(withProvider(`/api/run/${encodeURIComponent(rr.slug)}`, rr.provider || CURRENT_PROVIDER), { method: 'DELETE' });
               if (!dr.ok) failCount++; else okCount++;
             } catch (_) {
               failCount++;
@@ -730,13 +809,6 @@ function switchInspectTab(name, skipRedraw = false) {
   updateReviewSummaryChip();
 }
 
-function setupViewTabs() {
-  const m = $('viewTabMetrics');
-  const i = $('viewTabInspect');
-  if (m) m.addEventListener('click', () => switchView('metrics'));
-  if (i) i.addEventListener('click', () => switchView('inspect'));
-}
-
 function setupReviewChipHandlers() {
   const chip = $('reviewSummaryChip');
   if (!chip) return;
@@ -748,7 +820,6 @@ function setupReviewChipHandlers() {
 }
 
 function handleReviewChipClick(kind) {
-  if (CURRENT_VIEW !== 'inspect') return;
   if (kind === 'chunks') {
     CURRENT_CHUNK_REVIEW_FILTER = 'Reviewed';
     renderChunksTab();
@@ -763,13 +834,11 @@ function handleReviewChipClick(kind) {
 }
 
 function switchView(view, skipRedraw = false) {
-  CURRENT_VIEW = (view === 'inspect') ? 'inspect' : 'metrics';
+  CURRENT_VIEW = 'inspect';
   document.querySelectorAll('.view-tabs .tab').forEach(el => {
     el.classList.toggle('active', el.dataset.view === CURRENT_VIEW);
   });
-  const metricsPane = document.getElementById('right-metrics');
   const inspectPane = document.getElementById('right-inspect');
-  if (metricsPane) metricsPane.classList.toggle('hidden', CURRENT_VIEW !== 'metrics');
   if (inspectPane) inspectPane.classList.toggle('hidden', CURRENT_VIEW !== 'inspect');
   if (!skipRedraw) {
     redrawOverlaysForCurrentContext();
@@ -796,7 +865,7 @@ function wireModal() {
       const ok = confirm(`Delete run: ${CURRENT_SLUG}? This removes its matches, tables JSONL, and trimmed PDF.`);
       if (!ok) return;
       try {
-        const r = await fetch(`/api/run/${encodeURIComponent(CURRENT_SLUG)}`, { method: 'DELETE' });
+        const r = await fetch(withProvider(`/api/run/${encodeURIComponent(CURRENT_SLUG)}`, CURRENT_PROVIDER), { method: 'DELETE' });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         await refreshRuns();
         showToast('Run deleted', 'ok', 2000);

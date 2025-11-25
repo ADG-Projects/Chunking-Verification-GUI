@@ -1,10 +1,12 @@
 # ChunkingTests
 
-Local playground for document ingestion experiments. The first iteration focuses on using the open-source Unstructured library to break PDFs into structured JSON.
+Local playground for document ingestion experiments. It now supports both the open-source Unstructured chunker and Azure providers (Document Intelligence Layout; Content Understanding remains CLI-only and is disabled in the UI) so you can compare layout/ocr quality side by side.
 
 Two helper scripts exist today:
-- `process_unstructured.py`: interactive full-document runs (see below).
-- `scripts/preview_unstructured_pages.py`: fast page slicing + gold-table matching for targeted QA.
+- `process_unstructured.py`: interactive full-document runs against Unstructured.
+- `scripts/preview_unstructured_pages.py`: fast page slicing + gold-table matching for targeted QA (Unstructured).
+- `python -m chunking_pipeline.azure_pipeline`: run Azure Document Intelligence (`--provider document_intelligence`) or Content Understanding (`--provider content_understanding`) straight from the CLI.
+- Azure Document Intelligence exports paragraph roles as element types (e.g., `pageHeader`, `pageNumber`, `title`) so the UI type filters mirror the service categorization.
 
 ## Prerequisites
 
@@ -17,7 +19,7 @@ Two helper scripts exist today:
 uv sync
 ```
 
-`uv sync` creates a `.venv` in the project root and installs all required packages, including `unstructured[pdf]`.
+`uv sync` creates a `.venv` in the project root and installs all required packages, including `unstructured[pdf]` and `azure-ai-documentintelligence`.
 
 ## Process a PDF
 
@@ -58,15 +60,64 @@ What it does:
 
 Use `--input-jsonl` when you want to re-evaluate matches from a previously saved JSONL without reprocessing the PDF, and `--trimmed-out` if you want to keep the sliced PDF for debugging.
 
+## Azure runs (Document Intelligence + Content Understanding)
+
+Set the Azure credentials before running either via CLI or the UI. You can drop them into a local `.env` (see `.env.example`) and they will be auto-loaded by the app and the CLI helpers. Foundry deployments use a single endpoint/key for both providers:
+- `AZURE_FT_ENDPOINT` / `AZURE_FT_KEY`
+
+When Azure language detection is enabled (e.g., including `languages` in the features), detected locales are captured in `run_config` and the UI will flip previews to RTL automatically for Arabic-heavy documents.
+When Azure returns markdown (e.g., `output_content_format=markdown`), the Inspect drawers render the formatted markdown directly and fall back to plain text only when no richer content is present; table HTML still prefers `text_as_html` for accurate column order.
+
+Document Intelligence runs target `api-version=2024-11-30` (v4.0); older service versions are not supported.
+
+CLI example (Document Intelligence layout):
+```bash
+AZURE_FT_ENDPOINT=<endpoint> AZURE_FT_KEY=<key> \
+uv run python -m chunking_pipeline.azure_pipeline \
+  --provider document_intelligence \
+  --input res/V3.0_Reviewed_translation_EN_full\ 4.pdf \
+  --pages 4-6 \
+  --output outputs/azure/document_intelligence/V3_0_EN_4.pages4-6.tables.jsonl \
+  --trimmed-out outputs/azure/document_intelligence/V3_0_EN_4.pages4-6.pdf \
+  --emit-matches outputs/azure/document_intelligence/V3_0_EN_4.pages4-6.matches.json \
+  --model-id prebuilt-layout \
+  --features ocrHighResolution,keyValuePairs,barcodes,formulas \
+  --api-version 2024-11-30
+```
+
+CLI example (Content Understanding Document Search):
+```bash
+AZURE_FT_ENDPOINT=<endpoint> AZURE_FT_KEY=<key> \
+uv run python -m chunking_pipeline.azure_pipeline \
+  --provider content_understanding \
+  --input res/V3.0_Reviewed_translation_EN_full\ 4.pdf \
+  --pages 1-2 \
+  --output outputs/azure/content_understanding/V3_0_EN_4.pages1-2.tables.jsonl \
+  --trimmed-out outputs/azure/content_understanding/V3_0_EN_4.pages1-2.pdf \
+  --emit-matches outputs/azure/content_understanding/V3_0_EN_4.pages1-2.matches.json \
+  --model-id prebuilt-documentSearch \
+  --api-version 2025-11-01
+```
+
+Outputs for Azure runs live under `outputs/azure/document_intelligence/` or `outputs/azure/content_understanding/` with the same filename suffix pattern used by Unstructured.
+Reviews are stored per-provider (e.g., `outputs/azure/document_intelligence/reviews/<slug>.reviews.json`).
+If you ever see Azure `.tables.jsonl` files that are empty, rerun the slice: the helper now uses the SDK's `as_dict` output and scales polygons to PDF points so overlays render correctly.
+
 ## Next ideas
 
 - Evaluate additional ingestion pipelines (Azure AI Document Intelligence, AWS Textract, etc.) as new experiments land in this sandbox.
 
 ## Release history
 
+- **v3.0 (2025-11-24)** – Azure providers now render markdown in drawers, honor detected languages for RTL, expose outline grouping and Document Intelligence paragraph roles, and overlays stay aligned after switching to chunk-only artifacts (Metrics/tables pipeline removed).
+  - Verification steps:
+    1. `uv run uvicorn main:app --host 127.0.0.1 --port 8765`, load an Azure run, and confirm Inspect overlays line up with trimmed PDFs while pageHeader/pageNumber/title types appear in filters and the Elements outline toggle groups items per page.
+    2. Open chunk/element drawers with markdown payloads to verify sanitized rendering and fallback to plain text where markdown is absent; check an Arabic-heavy document flips drawers and previews to RTL based on detected languages.
+    3. Start a new run (any provider) via the UI and confirm outputs are trimmed PDFs, chunk JSONL, and run metadata only, with no Metrics tab or matches/table artifacts.
+
 - **v2.1 (2025-11-18)** – Persist actual Unstructured chunking defaults (max_characters, new_after_n_chars, overlap, overlap_all, include_orig_elements, combine_text_under_n_chars, multipage_sections) in `run_config` so the header recap mirrors the values the chunker actually used, and keep drawer table previews in their original chunker column order while cell text alignment still follows the document direction.
   - Verification steps:
-    1. `uv run python scripts/run_chunking_pipeline.py --input res/<pdf>.pdf --pages 4-6 --emit-matches outputs/unstructured/<slug>.matches.json` and confirm the generated `matches.json` `run_config.chunk_params` object lists the default values even when no chunking flags were passed.
+    1. `uv run python -m chunking_pipeline.run_chunking --input res/<pdf>.pdf --pages 4-6 --emit-matches outputs/unstructured/<slug>.matches.json` and confirm the generated `matches.json` `run_config.chunk_params` object lists the default values even when no chunking flags were passed.
     2. `uv run uvicorn main:app --reload --host 127.0.0.1 --port 8765`, open an Arabic table match under Metrics, and verify the drawer columns match the PDF layout while each RTL cell text remains right-aligned.
 
 - **v2.0 (2025-11-17)** – Introduced chunk/element review workflows (Good/Bad ratings with notes, filters, and summary chips) while refactoring the frontend into modular scripts so overlays, metrics, and drawers stay in lockstep.
@@ -95,63 +146,53 @@ uv run uvicorn main:app --host 127.0.0.1 --port 8765
 ```
 
 What you get:
-- Two top-level views while keeping the PDF visible:
-  - Metrics: run config, overall metrics bars, F1 chart, and table match cards with per-table actions (Highlight all/best, Details).
-  - Inspect: focused tools for chunk and element inspection, with overlay toggles and type filter, plus sub-tabs for Chunks and Elements.
-- Per-table cards with coverage, cohesion, F1, and chunk count, and one-click highlighting on the PDF from Metrics.
+- Inspect view that keeps the PDF visible with overlay toggles and tabs for Chunks and Elements; the Metrics/table visuals are retired in favor of chunk-first inspection.
+- Provider-aware runs: pick Unstructured or Azure Document Intelligence (Layout) in the New Run modal. (Azure Content Understanding is disabled in the UI; use the CLI helper if needed.) Azure runs hide chunking controls and expose model id, API version, features, locale, string index type, content format, and query fields. Outputs live under `outputs/azure/...`.
 - A compact single-line settings recap with rich tooltips for each parameter; the New Run modal mirrors the same tooltips so behavior is clear where you edit values.
-- Overlay UX improvements:
-  - Hover any overlay to see a tooltip with ID, type, page, and for chunks the character length.
-  - Overlay colors are hardcoded per element type (consistent across views and runs).
-  - Table chunks derive per-row bounding boxes from their source tables, so multi-chunk highlights no longer stack on top of each other.
-  - Chunk overlays now honor the Type/Review filters from the Inspect → Chunks panel and redraw immediately to keep the PDF boxes in sync with the list.
-- Drilldown: click "Details" on any table to preview the extracted HTML table for the best chunk (and switch among all selected chunks).
-- Inspect → Chunks: review chunk output (summary + list); selecting a chunk jumps to its page and shows its boxes.
-  - Chunk cards now size themselves to the amount of text they contain so short entries stay compact and long excerpts expand naturally.
-- Inspect → Elements: browse element types and overlay boxes for the current page; filter by type.
-  - Leave quick Good/Bad reviews (and keep optional notes in the drawer) for any chunk or element, filter by review state, and use the header review chip to jump straight into previously scored chunks.
-  - Elements list shows colored cards per type and an inline text preview; cards display the source element’s original ID for clarity.
-  - Overlays now follow the active Inspect tab: select Chunks to show chunk overlays, or Elements to show element overlays. The redundant quick controls were removed.
-  - Interactions: click an overlay on the PDF to open its details (element or chunk). In Chunks, clicking a chunk expands a sublist of its elements; clicking an element there opens its details and focuses its overlay.
-  - Overlay parity: clicking a chunk overlay behaves like clicking the chunk card — it focuses the chunk on the same page and expands its element list without opening a separate chunk drawer. Closing an element opened from that sublist returns you to the chunk view and preserves scroll.
+- Overlay UX: hover for ID/type/page/tooltips; colors are fixed per element type; chunk overlays honor Type/Review filters and redraw immediately; Azure polygons stay scaled to PDF points; the Elements outline groups Azure pageHeader/pageNumber/Tables/Paragraphs/Lines by page order with breadcrumbs in drawers.
+- Reviews: leave Good/Bad ratings with optional notes for any chunk or element, filter by rating, and use the header chip to jump into scored items.
+- Inspect → Chunks: browse chunk summary + list; selecting a chunk jumps to its page, shows its overlays, and expands its source elements; cards size to the amount of text.
+- Inspect → Elements: filter by type, toggle outline mode (Azure), see original element IDs and inline previews, and switch overlays between chunk and element modes based on the active tab.
 
 Data sources used by the UI:
-- `outputs/unstructured/<slug>.matches.json`
-- `outputs/unstructured/<slug>.pagesX-Y.tables.jsonl`
-- `outputs/unstructured/<slug>.pagesX-Y.pdf`
+- `outputs/<provider>/<slug>.run.json` — run metadata for the settings recap and language direction hints.
+- `outputs/<provider>/<slug>.pagesX-Y.chunks.jsonl` — chunk artifacts (with element metadata and coordinates for overlays).
+- `outputs/<provider>/<slug>.pagesX-Y.pdf` — trimmed PDF for display.
+- `outputs/<provider>/reviews/<slug>.reviews.json` — optional persisted reviews per run.
 
 Endpoints (served by FastAPI):
 - `GET /api/pdfs` — list PDFs available in `res/` (for new runs).
- - `POST /api/pdfs` — upload a PDF to `PDF_DIR` (auto-saves on selection in the New Run modal).
- - `GET /api/runs` — discover available runs under `outputs/unstructured/`.
- - `DELETE /api/run/{slug}` — delete a run by its UI slug.
- - `GET /api/matches/{slug}` — load the matches JSON.
- - `GET /api/tables/{slug}` — load and parse the tables JSONL.
- - `GET /pdf/{slug}` — stream the trimmed PDF.
-- `GET /api/element_types/{slug}` — element type inventory for a run (counts by type).
-- `GET /api/boxes/{slug}?page=N&types=Table,Text` — minimal per-page box index for overlays (server-side indexed, avoids heavy scans).
-- `GET /api/chunks/{slug}` — chunk artifacts (summary + JSONL contents) for each run.
+- `POST /api/pdfs` — upload a PDF to `PDF_DIR` (auto-saves on selection in the New Run modal).
+- `DELETE /api/pdfs/{name}` — delete a source PDF from `PDF_DIR`.
+- `GET /api/runs` — discover available runs (Unstructured + Azure).
+- `DELETE /api/run/{slug}?provider=...` — delete a run by its UI slug.
+- `GET /pdf/{slug}?provider=...` — stream the trimmed PDF.
+- `GET /api/chunks/{slug}?provider=...` — chunk artifacts (summary + JSONL contents) for each run.
+- `GET /api/element_types/{slug}?provider=...` — element type inventory for a run (counts by type).
+- `GET /api/boxes/{slug}?provider=...&page=N&types=Table,Text` — minimal per-page box index for overlays (server-side indexed, avoids heavy scans).
+- `GET /api/element/{slug}/{element_id}?provider=...` — fetch a single element payload (including markdown/text/html fields) from chunk JSONL.
+- `GET /api/elements/{slug}?ids=...&provider=...` — batch lookup for element overlay metadata.
+- `GET /api/reviews/{slug}?provider=...` — retrieve persisted reviews for chunks/elements.
+- `POST /api/reviews/{slug}?provider=...` — write reviews for chunks/elements.
 - `GET /api/run-jobs` — inspect the current queue of chunking jobs (status, timestamps, latest log tail).
 - `GET /api/run-jobs/{job_id}` — poll a specific job for live status/log updates; used by the UI progress view.
 - `POST /api/run` — execute a new run. Body:
   - `pdf` (string, required): filename under `res/`.
   - `pages` (string, optional): page list/range (e.g., `4-6`, `4,5,6`). If omitted or blank, the server processes the entire document (equivalent to `1-<num_pages>`). The server trims the PDF first and only processes those pages.
-  - `strategy` (`auto|fast|hi_res`, default `auto`).
-  - `infer_table_structure` (bool, default `true`).
-  - `chunking` (`basic|by_title`, default `by_title`). Additional knobs:
-    - Shared: `chunk_max_characters`, `chunk_new_after_n_chars`, `chunk_overlap`, `chunk_include_orig_elements`, `chunk_overlap_all`.
-    - Extra for `by_title`: `chunk_combine_under_n_chars`, `chunk_multipage_sections`.
+  - `provider` (`unstructured|azure-di|azure-cu`, default `unstructured`).
+  - Unstructured: `strategy` (`auto|fast|hi_res`, default `auto`); `infer_table_structure` (bool, default `true`); `chunking` (`basic|by_title`, default `by_title`) plus the chunking knobs (`chunk_max_characters`, `chunk_new_after_n_chars`, `chunk_overlap`, `chunk_include_orig_elements`, `chunk_overlap_all`, `chunk_combine_under_n_chars`, `chunk_multipage_sections`).
+  - Azure: `model_id`, `api_version`, `features`, `locale`, `string_index_type`, `output_content_format`, `query_fields`, and (for Content Understanding) `analyzer_id`. Chunking flags are ignored for Azure providers.
   - Response: immediately returns a `job` payload (`id`, `status`, `command`, log tails) instead of blocking until the chunker finishes. Use `/api/run-jobs/{id}` to poll; the UI already handles this automatically.
 
 Run on demand via the UI:
 - In the right panel, use the “New Run” card to pick a PDF (or upload one — it uploads immediately after selection), set pages and strategy, choose `basic` or `by_title` chunking, tweak advanced parameters, then click Run.
 - Leave the Pages field blank to chunk the entire PDF; the UI fills `1-<num_pages>` automatically when possible, and the server also falls back to the full range if the field is empty.
 - Runs are now queued asynchronously. The modal switches into a compact “Running…” view that polls `/api/run-jobs/{id}`, streams stderr/stdout tails directly inside the dialog, and only closes once the chunker finishes successfully.
-- The server slices the PDF, runs Unstructured, writes artifacts in `outputs/unstructured/`, and refreshes the run list. The latest run per slug is shown.
+- The server slices the PDF, runs the selected provider, writes artifacts under `outputs/<provider>/`, and refreshes the run list. The latest run per slug is shown.
 - The New Run modal includes a live PDF preview from `res` with prev/next controls and quick buttons to “Add page” or mark a start/end to append a page range to the Pages field. Advanced chunking controls now expose both `basic` and `by_title` strategies plus every Unstructured flag (including approximate `max_tokens`, `include_orig_elements`, `overlap_all`, and `multipage_sections`).
 - Right next to the strategy dropdown, a Primary Language toggle lets you flag whether the document is predominantly English (default) or Arabic. Choosing Arabic prioritizes Arabic OCR (`ara+eng`), sets Unstructured’s `languages` hint to `["ar", "en"]`, enables per-element language detection, and makes the preview drawers render RTL so Arabic text stays readable.
 - The Settings Recap bar mirrors all inputs from the New Run modal, including `max_tokens` (approximate), `max_characters`, `new_after_n_chars`, `combine_under_n_chars`, `overlap`, `include_orig_elements`, `overlap_all`, `multipage_sections`, and metadata like PDF, pages, and optional tag. New runs persist this snapshot under `run_config.form_snapshot`, while older runs fall back to whatever fields are available.
-- Per-table highlighting uses distinct colors per selected chunk so multi-page/multi-chunk tables are easy to see; the overlay legend reflects element types present on the current page.
+- Overlays use fixed per-type colors; the legend reflects element types present on the current page.
 
 ### Manage uploaded PDFs
 
@@ -230,7 +271,7 @@ At runtime you can still set `DISABLE_HI_RES=1` to force the `strategy=fast` pat
 Railway mounts a persistent directory into the container. This app looks for the following env vars to place files onto that volume:
 
 - `PDF_DIR` — directory for source PDFs (uploads). If unset and `DATA_DIR` is set, defaults to `$DATA_DIR/pdfs`.
-- `OUTPUT_DIR` or `OUT_DIR` — directory for run artifacts (trimmed PDFs, JSONL, matches). If unset and `DATA_DIR` is set, defaults to `$DATA_DIR/outputs/unstructured`.
+- `OUTPUT_DIR` or `OUT_DIR` — directory for run artifacts (trimmed PDFs, JSONL, reviews; preview scripts may also emit matches). If unset and `DATA_DIR` is set, defaults to `$DATA_DIR/outputs/unstructured`.
 - `PORT` — the port Uvicorn binds to (Railway sets this automatically).
 
 Recommended setup in the Railway service:
