@@ -273,24 +273,14 @@
               <option value="unstructured-partition">Unstructured Partition</option>
               <option value="azure-di">Azure Document Intelligence</option>
               <option value="azure-cu">Azure Content Understanding</option>
+              <option value="compare">Compare all providers</option>
             </select>
           </label>
-          <button id="feedbackRefreshBtn" class="btn btn-secondary" type="button">Refresh</button>
           <div class="spacer"></div>
           <button id="feedbackExportJson" class="btn btn-secondary" type="button">Download JSON</button>
           <button id="feedbackExportHtml" class="btn btn-secondary" type="button">Download HTML</button>
         </div>
         <div class="toolbar-row">
-          <label>
-            <span class="lab">Analyze</span>
-            <select id="feedbackAnalyzeSelect">
-              <option value="unstructured">Unstructured</option>
-              <option value="unstructured-partition">Unstructured Partition</option>
-              <option value="azure-di">Azure Document Intelligence</option>
-              <option value="azure-cu">Azure Content Understanding</option>
-              <option value="compare">Compare all providers</option>
-            </select>
-          </label>
           <button id="feedbackAnalyzeBtn" class="btn" type="button">Send to LLM</button>
           <span id="feedbackStatus" class="muted"></span>
         </div>

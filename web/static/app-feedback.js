@@ -18,6 +18,7 @@ function formatDate(value) {
 
 function feedbackProviderParam(provider) {
   if (!provider || provider === 'all') return '';
+  if (provider === 'compare') return '';
   return `?provider=${encodeURIComponent(provider)}`;
 }
 
@@ -154,12 +155,12 @@ function renderFeedbackAnalysis(data) {
 }
 
 async function analyzeFeedbackSelection() {
-  const target = $('feedbackAnalyzeSelect')?.value || 'unstructured';
+  const target = $('feedbackProviderSelect')?.value || 'all';
   const status = $('feedbackStatus');
   if (status) status.textContent = 'Sending to LLM…';
   try {
     let res;
-    if (target === 'compare') {
+    if (target === 'compare' || target === 'all') {
       res = await fetch('/api/feedback/analyze/compare', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -266,11 +267,10 @@ function wireFeedbackEvents() {
   const providerSel = $('feedbackProviderSelect');
   if (providerSel) {
     providerSel.addEventListener('change', () => {
-      refreshFeedbackIndex(providerSel.value);
+      const val = providerSel.value || 'all';
+      refreshFeedbackIndex(val);
     });
   }
-  const refreshBtn = $('feedbackRefreshBtn');
-  if (refreshBtn) refreshBtn.addEventListener('click', () => refreshFeedbackIndex(providerSel?.value || 'all'));
   const searchInput = $('feedbackSearch');
   if (searchInput) {
     searchInput.addEventListener('input', () => {
@@ -309,5 +309,5 @@ function wireFeedbackEvents() {
 
 async function initFeedbackView() {
   wireFeedbackEvents();
-  await refreshFeedbackIndex('all');
+  await refreshFeedbackIndex(($('feedbackProviderSelect')?.value) || 'all');
 }
