@@ -283,7 +283,7 @@ def _run_chat(messages: List[Dict[str, str]], max_tokens: int = 800) -> str:
                 )
                 raise RuntimeError("LLM returned empty response")
             return text
-        logger.info("LLM request (chat completions)", extra={"model": model, "messages": len(messages)})
+        logger.info("LLM request (chat completions)", extra={"model": model, "messages": len(messages), "max_tokens": max_tokens})
         resp = client.chat.completions.create(
             model=model,
             messages=messages,
@@ -320,6 +320,10 @@ def _summarize_batch(provider: str, runs: List[Dict[str, Any]]) -> Dict[str, Any
         "Each run has review items with ratings (good/bad) and optional notes. "
         "Return JSON only with keys: batch_summary (1-2 sentences), runs (array of {slug, key_findings, action_items})."
     )
+    logger.info(
+        "Summarizing feedback batch",
+        extra={"provider": provider, "run_count": len(runs), "item_count": sum(len(r.get('items') or []) for r in runs)},
+    )
     content = json.dumps(runs, ensure_ascii=False)
     messages = [
         {"role": "system", "content": prompt},
@@ -336,6 +340,14 @@ def _summarize_batch(provider: str, runs: List[Dict[str, Any]]) -> Dict[str, Any
 
 
 def _summarize_provider(provider: str, runs: List[Dict[str, Any]]) -> Dict[str, Any]:
+    logger.info(
+        "Reducing provider feedback",
+        extra={
+            "provider": provider,
+            "run_count": len(runs),
+            "item_count": sum(len(r.get("items") or []) for r in runs),
+        },
+    )
     batches = _chunk_runs_for_llm(runs)
     batch_summaries: List[Dict[str, Any]] = []
     for batch in batches:
