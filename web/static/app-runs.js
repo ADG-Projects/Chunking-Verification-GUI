@@ -150,6 +150,15 @@ async function init() {
   wireRunForm();
   setupInspectTabs();
   wireModal();
+  document.querySelectorAll('.view-tabs .tab').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const target = btn.dataset.view || 'inspect';
+      switchView(target);
+      if (target === 'feedback' && !FEEDBACK_INDEX) {
+        await refreshFeedbackIndex(FEEDBACK_PROVIDER_FILTER);
+      }
+    });
+  });
   await (async function waitForPdfjs(maxMs = 5000) {
     const start = performance.now();
     while (!window['pdfjsLib']) {
@@ -922,13 +931,25 @@ function handleReviewChipClick(kind) {
 }
 
 function switchView(view, skipRedraw = false) {
-  CURRENT_VIEW = 'inspect';
+  const next = view === 'feedback' ? 'feedback' : 'inspect';
+  CURRENT_VIEW = next;
   document.querySelectorAll('.view-tabs .tab').forEach(el => {
-    el.classList.toggle('active', el.dataset.view === CURRENT_VIEW);
+    const active = el.dataset.view === CURRENT_VIEW;
+    el.classList.toggle('active', active);
+    try { el.setAttribute('aria-selected', active ? 'true' : 'false'); } catch (_) {}
   });
+  const inspectShell = $('inspectShell');
+  if (inspectShell) inspectShell.classList.toggle('hidden', CURRENT_VIEW !== 'inspect');
   const inspectPane = document.getElementById('right-inspect');
   if (inspectPane) inspectPane.classList.toggle('hidden', CURRENT_VIEW !== 'inspect');
-  if (!skipRedraw) {
+  const feedbackPane = $('feedbackView');
+  if (feedbackPane) feedbackPane.classList.toggle('hidden', CURRENT_VIEW !== 'feedback');
+  if (CURRENT_VIEW === 'feedback') {
+    SHOW_CHUNK_OVERLAYS = false;
+    SHOW_ELEMENT_OVERLAYS = false;
+    clearDrawer();
+  }
+  if (CURRENT_VIEW === 'inspect' && !skipRedraw) {
     redrawOverlaysForCurrentContext();
   }
 }

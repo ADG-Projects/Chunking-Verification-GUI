@@ -84,6 +84,7 @@
         </div>
         <div class="view-tabs" role="tablist" aria-label="Primary view">
           <button id="viewTabInspect" class="tab active" data-view="inspect" role="tab" aria-selected="true">Inspect</button>
+          <button id="viewTabFeedback" class="tab" data-view="feedback" role="tab" aria-selected="false">Feedback</button>
         </div>
       </div>
       <div class="controls">
@@ -179,6 +180,7 @@
     </div>
 
   <main>
+    <div id="inspectShell" class="inspect-shell">
       <section class="left">
         <div class="page-controls">
           <button id="prevPage">◀</button>
@@ -258,7 +260,89 @@
           </div>
         </div>
       </aside>
-    </main>
+    </div>
+
+    <section id="feedbackView" class="feedback-view hidden" aria-labelledby="viewTabFeedback">
+      <div class="feedback-toolbar card">
+        <div class="toolbar-row">
+          <label>
+            <span class="lab">Provider scope</span>
+            <select id="feedbackProviderSelect">
+              <option value="all">All providers</option>
+              <option value="unstructured">Unstructured</option>
+              <option value="unstructured-partition">Unstructured Partition</option>
+              <option value="azure-di">Azure Document Intelligence</option>
+              <option value="azure-cu">Azure Content Understanding</option>
+            </select>
+          </label>
+          <button id="feedbackRefreshBtn" class="btn btn-secondary" type="button">Refresh</button>
+          <div class="spacer"></div>
+          <button id="feedbackExportJson" class="btn btn-secondary" type="button">Download JSON</button>
+          <button id="feedbackExportHtml" class="btn btn-secondary" type="button">Download HTML</button>
+        </div>
+        <div class="toolbar-row">
+          <label>
+            <span class="lab">Analyze</span>
+            <select id="feedbackAnalyzeSelect">
+              <option value="unstructured">Unstructured</option>
+              <option value="unstructured-partition">Unstructured Partition</option>
+              <option value="azure-di">Azure Document Intelligence</option>
+              <option value="azure-cu">Azure Content Understanding</option>
+              <option value="compare">Compare all providers</option>
+            </select>
+          </label>
+          <button id="feedbackAnalyzeBtn" class="btn" type="button">Send to LLM</button>
+          <span id="feedbackStatus" class="muted"></span>
+        </div>
+      </div>
+
+      <div class="feedback-grid">
+        <div class="card stat-card" id="feedbackCardOverall">
+          <div class="stat-label">Overall</div>
+          <div class="stat-values">
+            <span class="stat-good" id="feedbackOverallGood">0</span>
+            <span class="stat-sep">/</span>
+            <span class="stat-bad" id="feedbackOverallBad">0</span>
+            <span class="stat-total" id="feedbackOverallTotal">0</span>
+          </div>
+          <div class="stat-sub" id="feedbackNoteCount">0 notes</div>
+        </div>
+        <div class="card stat-card" id="feedbackCardLatest">
+          <div class="stat-label">Latest</div>
+          <div class="stat-sub" id="feedbackLatestRun">-</div>
+          <div class="stat-sub muted" id="feedbackLatestUpdated">-</div>
+        </div>
+        <div class="card stat-card" id="feedbackCardProviders">
+          <div class="stat-label">Providers</div>
+          <div class="stat-sub" id="feedbackProviderBreakdown">-</div>
+        </div>
+      </div>
+
+      <div class="card feedback-chart-card">
+        <div class="card-title-row">
+          <div class="card-title">Good vs Bad by provider</div>
+          <span class="muted" id="feedbackChartHint"></span>
+        </div>
+        <canvas id="feedbackChart" aria-label="Feedback distribution chart"></canvas>
+      </div>
+
+      <div class="card feedback-runs-card">
+        <div class="card-title-row">
+          <div class="card-title">Runs with feedback</div>
+          <input id="feedbackSearch" placeholder="Filter by slug or PDF" />
+        </div>
+        <div id="feedbackRuns" class="feedback-runs"></div>
+      </div>
+
+      <div class="card feedback-analysis-card">
+        <div class="card-title-row">
+          <div class="card-title">LLM analysis</div>
+          <button id="feedbackCopyBtn" class="btn btn-secondary" type="button">Copy</button>
+        </div>
+        <pre id="feedbackAnalysis" class="analysis-output" aria-live="polite"></pre>
+      </div>
+    </section>
+  </main>
 
     <div id="toast" class="toast"></div>
 
@@ -477,6 +561,7 @@
       </div>
     </div>
 
+    <script src="/vendor/chartjs/chart.umd.min.js" defer></script>
     <script src="/app-state.js?v=20251124" defer></script>
     <script src="/app-ui.js?v=20251124" defer></script>
     <script src="/app-reviews.js?v=20251124" defer></script>
@@ -484,6 +569,7 @@
     <script src="/app-metrics.js?v=20251124" defer></script>
     <script src="/app-elements.js?v=20251124" defer></script>
     <script src="/app-chunks.js?v=20251124" defer></script>
+    <script src="/app-feedback.js?v=20251124" defer></script>
     <script src="/app-runs.js?v=20251124" defer></script>
     <script src="/app.js?v=20251124" defer></script>
   </body>

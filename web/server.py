@@ -19,6 +19,7 @@ from .config import (
 from .routes import (
     chunks_router,
     elements_router,
+    feedback_router,
     pdfs_router,
     reviews_router,
     runs_router,
@@ -67,6 +68,7 @@ app.include_router(pdfs_router)
 app.include_router(elements_router)
 app.include_router(chunks_router)
 app.include_router(reviews_router)
+app.include_router(feedback_router)
 
 app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="ui")
 
