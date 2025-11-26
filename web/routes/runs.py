@@ -164,15 +164,25 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
     if primary_language not in {"eng", "ara"}:
         primary_language = "eng"
 
-    azure_model_id = str(payload.get("model_id") or ("prebuilt-layout" if is_azure_di else "prebuilt-documentSearch")).strip()
-    azure_api_version = str(payload.get("api_version") or ("2024-11-30" if is_azure_di else "2025-11-01")).strip()
-    azure_features_raw = payload.get("features")
-    azure_outputs_raw = payload.get("outputs")
-    azure_locale = payload.get("locale")
-    azure_string_index_type = payload.get("string_index_type")
-    azure_output_content_format = payload.get("output_content_format")
-    azure_query_fields = payload.get("query_fields")
-    analyzer_id = payload.get("analyzer_id")
+    azure_model_id: Optional[str] = None
+    azure_api_version: Optional[str] = None
+    azure_features_raw = None
+    azure_outputs_raw = None
+    azure_locale = None
+    azure_string_index_type = None
+    azure_output_content_format = None
+    azure_query_fields = None
+    analyzer_id = None
+    if is_azure_di or is_azure_cu:
+        azure_model_id = str(payload.get("model_id") or ("prebuilt-layout" if is_azure_di else "prebuilt-documentSearch")).strip()
+        azure_api_version = str(payload.get("api_version") or ("2024-11-30" if is_azure_di else "2025-11-01")).strip()
+        azure_features_raw = payload.get("features")
+        azure_outputs_raw = payload.get("outputs")
+        azure_locale = payload.get("locale")
+        azure_string_index_type = payload.get("string_index_type")
+        azure_output_content_format = payload.get("output_content_format")
+        azure_query_fields = payload.get("query_fields")
+        analyzer_id = payload.get("analyzer_id")
 
     def _normalize_languages(value: Any) -> Optional[List[str]]:
         if value is None:
@@ -251,6 +261,8 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
     detect_language_per_element = _coerce_bool("detect_language_per_element") if is_unstructured else False
     if detect_language_per_element is None:
         detect_language_per_element = False
+    extract_image_block_types = _normalize_feature_list(payload.get("extract_image_block_types")) if is_unstructured_partition else None
+    extract_image_block_to_payload = _coerce_bool("extract_image_block_to_payload") if is_unstructured_partition else None
 
     input_pdf = RES_DIR / pdf_name
     if not input_pdf.exists():
@@ -299,15 +311,17 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
         "detect_language_per_element": detect_language_per_element,
         "primary_language": primary_language,
         "provider": provider,
-        "model_id": azure_model_id if not is_unstructured else None,
-        "api_version": azure_api_version if not is_unstructured else None,
-        "features": normalized_features or azure_features_raw,
-        "outputs": normalized_outputs or azure_outputs_raw,
-        "locale": azure_locale,
-        "string_index_type": azure_string_index_type,
-        "output_content_format": azure_output_content_format,
-        "query_fields": azure_query_fields,
-        "analyzer_id": analyzer_id,
+        "model_id": azure_model_id if is_azure_di or is_azure_cu else None,
+        "api_version": azure_api_version if is_azure_di or is_azure_cu else None,
+        "features": (normalized_features or azure_features_raw) if (is_azure_di or is_azure_cu) else None,
+        "outputs": (normalized_outputs or azure_outputs_raw) if (is_azure_di or is_azure_cu) else None,
+        "locale": azure_locale if is_azure_di or is_azure_cu else None,
+        "string_index_type": azure_string_index_type if is_azure_di or is_azure_cu else None,
+        "output_content_format": azure_output_content_format if is_azure_di or is_azure_cu else None,
+        "query_fields": azure_query_fields if is_azure_di or is_azure_cu else None,
+        "analyzer_id": analyzer_id if is_azure_cu else None,
+        "extract_image_block_types": extract_image_block_types if is_unstructured_partition else None,
+        "extract_image_block_to_payload": extract_image_block_to_payload if is_unstructured_partition else None,
     }
     payload["form_snapshot"] = form_snapshot
 
@@ -399,6 +413,10 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
         ]
         if languages:
             cmd += ["--languages", ",".join(languages)]
+        if extract_image_block_types:
+            cmd += ["--extract-image-block-types", ",".join(extract_image_block_types)]
+        if extract_image_block_to_payload is True:
+            cmd.append("--extract-image-block-to-payload")
     else:
         azure_provider = "document_intelligence" if is_azure_di else "content_understanding"
         cmd = [

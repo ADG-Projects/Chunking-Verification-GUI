@@ -182,6 +182,7 @@ What you get:
 - Reviews: leave Good/Bad ratings with optional notes for any chunk or element, filter by rating, and use the header chip to jump into scored items.
 - Inspect → Chunks: browse chunk summary + list; selecting a chunk jumps to its page, shows its overlays, and expands its source elements; cards size to the amount of text.
 - Inspect → Elements: filter by type, toggle outline mode (Azure), see original element IDs and inline previews, switch overlays between chunk and element modes based on the active tab, and view extracted images for Unstructured elements that include image payloads.
+- Unstructured Partition runs support image extraction: set `extract_image_block_types` (e.g., `Image` or `Image,Table`) and enable “Embed extracted images in payload” to return `image_base64` for drawer previews.
 
 Data sources used by the UI:
 - `outputs/<provider>/<slug>.run.json` — run metadata for the settings recap and language direction hints.
