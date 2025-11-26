@@ -21,6 +21,15 @@ function formatScore(score, confidence) {
   return confidence ? `${score} (${confidence})` : String(score);
 }
 
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function feedbackProviderParam(provider) {
   if (!provider || provider === 'all') return '';
   if (provider === 'compare') return '';
@@ -265,6 +274,23 @@ function downloadFeedbackJson() {
   downloadBlob(JSON.stringify(data, null, 2), 'feedback.json');
 }
 
+function formatAnalysisHtml(analysis) {
+  if (!analysis) {
+    return '<div class="muted">No LLM analysis yet. Click “Send to LLM” before exporting.</div>';
+  }
+  const pretty = escapeHtml(JSON.stringify(analysis, null, 2));
+  return `<pre class="analysis-block">${pretty}</pre>`;
+}
+
+function chartToDataUrl(chart) {
+  try {
+    if (chart?.toBase64Image) return chart.toBase64Image('image/png', 1);
+    const canvas = chart?.canvas || chart?.ctx?.canvas;
+    if (canvas?.toDataURL) return canvas.toDataURL('image/png');
+  } catch (e) {}
+  return null;
+}
+
 function downloadFeedbackHtml() {
   const data = FEEDBACK_INDEX || { runs: [] };
   const overall = data.aggregate?.overall || { good: 0, bad: 0, total: 0 };
@@ -274,46 +300,172 @@ function downloadFeedbackHtml() {
     .map(([k, v]) => `${k}: ${v.good}/${v.bad} (${v.total}) · score ${formatScore(v.score, v.confidence)}`)
     .join(' · ');
   const scoreNote = 'Scores use smoothed good rate: (good+3)/(good+bad+6) scaled to 0-100. Confidence is based on feedback volume.';
-  const body = `
-    <html><head><meta charset="utf-8"><title>Feedback Report</title>
-    <style>
-      body { font-family: Arial, sans-serif; background: #0e0f12; color: #e9eef3; padding: 16px; }
-      h1 { margin-top: 0; }
-      .card { border: 1px solid #22262d; padding: 12px; margin-bottom: 12px; border-radius: 10px; background: #16181d; }
-      .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; border: 1px solid #2a2f38; margin-right: 6px; }
-      .run { margin-bottom: 10px; }
-      .notes { margin-top: 6px; }
-    </style></head><body>
-    <h1>Feedback Report</h1>
-    <div class="card">
-      <div>Overall: Good ${overall.good} / Bad ${overall.bad} / Total ${overall.total}</div>
-      <div>Overall score: ${overallScore}</div>
-      <div>Providers: ${providerLine}</div>
-      <div class="muted">${scoreNote}</div>
-    </div>
-    <div class="card">
-      ${(data.runs || [])
-        .map((run) => {
-          const summary = run.summary?.overall || { good: 0, bad: 0, total: 0 };
-          const notes = (run.items || []).filter((n) => n.note);
-          return `
-            <div class="run">
-              <div><strong>${run.slug}</strong> <span class="pill">${run.provider}</span></div>
-              <div>Good ${summary.good} / Bad ${summary.bad} / Total ${summary.total}</div>
-              <div>PDF: ${run.pdf || '-'} · Pages: ${run.pages || '-'} · Tag: ${run.tag || '-'}</div>
-              <div class="notes">
-                ${notes
-                  .map((n) => `<div><strong>${n.kind || ''} ${n.rating || ''}</strong> — ${n.note || ''}</div>`)
-                  .join('') || '<div>No notes</div>'}
-              </div>
+  const latest = [...(data.runs || [])].sort((a, b) => (b.last_updated || '').localeCompare(a.last_updated || ''))[0];
+  const noteCount = (data.notes && Array.isArray(data.notes) ? data.notes.length : (data.runs || []).reduce((acc, run) => {
+    const items = Array.isArray(run.items) ? run.items : [];
+    return acc + items.filter((n) => n && n.note).length;
+  }, 0)) || 0;
+  const scopeMap = {
+    all: 'All providers',
+    unstructured: 'Unstructured',
+    'unstructured-partition': 'Unstructured Partition',
+    'azure-di': 'Azure Document Intelligence',
+    compare: 'All providers (compare)',
+  };
+  const scopeLabel = scopeMap[FEEDBACK_PROVIDER_FILTER || 'all'] || 'All providers';
+  const chartImage = chartToDataUrl(FEEDBACK_CHART);
+  const scoreChartImage = chartToDataUrl(FEEDBACK_SCORE_CHART);
+  const analysisHtml = formatAnalysisHtml(FEEDBACK_ANALYSIS);
+  const runCards =
+    (data.runs || [])
+      .map((run) => {
+        const summary = run.summary?.overall || { good: 0, bad: 0, total: 0 };
+        const notes = (run.items || []).filter((n) => n && n.note).slice(0, 4);
+        const pills = [
+          run.provider ? `<span class="pill">${escapeHtml(run.provider)}</span>` : '',
+          run.pages ? `<span class="pill">pages ${escapeHtml(run.pages)}</span>` : '',
+          run.tag ? `<span class="pill">tag ${escapeHtml(run.tag)}</span>` : '',
+          run.pdf ? `<span class="pill">pdf ${escapeHtml(run.pdf)}</span>` : '',
+        ]
+          .filter(Boolean)
+          .join('');
+        const noteHtml =
+          notes.length > 0
+            ? notes
+                .map(
+                  (n) =>
+                    `<div class="note"><strong>${escapeHtml(n.kind || '')} ${escapeHtml(n.rating || '')}</strong> — ${escapeHtml(n.note || '')}</div>`,
+                )
+                .join('')
+            : '<div class="muted">No notes yet.</div>';
+        return `
+          <div class="run-card">
+            <div class="run-head">
+              <div class="slug">${escapeHtml(run.slug || '')}</div>
+              <div class="run-meta">${pills}</div>
             </div>
-          `;
-        })
-        .join('')}
-    </div>
-    </body></html>
+            <div class="run-counts">
+              <span class="stat-good">Good ${formatNumber(summary.good)}</span>
+              <span class="stat-bad">Bad ${formatNumber(summary.bad)}</span>
+              <span class="pill">${formatNumber(run.note_count || 0)} notes</span>
+              <span class="pill">${formatDate(run.last_updated)}</span>
+            </div>
+            <div class="run-sub">${escapeHtml(run.pdf_file || '')}</div>
+            <div class="notes-block">${noteHtml}</div>
+          </div>
+        `;
+      })
+      .join('') || '<div class="muted">No runs with feedback yet.</div>';
+  const styles = `
+    :root {
+      --bg: #0e0f12;
+      --panel: #16181d;
+      --text: #e9eef3;
+      --muted: #aab3bd;
+      --border: #22262d;
+      --pill: #2a2f38;
+      --ok: #19d18e;
+      --danger: #ff6b6b;
+      --accent: #6bbcff;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 24px; background: var(--bg); color: var(--text); font-family: 'Segoe UI', -apple-system, system-ui, sans-serif; }
+    .container { max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+    .page-title { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    .eyebrow { color: var(--muted); letter-spacing: 0.06em; font-size: 12px; text-transform: uppercase; }
+    h1 { margin: 6px 0; font-size: 26px; }
+    .muted { color: var(--muted); }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+    .grid { display: grid; gap: 12px; }
+    .grid.stats { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+    .stat-label { font-size: 12px; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+    .stat-value { font-size: 22px; display: flex; align-items: baseline; gap: 6px; }
+    .stat-sub { color: var(--muted); font-size: 13px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .stat-good { color: var(--ok); }
+    .stat-bad { color: var(--danger); }
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--pill); color: var(--muted); font-size: 12px; }
+    .charts { display: flex; flex-direction: column; gap: 12px; }
+    .chart-card { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+    .chart-card img { width: 100%; border-radius: 8px; border: 1px solid var(--border); background: #0f1014; }
+    .chart-fallback { color: var(--muted); font-style: italic; }
+    .runs-card { display: flex; flex-direction: column; gap: 10px; }
+    .run-card { border: 1px solid var(--border); border-radius: 10px; padding: 10px; background: #1b1d23; display: flex; flex-direction: column; gap: 6px; }
+    .run-head { display: flex; flex-direction: column; gap: 6px; }
+    .run-head .slug { font-weight: 700; font-size: 15px; }
+    .run-meta { display: flex; gap: 8px; flex-wrap: wrap; }
+    .run-counts { display: flex; gap: 8px; align-items: center; font-size: 13px; flex-wrap: wrap; }
+    .run-sub { color: var(--muted); font-size: 12px; }
+    .notes-block { background: #16181d; border: 1px solid var(--border); border-radius: 8px; padding: 8px; font-size: 12px; color: var(--text); }
+    .note { padding-bottom: 6px; margin-bottom: 6px; border-bottom: 1px solid #1f2229; }
+    .note:last-child { border-bottom: 0; margin-bottom: 0; padding-bottom: 0; }
+    .footer { color: var(--muted); font-size: 12px; }
+    .analysis-card { display: flex; flex-direction: column; gap: 8px; }
+    .analysis-block { background: #0f1014; border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: var(--text); white-space: pre-wrap; overflow: auto; }
   `;
-  downloadBlob(body, 'feedback.html', 'text/html');
+  const html = `
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>Feedback Report</title>
+        <style>${styles}</style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="page-title">
+            <div>
+              <div class="eyebrow">Chunking Visualizer</div>
+              <h1>Feedback Report</h1>
+              <div class="muted">Generated ${escapeHtml(new Date().toLocaleString())} · ${formatNumber((data.runs || []).length)} runs · ${formatNumber(noteCount)} notes</div>
+            </div>
+            <div class="pill">Scope: ${escapeHtml(scopeLabel)}</div>
+          </div>
+
+          <div class="grid stats">
+            <div class="card">
+              <div class="stat-label">Overall</div>
+              <div class="stat-value"><span class="stat-good">${formatNumber(overall.good)}</span>/<span class="stat-bad">${formatNumber(overall.bad)}</span> <span class="muted">${formatNumber(overall.total)}</span></div>
+              <div class="stat-sub"><span>Score ${overallScore}</span><span class="pill">${scoreNote}</span></div>
+            </div>
+            <div class="card">
+              <div class="stat-label">Latest</div>
+              <div class="stat-value">${escapeHtml(latest?.slug || '-')}</div>
+              <div class="stat-sub">${escapeHtml(latest ? formatDate(latest.last_updated) : '-')}</div>
+            </div>
+            <div class="card">
+              <div class="stat-label">Providers</div>
+              <div class="stat-sub">${providerLine || '-'}</div>
+              <div class="stat-sub">${Object.entries(providers).map(([k, v]) => `${k}: ${formatScore(v.score, v.confidence)}`).join(' · ') || '-'}</div>
+            </div>
+          </div>
+
+          <div class="charts">
+            <div class="card chart-card">
+              <div class="stat-label">Good vs Bad by provider</div>
+              ${chartImage ? `<img src="${chartImage}" alt="Good vs Bad by provider" />` : '<div class="chart-fallback">Chart unavailable</div>'}
+            </div>
+            <div class="card chart-card">
+              <div class="stat-label">Provider scores (0-100)</div>
+              ${scoreChartImage ? `<img src="${scoreChartImage}" alt="Provider scores chart" />` : '<div class="chart-fallback">Chart unavailable</div>'}
+            </div>
+          </div>
+
+          <div class="card runs-card">
+            <div class="stat-label">Runs with feedback</div>
+            ${runCards}
+          </div>
+
+          <div class="card analysis-card">
+            <div class="stat-label">LLM analysis</div>
+            ${analysisHtml}
+          </div>
+
+          <div class="footer">Exported from the Feedback tab. ${scoreNote}</div>
+        </div>
+      </body>
+    </html>
+  `;
+  downloadBlob(html, 'feedback.html', 'text/html');
 }
 
 async function jumpToRunFromFeedback(slug, provider) {

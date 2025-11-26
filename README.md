@@ -166,7 +166,7 @@ uv run uvicorn main:app --host 127.0.0.1 --port 8765
 What you get:
 - Inspect view that keeps the PDF visible with overlay toggles and tabs for Chunks and Elements; the Metrics/table visuals are retired in favor of chunk-first inspection.
 - Provider-aware runs: pick Unstructured (local), Unstructured Partition (API, elements-only), or Azure Document Intelligence (Layout) in the New Run modal. Azure runs hide chunking controls and expose model id, features, locale, string index type, content format, and query fields. Outputs live under `outputs/azure/...`. Azure Document Intelligence runs are elements-only in the UI (the Chunks tab is hidden).
-- Feedback view: a new top-level tab that aggregates all reviews across providers, shows good/bad counts, per-provider charts, lets you jump back into Inspect, and can ship every review to an OpenAI model for provider-level summaries or cross-provider comparisons. Export everything as JSON or a lightweight HTML report.
+- Feedback view: a new top-level tab that aggregates all reviews across providers, shows good/bad counts, per-provider charts, lets you jump back into Inspect, and can ship every review to an OpenAI model for provider-level summaries or cross-provider comparisons. Export everything as JSON or an HTML report that mirrors the on-screen cards/charts and embeds the latest LLM analysis.
 - A compact single-line settings recap with rich tooltips for each parameter; the New Run modal mirrors the same tooltips so behavior is clear where you edit values.
 - Overlay UX: hover for ID/type/page/tooltips; colors are fixed per element type; chunk overlays honor Type/Review filters and redraw immediately; Azure polygons stay scaled to PDF points; the Elements outline groups Azure pageHeader/pageNumber/Tables/Paragraphs/Lines by page order with breadcrumbs in drawers.
 - Reviews: leave Good/Bad ratings with optional notes for any chunk or element, filter by rating, and use the header chip to jump into scored items.
@@ -273,8 +273,9 @@ In the New Run modal, the “Upload PDF” row streams the chosen file straight 
 
 The Feedback tab can ship all stored reviews to OpenAI for summaries and comparisons.
 - Environment: set `FEEDBACK_LLM_API_KEY` (or reuse `OPENAI_API_KEY`), optional `FEEDBACK_LLM_MODEL` (defaults to `gpt-5-nano`), and optional `FEEDBACK_LLM_BASE` if you proxy OpenAI-compatible endpoints.
-- Provider analysis (`POST /api/feedback/analyze/provider`) batches every review for that provider, asks the model to summarize each batch, and reduces those summaries into a concise JSON overview.
-- Cross-provider comparison (`POST /api/feedback/analyze/compare`) reuses the provider summaries and asks the model to rank/contrast providers with shared recommendations.
+- Provider analysis (`POST /api/feedback/analyze/provider`) batches every review for that provider, attaches element metadata (type + page) to each item, asks the model to summarize each batch, and reduces those summaries into a concise JSON overview (referring to reviewed units as elements).
+- Cross-provider comparison (`POST /api/feedback/analyze/compare`) reuses the provider summaries plus per-provider stats (good/bad totals, smoothed score, confidence, note counts) and asks the model to rank/contrast providers with shared recommendations and a 1–10 “actionability” score per provider (how specific and usable the feedback is; distinct from the smoothed score).
+- Outputs now include per-element suggestions (machine_note, issue_tags, severity, text_snippet), element-type findings, issue taxonomies with severities, review-gap callouts, and multi-dimensional 1–10 scores (overall/actionability/explanations/coverage) surfaced in provider summaries and comparisons.
 - The UI exposes both flows via the Feedback tab (“Send to LLM” for a provider or “Compare all providers”), and you can export the raw aggregated data as JSON or HTML without hitting the model.
 
 ### Docker image (hi_res ready)

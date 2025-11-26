@@ -4,6 +4,9 @@
 - [ ] Remove leftover references to metrics/tables in UI modules (app-metrics.js import vestigial; ensure CSS/tooling stay lean).
 
 ## Completed
+- [x] 2025-11-26 Add LLM analysis output to Feedback HTML export so downloads match on-screen insights.
+- [x] 2025-11-26 Polish Feedback HTML export to mirror UI cards/charts and keep notes readable when downloaded.
+- [x] 2025-11-26 Add element-aware LLM feedback (snippets, per-element suggestions/tags/severity, issue taxonomies, review-gap calls) plus multi-dimensional 1–10 scores for provider comparisons.
 - [x] 2025-11-26 Add score tooltips and provider score bar chart to Feedback view/export for clearer overall comparison.
 - [x] 2025-11-26 Add smoothed feedback scores and confidence labels to the Feedback view/export for quick provider comparison.
 - [x] 2025-11-26 Add Feedback view with provider-wide review exports, LLM analysis endpoints, and JSON/HTML downloads plus charted summaries.
