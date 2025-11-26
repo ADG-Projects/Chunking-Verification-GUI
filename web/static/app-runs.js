@@ -653,36 +653,41 @@ function wireRunForm() {
       if (val === '') return null;
       return val === 'true';
     };
-    if (isUnstructured) {
+    if (isUnstructuredFamily) {
       payload.strategy = $('strategySelect').value;
-      payload.infer_table_structure = $('inferTables').checked;
-      payload.chunking = $('chunkingSelect').value;
-      const maxTokens = parseNumber('chunkMaxTokens');
-      const maxChars = parseNumber('chunkMaxChars');
-      if (maxTokens != null) {
-        payload.chunk_max_tokens = maxTokens;
-        payload.chunk_max_characters = Math.max(1, Math.round(maxTokens * 4));
-      } else if (maxChars != null) {
-        payload.chunk_max_characters = maxChars;
-      }
-      const newAfter = parseNumber('chunkNewAfter');
-      if (newAfter != null) payload.chunk_new_after_n_chars = newAfter;
-      const overlap = parseNumber('chunkOverlap');
-      if (overlap != null) payload.chunk_overlap = overlap;
-      const includeOrig = parseBoolSelect('chunkIncludeOrig');
-      if (includeOrig != null) payload.chunk_include_orig_elements = includeOrig;
-      const overlapAll = parseBoolSelect('chunkOverlapAll');
-      if (overlapAll != null) payload.chunk_overlap_all = overlapAll;
-      if (payload.chunking === 'by_title') {
-        const combine = parseNumber('chunkCombineUnder');
-        if (combine != null) payload.chunk_combine_under_n_chars = combine;
-        const multipage = parseBoolSelect('chunkMultipage');
-        if (multipage != null) payload.chunk_multipage_sections = multipage;
-      }
       const imgTypesRaw = $('extractImageBlockTypes')?.value?.trim();
       if (imgTypesRaw) payload.extract_image_block_types = imgTypesRaw;
       const embedImages = $('extractImageToPayload')?.checked;
       if (embedImages) payload.extract_image_block_to_payload = true;
+      if (isUnstructured) {
+        payload.infer_table_structure = $('inferTables').checked;
+        payload.chunking = $('chunkingSelect').value;
+        const maxTokens = parseNumber('chunkMaxTokens');
+        const maxChars = parseNumber('chunkMaxChars');
+        if (maxTokens != null) {
+          payload.chunk_max_tokens = maxTokens;
+          payload.chunk_max_characters = Math.max(1, Math.round(maxTokens * 4));
+        } else if (maxChars != null) {
+          payload.chunk_max_characters = maxChars;
+        }
+        const newAfter = parseNumber('chunkNewAfter');
+        if (newAfter != null) payload.chunk_new_after_n_chars = newAfter;
+        const overlap = parseNumber('chunkOverlap');
+        if (overlap != null) payload.chunk_overlap = overlap;
+        const includeOrig = parseBoolSelect('chunkIncludeOrig');
+        if (includeOrig != null) payload.chunk_include_orig_elements = includeOrig;
+        const overlapAll = parseBoolSelect('chunkOverlapAll');
+        if (overlapAll != null) payload.chunk_overlap_all = overlapAll;
+        if (payload.chunking === 'by_title') {
+          const combine = parseNumber('chunkCombineUnder');
+          if (combine != null) payload.chunk_combine_under_n_chars = combine;
+          const multipage = parseBoolSelect('chunkMultipage');
+          if (multipage != null) payload.chunk_multipage_sections = multipage;
+        }
+      } else {
+        // Partition runs are elements-only; chunking stays none
+        payload.chunking = 'none';
+      }
     } else {
       const azureFeatures = [];
       const azureOutputs = [];
@@ -700,7 +705,6 @@ function wireRunForm() {
       const fmt = document.querySelector('input[name="azureOutputFormat"]:checked');
       payload.output_content_format = fmt ? fmt.value : 'markdown';
       payload.model_id = ($('azureModelId')?.value || '').trim();
-      payload.api_version = ($('azureApiVersion')?.value || '').trim();
       payload.locale = ($('azureLocale')?.value || '').trim();
       payload.string_index_type = ($('azureStringIndexType')?.value || '').trim();
       payload.query_fields = ($('azureQueryFields')?.value || '').trim();
@@ -730,7 +734,6 @@ function wireRunForm() {
       payload.form_snapshot.extract_image_block_types = $('extractImageBlockTypes')?.value?.trim() || null;
       payload.form_snapshot.extract_image_block_to_payload = $('extractImageToPayload')?.checked || null;
     } else if (isPartition) {
-      payload.strategy = $('strategySelect')?.value || 'auto';
       payload.form_snapshot.strategy = payload.strategy;
       payload.form_snapshot.provider = payload.provider;
       payload.form_snapshot.extract_image_block_types = $('extractImageBlockTypes')?.value?.trim() || null;
@@ -740,7 +743,6 @@ function wireRunForm() {
       payload.form_snapshot.outputs = payload.outputs;
       payload.form_snapshot.output_content_format = payload.output_content_format;
       payload.form_snapshot.model_id = payload.model_id;
-      payload.form_snapshot.api_version = payload.api_version;
       payload.form_snapshot.locale = payload.locale;
       payload.form_snapshot.string_index_type = payload.string_index_type;
       payload.form_snapshot.query_fields = payload.query_fields;
