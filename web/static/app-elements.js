@@ -405,6 +405,10 @@ async function openElementDetails(elementId) {
     structure.innerHTML = crumbs.join(' › ');
     container.appendChild(structure);
     container.appendChild(buildDrawerReviewSection('element', elementId));
+    const imageSection = buildElementImageSection(data);
+    if (imageSection) {
+      container.appendChild(imageSection);
+    }
     const html = data.text_as_html;
     if (html) {
       const scroll = document.createElement('div');
@@ -514,6 +518,25 @@ function buildElementCard(id, entry, review, opts = {}) {
     }
   })();
   return card;
+}
+
+function buildElementImageSection(data) {
+  const mime = data.image_mime_type || 'image/png';
+  const uri = data.image_data_uri || (data.image_base64 ? `data:${mime};base64,${data.image_base64}` : null);
+  const fallbackUrl = data.image_url;
+  if (!uri && !fallbackUrl) return null;
+  const wrap = document.createElement('div');
+  wrap.className = 'drawer-image';
+  const title = document.createElement('div');
+  title.className = 'section-title';
+  title.textContent = 'Extracted image';
+  const img = document.createElement('img');
+  img.loading = 'lazy';
+  img.alt = data.type ? `${data.type} image` : 'Extracted image';
+  img.src = uri || fallbackUrl;
+  wrap.appendChild(title);
+  wrap.appendChild(img);
+  return wrap;
 }
 function findContainedElements(parentEntry, items, allowedTypes) {
   if (!parentEntry || !(allowedTypes && allowedTypes.size)) return [];
