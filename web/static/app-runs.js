@@ -232,14 +232,18 @@ async function refreshRuns() {
     CURRENT_RUN = null;
     CURRENT_RUN_CONFIG = null;
     CURRENT_RUN_HAS_CHUNKS = false;
+    ELEMENT_TYPES = [];
+    CHUNK_TYPES = [];
     CURRENT_CHUNKS = null;
     CURRENT_CHUNK_SUMMARY = null;
     CURRENT_CHUNK_LOOKUP = {};
     resetPdfViewer();
     clearBoxes();
+    updateLegend([]);
     clearDrawer();
     updateRunConfigCard();
     renderChunksTab();
+    renderElementsListForCurrentPage(CURRENT_PAGE_BOXES);
     setReviewState(_emptyReviewState());
     updateReviewSummaryChip();
   }
