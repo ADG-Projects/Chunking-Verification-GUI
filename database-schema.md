@@ -77,7 +77,8 @@ The FastAPI endpoints (`GET/POST /api/reviews/{slug}`) read/write these files at
 ### Feedback index and LLM analysis
 
 - `GET /api/feedback/index` scans `outputs/*/reviews/*.reviews.json` across providers, returning per-run summaries, per-provider totals, and smoothed scores with confidence labels (score = `(good+3)/(good+bad+6)*100`; no note bodies unless `include_items=true`).
-- `GET /api/feedback/export` returns the same summaries plus optional note bodies and a flattened `notes` list for downloads/LLM prompts (scores and confidence included).
-- `POST /api/feedback/analyze/provider` batches every review for a provider, sends them to OpenAI (model/env driven by `FEEDBACK_LLM_API_KEY`, optional `FEEDBACK_LLM_MODEL`, `FEEDBACK_LLM_BASE`), summarizes each batch, and reduces to a concise provider JSON summary.
-- `POST /api/feedback/analyze/compare` reuses the provider summaries and asks the LLM to compare/rank providers with shared recommendations.
+- `GET /api/feedback/export` returns the same summaries plus optional note bodies, a flattened `notes` list for downloads/LLM prompts (scores and confidence included), and the latest LLM analysis when it exists.
+- `POST /api/feedback/analyze/provider` batches every review for a provider, enriches each reviewed item with element metadata (type + page), sends them to OpenAI (model/env driven by `FEEDBACK_LLM_API_KEY`, optional `FEEDBACK_LLM_MODEL`, `FEEDBACK_LLM_BASE`), summarizes each batch, and reduces to a concise provider JSON summary (treating reviewed units as elements).
+- `POST /api/feedback/analyze/compare` reuses the provider summaries plus per-provider stats (good/bad totals, smoothed score, confidence, note counts) and asks the LLM to compare/rank providers with shared recommendations and a 1–10 “actionability” score per provider (how specific and usable the feedback is).
+- Provider/comparison outputs include per-element suggestions (machine_note, issue_tags, severity, text_snippet), element-type findings, issue taxonomies (type/severity/evidence), review-gap callouts, and multi-dimensional 1–10 scores (overall/actionability/explanations/coverage).
 - The Feedback UI tab visualizes the aggregated summaries (counts, per-provider chart, run cards) and exposes JSON/HTML exports alongside the LLM actions.

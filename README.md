@@ -196,7 +196,7 @@ Endpoints (served by FastAPI):
 - `POST /api/reviews/{slug}?provider=...` — write reviews for chunks/elements.
 - `GET /api/feedback/index?provider=...&include_items=...` — aggregate review summaries across providers (fast: excludes note bodies by default) including smoothed overall scores and confidence labels (score = `(good+3)/(good+bad+6)*100`).
 - `GET /api/feedback/runs/{provider}?include_items=...` — list runs with reviews for a single provider (optionally with note bodies).
-- `GET /api/feedback/export?provider=...&include_items=...` — export all feedback (runs + flat notes list) for downloads/LLM prompts, also carrying provider/overall scores.
+- `GET /api/feedback/export?provider=...&include_items=...` — export all feedback (runs + flat notes list) for downloads/LLM prompts, also carrying provider/overall scores and the most recent LLM analysis (when available).
 - `POST /api/feedback/analyze/provider` — send every review for a provider to OpenAI in batches and return a reduced JSON summary (requires `FEEDBACK_LLM_API_KEY`).
 - `POST /api/feedback/analyze/compare` — reuse provider summaries and ask OpenAI to compare/rank providers (requires `FEEDBACK_LLM_API_KEY`).
 - `GET /api/run-jobs` — inspect the current queue of chunking jobs (status, timestamps, latest log tail).

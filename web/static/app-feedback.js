@@ -283,8 +283,21 @@ function downloadBlob(data, filename, type = 'application/json') {
   URL.revokeObjectURL(url);
 }
 
+function buildFeedbackExportPayload() {
+  const base = FEEDBACK_INDEX || { runs: [] };
+  const scope = FEEDBACK_PROVIDER_FILTER || 'all';
+  const analysis = FEEDBACK_ANALYSIS
+    ? {
+        scope,
+        generated_at: new Date().toISOString(),
+        payload: FEEDBACK_ANALYSIS,
+      }
+    : null;
+  return { ...base, llm_analysis: analysis };
+}
+
 function downloadFeedbackJson() {
-  const data = FEEDBACK_INDEX || { runs: [] };
+  const data = buildFeedbackExportPayload();
   downloadBlob(JSON.stringify(data, null, 2), 'feedback.json');
 }
 
