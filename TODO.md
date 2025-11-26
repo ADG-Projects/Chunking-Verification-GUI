@@ -4,6 +4,8 @@
 - [ ] Remove leftover references to metrics/tables in UI modules (app-metrics.js import vestigial; ensure CSS/tooling stay lean).
 
 ## Completed
+
+- [x] 2025-11-26 Release v4.2 (Enhanced feedback analysis with provider comparisons, smoothed scoring, and LLM-powered insights).
 - [x] 2025-11-26 Add LLM analysis payloads to feedback JSON export so downloads include model responses.
 - [x] 2025-11-26 Add LLM analysis output to Feedback HTML export so downloads match on-screen insights.
 - [x] 2025-11-26 Polish Feedback HTML export to mirror UI cards/charts and keep notes readable when downloaded.

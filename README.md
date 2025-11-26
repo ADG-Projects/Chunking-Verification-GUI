@@ -107,6 +107,11 @@ Outputs for Azure runs live under `outputs/azure/document_intelligence/` with th
 
 ## Release history
 
+- **v4.2 (2025-11-26)** – Enhanced feedback analysis with provider-level comparisons, smoothed scoring, multi-dimensional insights (per-element suggestions, issue taxonomies, review-gap callouts), and improved JSON/HTML exports that include LLM analysis payloads.
+  - Verification steps:
+    1. `uv run uvicorn main:app --host 127.0.0.1 --port 8765`, navigate to Feedback tab, add reviews to multiple providers, and confirm the provider score chart displays smoothed scores with confidence labels.
+    2. Click "Send to LLM" for a provider and verify the analysis includes per-element suggestions, issue taxonomies with severities, and multi-dimensional 1–10 scores (overall/actionability/explanations/coverage).
+    3. Export feedback as JSON or HTML and confirm the downloads include the latest LLM analysis payloads alongside review summaries and provider stats.
 - **v4.1 (2025-11-26)** – Azure Document Intelligence can now return cropped figure PNGs (`--outputs figures`) with drawer previews, and the UI simplifies Azure settings by only showing model id (API version is fixed to 2024-11-30).
   - Verification steps:
     1. Run an Azure DI slice with figures enabled: `uv run python -m chunking_pipeline.azure_pipeline --provider document_intelligence --input res/sample.pdf --pages 1-1 --outputs figures --output outputs/azure/document_intelligence/sample.pages1.figures.jsonl --trimmed-out outputs/azure/document_intelligence/sample.pages1.pdf --model-id prebuilt-layout --api-version 2024-11-30`.
