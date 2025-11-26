@@ -237,6 +237,7 @@ async function refreshRuns() {
     CURRENT_CHUNK_LOOKUP = {};
     resetPdfViewer();
     clearBoxes();
+    clearDrawer();
     updateRunConfigCard();
     renderChunksTab();
     setReviewState(_emptyReviewState());
