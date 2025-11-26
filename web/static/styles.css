@@ -1412,7 +1412,7 @@ body.drawer-open #right-metrics {
   gap: 10px;
   padding: 10px;
   min-height: 0;
-  overflow: hidden;
+  overflow: auto;
   flex: 1;
 }
 
@@ -1620,8 +1620,6 @@ body.drawer-open #right-metrics {
   border-radius: 8px;
   padding: 10px;
   background: #0f131a;
-  overflow: auto;
-  max-height: 320px;
 }
 
 .drawer-image img {
