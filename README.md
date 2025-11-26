@@ -182,6 +182,7 @@ uv run uvicorn main:app --host 127.0.0.1 --port 8765
 What you get:
 - Inspect view that keeps the PDF visible with overlay toggles and tabs for Chunks and Elements; the Metrics/table visuals are retired in favor of chunk-first inspection.
 - Provider-aware runs: pick Unstructured (local), Unstructured Partition (API, elements-only), or Azure Document Intelligence (Layout) in the New Run modal. (Azure Content Understanding is disabled in the UI; use the CLI helper if needed.) Azure runs hide chunking controls and expose model id, features, locale, string index type, content format, and query fields. Outputs live under `outputs/azure/...`. Azure Document Intelligence runs are elements-only in the UI (the Chunks tab is hidden).
+- Feedback view: a new top-level tab that aggregates all reviews across providers, shows good/bad counts, per-provider charts, lets you jump back into Inspect, and can ship every review to an OpenAI model for provider-level summaries or cross-provider comparisons. Export everything as JSON or a lightweight HTML report.
 - A compact single-line settings recap with rich tooltips for each parameter; the New Run modal mirrors the same tooltips so behavior is clear where you edit values.
 - Overlay UX: hover for ID/type/page/tooltips; colors are fixed per element type; chunk overlays honor Type/Review filters and redraw immediately; Azure polygons stay scaled to PDF points; the Elements outline groups Azure pageHeader/pageNumber/Tables/Paragraphs/Lines by page order with breadcrumbs in drawers.
 - Reviews: leave Good/Bad ratings with optional notes for any chunk or element, filter by rating, and use the header chip to jump into scored items.
@@ -209,6 +210,11 @@ Endpoints (served by FastAPI):
 - `GET /api/elements/{slug}?ids=...&provider=...` — batch lookup for element overlay metadata.
 - `GET /api/reviews/{slug}?provider=...` — retrieve persisted reviews for chunks/elements.
 - `POST /api/reviews/{slug}?provider=...` — write reviews for chunks/elements.
+- `GET /api/feedback/index?provider=...&include_items=...` — aggregate review summaries across providers (fast: excludes note bodies by default).
+- `GET /api/feedback/runs/{provider}?include_items=...` — list runs with reviews for a single provider (optionally with note bodies).
+- `GET /api/feedback/export?provider=...&include_items=...` — export all feedback (runs + flat notes list) for downloads/LLM prompts.
+- `POST /api/feedback/analyze/provider` — send every review for a provider to OpenAI in batches and return a reduced JSON summary (requires `FEEDBACK_LLM_API_KEY`).
+- `POST /api/feedback/analyze/compare` — reuse provider summaries and ask OpenAI to compare/rank providers (requires `FEEDBACK_LLM_API_KEY`).
 - `GET /api/run-jobs` — inspect the current queue of chunking jobs (status, timestamps, latest log tail).
 - `GET /api/run-jobs/{job_id}` — poll a specific job for live status/log updates; used by the UI progress view.
 - `POST /api/run` — execute a new run. Body:
@@ -278,6 +284,14 @@ Notes:
 - The default install now includes `unstructured-inference` so hi_res layout is available when the platform provides the needed system libraries. On lightweight builders (Railpack/Nixpacks), if you see `ImportError: libGL.so.1` or OCR errors, either switch to the provided Dockerfile (recommended) or add the runtime packages `libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 tesseract-ocr`.
 
 In the New Run modal, the “Upload PDF” row streams the chosen file straight into `PDF_DIR`. The file list refreshes immediately, and the preview loads from `/res_pdf/{name}` pointing at the mounted directory.
+
+### Feedback analysis (LLM)
+
+The Feedback tab can ship all stored reviews to OpenAI for summaries and comparisons.
+- Environment: set `FEEDBACK_LLM_API_KEY` (or reuse `OPENAI_API_KEY`), optional `FEEDBACK_LLM_MODEL` (defaults to `gpt-4o-mini`), and optional `FEEDBACK_LLM_BASE` if you proxy OpenAI-compatible endpoints.
+- Provider analysis (`POST /api/feedback/analyze/provider`) batches every review for that provider, asks the model to summarize each batch, and reduces those summaries into a concise JSON overview.
+- Cross-provider comparison (`POST /api/feedback/analyze/compare`) reuses the provider summaries and asks the model to rank/contrast providers with shared recommendations.
+- The UI exposes both flows via the Feedback tab (“Send to LLM” for a provider or “Compare all providers”), and you can export the raw aggregated data as JSON or HTML without hitting the model.
 
 ### Docker image (hi_res ready)
 

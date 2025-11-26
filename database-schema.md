@@ -73,3 +73,11 @@ Reviewer feedback stays on disk alongside run artifacts:
   - `summary`: cached counts `{ good, bad, total }` for quick header chips.
 
 The FastAPI endpoints (`GET/POST /api/reviews/{slug}`) read/write these files atomically so the UI can show live filters, summary chips, and drawer editors without a database.
+
+### Feedback index and LLM analysis
+
+- `GET /api/feedback/index` scans `outputs/*/reviews/*.reviews.json` across providers, returning per-run summaries and per-provider totals (no note bodies unless `include_items=true`).
+- `GET /api/feedback/export` returns the same summaries plus optional note bodies and a flattened `notes` list for downloads/LLM prompts.
+- `POST /api/feedback/analyze/provider` batches every review for a provider, sends them to OpenAI (model/env driven by `FEEDBACK_LLM_API_KEY`, optional `FEEDBACK_LLM_MODEL`, `FEEDBACK_LLM_BASE`), summarizes each batch, and reduces to a concise provider JSON summary.
+- `POST /api/feedback/analyze/compare` reuses the provider summaries and asks the LLM to compare/rank providers with shared recommendations.
+- The Feedback UI tab visualizes the aggregated summaries (counts, per-provider chart, run cards) and exposes JSON/HTML exports alongside the LLM actions.

@@ -5,6 +5,7 @@
 - [ ] Remove leftover references to metrics/tables in UI modules (app-metrics.js import vestigial; ensure CSS/tooling stay lean).
 
 ## Completed
+- [x] 2025-11-26 Add Feedback view with provider-wide review exports, LLM analysis endpoints, and JSON/HTML downloads plus charted summaries.
 - [x] 2025-11-26 Release v4.1 (Azure DI figures plus simplified Azure settings recap/modal).
 - [x] 2025-11-26 Add Azure DI figure crops (`--outputs figures`) with saved PNGs and UI previews matching Unstructured images.
 - [x] 2025-11-26 Render extracted image previews in element details for Unstructured runs when image payloads are present.
