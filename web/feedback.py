@@ -22,6 +22,31 @@ logger.setLevel(logging.INFO)
 logger.propagate = False
 
 
+def _smoothed_good_rate(good: int, bad: int, prior_good: int = 3, prior_bad: int = 3) -> Optional[float]:
+    total = (good or 0) + (bad or 0)
+    denom = total + prior_good + prior_bad
+    if denom <= 0:
+        return None
+    return (good + prior_good) / denom
+
+
+def _score_from_counts(good: int, bad: int) -> Optional[int]:
+    rate = _smoothed_good_rate(good, bad)
+    if rate is None:
+        return None
+    return round(rate * 100)
+
+
+def _confidence_label(total: int) -> str:
+    if total >= 100:
+        return "high"
+    if total >= 20:
+        return "medium"
+    if total > 0:
+        return "low"
+    return "-"
+
+
 def _safe_slug_from_path(path: Path) -> str:
     name = path.name[:-len(".reviews.json")] if path.name.endswith(".reviews.json") else path.stem
     return re.sub(r"[^A-Za-z0-9._\\-]+", "-", name)
@@ -121,12 +146,14 @@ def collect_feedback_index(provider: Optional[str] = None, include_items: bool =
     for prov in providers:
         runs.extend(_collect_reviews_for_provider(prov))
     aggregate = {
-        "overall": {"good": 0, "bad": 0, "total": 0},
+        "overall": {"good": 0, "bad": 0, "total": 0, "score": None, "confidence": "-"},
         "providers": {},
     }
     for run in runs:
         prov = run["provider"]
-        aggregate["providers"].setdefault(prov, {"good": 0, "bad": 0, "total": 0, "note_count": 0})
+        aggregate["providers"].setdefault(
+            prov, {"good": 0, "bad": 0, "total": 0, "note_count": 0, "score": None, "confidence": "-"}
+        )
         for key in ("good", "bad", "total"):
             aggregate["overall"][key] += run["summary"]["overall"].get(key, 0)
             aggregate["providers"][prov][key] += run["summary"]["overall"].get(key, 0)
@@ -134,6 +161,11 @@ def collect_feedback_index(provider: Optional[str] = None, include_items: bool =
         if not include_items:
             run = run.copy()
             run.pop("items", None)
+    for prov, stats in aggregate["providers"].items():
+        stats["score"] = _score_from_counts(stats.get("good", 0), stats.get("bad", 0))
+        stats["confidence"] = _confidence_label(stats.get("total", 0))
+    aggregate["overall"]["score"] = _score_from_counts(aggregate["overall"]["good"], aggregate["overall"]["bad"])
+    aggregate["overall"]["confidence"] = _confidence_label(aggregate["overall"]["total"])
     if not include_items:
         runs = [dict(r, items=None) for r in runs]
     return {"runs": runs, "aggregate": aggregate}

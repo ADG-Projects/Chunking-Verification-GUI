@@ -16,6 +16,11 @@ function formatDate(value) {
   }
 }
 
+function formatScore(score, confidence) {
+  if (score === null || score === undefined) return '-';
+  return confidence ? `${score} (${confidence})` : String(score);
+}
+
 function feedbackProviderParam(provider) {
   if (!provider || provider === 'all') return '';
   if (provider === 'compare') return '';
@@ -30,6 +35,7 @@ function renderFeedbackCards(data) {
   $('feedbackOverallGood').textContent = formatNumber(overall.good);
   $('feedbackOverallBad').textContent = formatNumber(overall.bad);
   $('feedbackOverallTotal').textContent = formatNumber(overall.total);
+  $('feedbackOverallScoreValue').textContent = formatScore(overall.score, overall.confidence);
   $('feedbackNoteCount').textContent = `${formatNumber(noteCount)} notes`;
   $('feedbackLatestRun').textContent = latest ? `${latest.slug} (${latest.provider})` : '-';
   $('feedbackLatestUpdated').textContent = latest ? formatDate(latest.last_updated) : '-';
@@ -37,6 +43,10 @@ function renderFeedbackCards(data) {
     .map(([prov, stats]) => `${prov}: ${formatNumber(stats.good)} / ${formatNumber(stats.bad)} (${formatNumber(stats.total)})`)
     .join(' · ');
   $('feedbackProviderBreakdown').textContent = breakdown || '-';
+  const scores = Object.entries(providers)
+    .map(([prov, stats]) => `${prov}: ${formatScore(stats.score, stats.confidence)}`)
+    .join(' · ');
+  $('feedbackProviderScoresValue').textContent = scores || '-';
 }
 
 function renderFeedbackChart(data) {
@@ -69,6 +79,57 @@ function renderFeedbackChart(data) {
       scales: {
         x: { ticks: { color: '#e9eef3' }, grid: { color: '#22262d' } },
         y: { ticks: { color: '#e9eef3' }, grid: { color: '#22262d' }, beginAtZero: true },
+      },
+    },
+  });
+}
+
+function renderFeedbackScoreChart(data) {
+  const ctx = document.getElementById('feedbackScoreChart');
+  if (!ctx) return;
+  const providers = data?.aggregate?.providers || {};
+  const entries = Object.entries(providers).filter(([, stats]) => stats && stats.score !== null && stats.score !== undefined);
+  const labels = entries.map(([prov]) => prov);
+  const scores = entries.map(([, stats]) => Math.max(0, Math.min(100, Number(stats.score) || 0)));
+  const confidences = entries.map(([, stats]) => stats.confidence || '-');
+  const totals = entries.map(([, stats]) => stats.total || 0);
+  if (FEEDBACK_SCORE_CHART) {
+    FEEDBACK_SCORE_CHART.destroy();
+  }
+  if (!labels.length || typeof Chart === 'undefined') {
+    $('feedbackScoreChartHint').textContent = labels.length ? 'Chart unavailable' : 'No scores yet';
+    return;
+  }
+  $('feedbackScoreChartHint').textContent = '';
+  FEEDBACK_SCORE_CHART = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Score',
+          data: scores,
+          backgroundColor: '#4dabf7',
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      indexAxis: 'y',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (context) => {
+              const i = context.dataIndex;
+              return `Score ${context.raw} (${confidences[i]} confidence, ${totals[i]} feedbacks)`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: { min: 0, max: 100, ticks: { color: '#e9eef3' }, grid: { color: '#22262d' } },
+        y: { ticks: { color: '#e9eef3' }, grid: { color: '#22262d' } },
       },
     },
   });
@@ -133,6 +194,7 @@ async function refreshFeedbackIndex(provider = FEEDBACK_PROVIDER_FILTER) {
     FEEDBACK_INDEX = data;
     renderFeedbackCards(data);
     renderFeedbackChart(data);
+    renderFeedbackScoreChart(data);
     renderFeedbackRuns(data.runs || [], $('feedbackSearch')?.value || '');
     if (status) status.textContent = '';
   } catch (e) {
@@ -207,6 +269,11 @@ function downloadFeedbackHtml() {
   const data = FEEDBACK_INDEX || { runs: [] };
   const overall = data.aggregate?.overall || { good: 0, bad: 0, total: 0 };
   const providers = data.aggregate?.providers || {};
+  const overallScore = formatScore(overall.score, overall.confidence);
+  const providerLine = Object.entries(providers)
+    .map(([k, v]) => `${k}: ${v.good}/${v.bad} (${v.total}) · score ${formatScore(v.score, v.confidence)}`)
+    .join(' · ');
+  const scoreNote = 'Scores use smoothed good rate: (good+3)/(good+bad+6) scaled to 0-100. Confidence is based on feedback volume.';
   const body = `
     <html><head><meta charset="utf-8"><title>Feedback Report</title>
     <style>
@@ -220,7 +287,9 @@ function downloadFeedbackHtml() {
     <h1>Feedback Report</h1>
     <div class="card">
       <div>Overall: Good ${overall.good} / Bad ${overall.bad} / Total ${overall.total}</div>
-      <div>Providers: ${Object.entries(providers).map(([k, v]) => `${k}: ${v.good}/${v.bad} (${v.total})`).join(' · ')}</div>
+      <div>Overall score: ${overallScore}</div>
+      <div>Providers: ${providerLine}</div>
+      <div class="muted">${scoreNote}</div>
     </div>
     <div class="card">
       ${(data.runs || [])

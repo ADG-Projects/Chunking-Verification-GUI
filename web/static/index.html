@@ -280,7 +280,6 @@
           <button id="feedbackExportHtml" class="btn btn-secondary" type="button">Download HTML</button>
         </div>
         <div class="toolbar-row">
-          <button id="feedbackAnalyzeBtn" class="btn" type="button">Send to LLM</button>
           <span id="feedbackStatus" class="muted"></span>
         </div>
       </div>
@@ -294,6 +293,14 @@
             <span class="stat-bad" id="feedbackOverallBad">0</span>
             <span class="stat-total" id="feedbackOverallTotal">0</span>
           </div>
+          <div class="stat-sub" id="feedbackOverallScore">
+            <span class="muted">Score:</span>
+            <span id="feedbackOverallScoreValue">-</span>
+            <span class="inline-tip">
+              <span class="info" aria-label="Scoring help" role="img">?</span>
+              <span class="tip">Smoothed good rate: (good+3)/(good+bad+6) × 100. Confidence derives from total feedback volume.</span>
+            </span>
+          </div>
           <div class="stat-sub" id="feedbackNoteCount">0 notes</div>
         </div>
         <div class="card stat-card" id="feedbackCardLatest">
@@ -304,6 +311,13 @@
         <div class="card stat-card" id="feedbackCardProviders">
           <div class="stat-label">Providers</div>
           <div class="stat-sub" id="feedbackProviderBreakdown">-</div>
+          <div class="stat-sub" id="feedbackProviderScores">
+            <span id="feedbackProviderScoresValue">-</span>
+            <span class="inline-tip">
+              <span class="info" aria-label="Provider scoring help" role="img">?</span>
+              <span class="tip">Per-provider smoothed score: (good+3)/(good+bad+6) × 100. Confidence comes from feedback count.</span>
+            </span>
+          </div>
         </div>
       </div>
 
@@ -313,6 +327,14 @@
           <span class="muted" id="feedbackChartHint"></span>
         </div>
         <canvas id="feedbackChart" aria-label="Feedback distribution chart"></canvas>
+      </div>
+
+      <div class="card feedback-chart-card">
+        <div class="card-title-row">
+          <div class="card-title">Provider scores (0-100)</div>
+          <span class="muted" id="feedbackScoreChartHint"></span>
+        </div>
+        <canvas id="feedbackScoreChart" aria-label="Feedback score chart"></canvas>
       </div>
 
       <div class="card feedback-runs-card">
@@ -326,7 +348,10 @@
       <div class="card feedback-analysis-card">
         <div class="card-title-row">
           <div class="card-title">LLM analysis</div>
-          <button id="feedbackCopyBtn" class="btn btn-secondary" type="button">Copy</button>
+          <div class="btn-row">
+            <button id="feedbackAnalyzeBtn" class="btn" type="button">Send to LLM</button>
+            <button id="feedbackCopyBtn" class="btn btn-secondary" type="button">Copy</button>
+          </div>
         </div>
         <pre id="feedbackAnalysis" class="analysis-output" aria-live="polite"></pre>
       </div>

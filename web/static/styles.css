@@ -1978,6 +1978,48 @@ body.drawer-open #right-metrics {
   top: 24px;
 }
 
+.feedback-analysis-card .btn-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.inline-tip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.inline-tip .tip {
+  position: absolute;
+  top: 22px;
+  left: 0;
+  background: #0f1116;
+  color: var(--text);
+  border: 1px solid #2a2f38;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  width: 280px;
+  max-width: 320px;
+  left: auto;
+  right: 0;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity .15s ease, transform .15s ease;
+  z-index: 10001;
+}
+
+.inline-tip:hover .tip,
+.inline-tip:focus-within .tip {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
 .info:hover+.tip {
   opacity: 1;
   transform: translateY(0);
