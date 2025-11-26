@@ -1468,6 +1468,11 @@ section.right {
   font-weight: 600;
 }
 
+.feedback-analysis-card .card-title-row {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
 .feedback-chart-card canvas {
   width: 100%;
   max-height: 320px;
@@ -1982,6 +1987,8 @@ body.drawer-open #right-metrics {
   display: flex;
   gap: 8px;
   align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
 }
 
 .inline-tip {
