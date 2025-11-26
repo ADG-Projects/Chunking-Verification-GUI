@@ -659,7 +659,6 @@ function wireRunForm() {
       const embedImages = $('extractImageToPayload')?.checked;
       const imgTypesVal = rawImgTypes || (embedImages ? 'Image' : '');
       if (imgTypesVal) payload.extract_image_block_types = imgTypesVal;
-      const embedImages = $('extractImageToPayload')?.checked;
       if (embedImages) payload.extract_image_block_to_payload = true;
       if (isUnstructured) {
         payload.infer_table_structure = $('inferTables').checked;
