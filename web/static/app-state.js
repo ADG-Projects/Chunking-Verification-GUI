@@ -33,6 +33,11 @@ let RUN_RANGE_START = null;
 let HINTED_HIRES = false;
 let RETURN_TO = null;
 let CURRENT_DOC_LANGUAGE = 'eng';
+let FEEDBACK_INDEX = null;
+let FEEDBACK_PROVIDER_FILTER = 'all';
+let FEEDBACK_CHART = null;
+let FEEDBACK_SCORE_CHART = null;
+let FEEDBACK_ANALYSIS = null;
 let CURRENT_REVIEWS = {
   slug: null,
   items: [],

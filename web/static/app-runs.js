@@ -1,6 +1,20 @@
 const RUN_JOB_POLL_INTERVAL_MS = 10000;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function runKey(slug, provider = CURRENT_PROVIDER || 'unstructured') {
+  const prov = (provider || 'unstructured').trim() || 'unstructured';
+  return `${prov}:::${slug || ''}`;
+}
+
+function parseRunKey(key) {
+  const raw = key || '';
+  const sep = raw.indexOf(':::');
+  if (sep === -1) return { slug: raw, provider: CURRENT_PROVIDER || 'unstructured' };
+  const provider = raw.slice(0, sep) || 'unstructured';
+  const slug = raw.slice(sep + 3) || '';
+  return { slug, provider };
+}
+
 function providerSupportsChunks(provider) {
   if (!provider) return true;
   if (provider === 'unstructured-partition') return false;
@@ -8,9 +22,13 @@ function providerSupportsChunks(provider) {
   return true;
 }
 
-async function loadRun(slug) {
+async function loadRun(slug, provider = CURRENT_PROVIDER) {
+  const providerKey = (provider || CURRENT_PROVIDER || 'unstructured').trim() || 'unstructured';
   CURRENT_SLUG = slug;
-  CURRENT_RUN = (RUNS_CACHE || []).find(r => r.slug === slug) || null;
+  CURRENT_PROVIDER = providerKey;
+  CURRENT_RUN = (RUNS_CACHE || []).find(
+    (r) => r.slug === slug && (r.provider || 'unstructured') === providerKey,
+  ) || (RUNS_CACHE || []).find((r) => r.slug === slug) || null;
   CURRENT_PROVIDER = (CURRENT_RUN && CURRENT_RUN.provider) || CURRENT_PROVIDER || 'unstructured';
   setChunksTabVisible(providerSupportsChunks(CURRENT_PROVIDER));
   const providerSel = $('providerSelect');
@@ -150,6 +168,15 @@ async function init() {
   wireRunForm();
   setupInspectTabs();
   wireModal();
+  document.querySelectorAll('.view-tabs .tab').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const target = btn.dataset.view || 'inspect';
+      switchView(target);
+      if (target === 'feedback' && !FEEDBACK_INDEX) {
+        await refreshFeedbackIndex(FEEDBACK_PROVIDER_FILTER);
+      }
+    });
+  });
   await (async function waitForPdfjs(maxMs = 5000) {
     const start = performance.now();
     while (!window['pdfjsLib']) {
@@ -214,19 +241,24 @@ async function refreshRuns() {
   sel.innerHTML = '';
   for (const r of runs) {
     const opt = document.createElement('option');
-    opt.value = r.slug;
+    const prov = r.provider || 'unstructured';
+    opt.value = runKey(r.slug, prov);
+    opt.dataset.slug = r.slug;
+    opt.dataset.provider = prov;
     const tag = r.page_range ? ` · pages ${r.page_range}` : '';
     const providerLabel = r.provider ? ` · ${r.provider}` : '';
     opt.textContent = `${r.slug}${providerLabel}${tag}`;
     sel.appendChild(opt);
   }
   if (runs.length) {
-    const exists = runs.find(r => r.slug === CURRENT_SLUG);
-    const chosenRun = exists ? runs.find(r => r.slug === CURRENT_SLUG) : runs[0];
+    const existing = runs.find(
+      (r) => r.slug === CURRENT_SLUG && (r.provider || 'unstructured') === (CURRENT_PROVIDER || 'unstructured'),
+    );
+    const chosenRun = existing || runs[0];
     CURRENT_SLUG = chosenRun.slug;
     CURRENT_PROVIDER = chosenRun.provider || 'unstructured';
-    sel.value = CURRENT_SLUG;
-    await loadRun(CURRENT_SLUG);
+    sel.value = runKey(CURRENT_SLUG, CURRENT_PROVIDER);
+    await loadRun(CURRENT_SLUG, CURRENT_PROVIDER);
   } else {
     CURRENT_SLUG = null;
     CURRENT_RUN = null;
@@ -237,21 +269,26 @@ async function refreshRuns() {
     CURRENT_CHUNKS = null;
     CURRENT_CHUNK_SUMMARY = null;
     CURRENT_CHUNK_LOOKUP = {};
+    setReviewState(_emptyReviewState());
     resetPdfViewer();
     clearBoxes();
     updateLegend([]);
     clearDrawer();
     updateRunConfigCard();
     renderChunksTab();
+    populateTypeSelectors();
     renderElementsListForCurrentPage(CURRENT_PAGE_BOXES);
-    setReviewState(_emptyReviewState());
     updateReviewSummaryChip();
   }
   sel.onchange = async () => {
-    CURRENT_SLUG = sel.value;
-    const selected = (RUNS_CACHE || []).find(r => r.slug === CURRENT_SLUG);
+    const { slug, provider } = parseRunKey(sel.value);
+    CURRENT_SLUG = slug;
+    CURRENT_PROVIDER = provider || 'unstructured';
+    const selected = (RUNS_CACHE || []).find(
+      (r) => r.slug === CURRENT_SLUG && (r.provider || 'unstructured') === CURRENT_PROVIDER,
+    );
     if (selected && selected.provider) CURRENT_PROVIDER = selected.provider;
-    await loadRun(CURRENT_SLUG);
+    await loadRun(CURRENT_SLUG, CURRENT_PROVIDER);
   };
 }
 
@@ -520,12 +557,7 @@ function wireRunForm() {
     toggleAdv();
   }
   const handleProviderChange = () => {
-    const rawVal = providerSel ? providerSel.value : 'unstructured';
-    const val = rawVal === 'azure-cu' ? 'azure-di' : rawVal;
-    if (providerSel && providerSel.value !== val) {
-      // Keep legacy runs viewable but block new runs for the disabled provider
-      providerSel.value = val;
-    }
+    const val = providerSel ? providerSel.value : 'unstructured';
     CURRENT_PROVIDER = val || 'unstructured';
     const isUnstructured = val === 'unstructured';
     const isPartition = val === 'unstructured-partition';
@@ -607,12 +639,7 @@ function wireRunForm() {
   $('runBtn').addEventListener('click', async () => {
     const status = $('runStatus');
     status.textContent = '';
-    const providerVal = providerSel ? providerSel.value : 'unstructured';
-    if (providerVal === 'azure-cu') {
-      status.textContent = 'Document Understanding is disabled in the UI';
-      return;
-    }
-    const provider = providerVal || 'unstructured';
+    const provider = (providerSel ? providerSel.value : 'unstructured') || 'unstructured';
     const isAzure = provider.startsWith('azure');
     const isPartition = provider === 'unstructured-partition';
     const isUnstructured = provider === 'unstructured';
@@ -922,13 +949,28 @@ function handleReviewChipClick(kind) {
 }
 
 function switchView(view, skipRedraw = false) {
-  CURRENT_VIEW = 'inspect';
+  const next = view === 'feedback' ? 'feedback' : 'inspect';
+  CURRENT_VIEW = next;
   document.querySelectorAll('.view-tabs .tab').forEach(el => {
-    el.classList.toggle('active', el.dataset.view === CURRENT_VIEW);
+    const active = el.dataset.view === CURRENT_VIEW;
+    el.classList.toggle('active', active);
+    try { el.setAttribute('aria-selected', active ? 'true' : 'false'); } catch (_) {}
   });
+  const inspectShell = $('inspectShell');
+  if (inspectShell) inspectShell.classList.toggle('hidden', CURRENT_VIEW !== 'inspect');
   const inspectPane = document.getElementById('right-inspect');
   if (inspectPane) inspectPane.classList.toggle('hidden', CURRENT_VIEW !== 'inspect');
-  if (!skipRedraw) {
+  const feedbackPane = $('feedbackView');
+  if (feedbackPane) feedbackPane.classList.toggle('hidden', CURRENT_VIEW !== 'feedback');
+  if (CURRENT_VIEW === 'feedback') {
+    SHOW_CHUNK_OVERLAYS = false;
+    SHOW_ELEMENT_OVERLAYS = false;
+    clearDrawer();
+  } else {
+    SHOW_CHUNK_OVERLAYS = (INSPECT_TAB === 'chunks');
+    SHOW_ELEMENT_OVERLAYS = (INSPECT_TAB === 'elements');
+  }
+  if (CURRENT_VIEW === 'inspect' && !skipRedraw) {
     redrawOverlaysForCurrentContext();
   }
 }

@@ -31,6 +31,10 @@ document.addEventListener('DOMContentLoaded', () => {
     CURRENT_DOC_LANGUAGE = nextLang;
     applyLanguageDirection();
   });
+  initFeedbackView().catch(err => {
+    console.error('Feedback init failed', err);
+    showToast(`Feedback init failed: ${err.message}`, 'err');
+  });
   init().catch(err => {
     console.error(err);
     alert(`Failed to initialize UI: ${err.message}`);
