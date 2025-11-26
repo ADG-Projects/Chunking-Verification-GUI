@@ -5,6 +5,7 @@
 - [ ] Remove leftover references to metrics/tables in UI modules (app-metrics.js import vestigial; ensure CSS/tooling stay lean).
 
 ## Completed
+- [x] 2025-11-26 Add Azure DI figure crops (`--outputs figures`) with saved PNGs and UI previews matching Unstructured images.
 - [x] 2025-11-26 Render extracted image previews in element details for Unstructured runs when image payloads are present.
 - [x] 2025-11-25 Release v4.0 (Unstructured Partition API provider + Docker base swap to ECR Public).
 - [x] 2025-11-25 Add Unstructured Partition (API) provider (elements-only runs via UI/API).

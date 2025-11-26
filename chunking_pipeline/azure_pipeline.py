@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import time
+import re
 from html import escape
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -235,8 +236,9 @@ def _page_layouts(an_result: Dict[str, Any]) -> Dict[int, Tuple[Optional[float],
     return layouts
 
 
-def normalize_elements(an_result: Dict[str, Any]) -> List[Dict[str, Any]]:
+def normalize_elements(an_result: Dict[str, Any], figure_images: Optional[Dict[str, Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
     elements: List[Dict[str, Any]] = []
+    figure_images = figure_images or {}
     layouts = _page_layouts(an_result)
     for para in an_result.get("paragraphs") or []:
         regions = para.get("bounding_regions") or para.get("boundingRegions") or []
@@ -300,6 +302,32 @@ def normalize_elements(an_result: Dict[str, Any]) -> List[Dict[str, Any]]:
         }
         ensure_stable_element_id(el)
         elements.append(el)
+    for fig in an_result.get("figures") or []:
+        regions = fig.get("bounding_regions") or fig.get("boundingRegions") or []
+        region = regions[0] if regions else {}
+        page_num = region.get("page_number") if "page_number" in region else region.get("pageNumber")
+        layout_w, layout_h, unit = layouts.get(int(page_num or 0), (None, None, None))
+        coords = _coords_from_polygon(region.get("polygon"), layout_w, layout_h, unit)
+        fig_id = fig.get("id")
+        caption = None
+        cap = fig.get("caption")
+        if isinstance(cap, dict):
+            caption = cap.get("content")
+        el = {
+            "type": "Figure",
+            "text": caption or "",
+            "metadata": {
+                "page_number": page_num,
+                "coordinates": coords,
+                "original_element_id": fig_id,
+            },
+        }
+        if fig_id and fig_id in figure_images:
+            el["metadata"].update(figure_images[fig_id])
+        if fig_id:
+            el["element_id"] = fig_id
+        ensure_stable_element_id(el)
+        elements.append(el)
 
     if not elements and an_result.get("content"):
         el = {"type": "Document", "text": an_result.get("content"), "metadata": {"page_number": 1}}
@@ -329,7 +357,7 @@ def run_di_analysis(
     query_fields: Optional[List[str]],
     endpoint: str,
     key: str,
-) -> Dict[str, Any]:
+) -> Tuple[Dict[str, Any], Optional[DocumentIntelligenceClient], Optional[str]]:
     client_kwargs: Dict[str, Any] = {}
     client_kwargs["api_version"] = api_version
     client = DocumentIntelligenceClient(endpoint=endpoint, credential=AzureKeyCredential(key), **client_kwargs)
@@ -353,11 +381,18 @@ def run_di_analysis(
         logger = getattr(sys.modules.get(__name__), "logger", None)
         if logger:
             logger.info("DI analyze_document completed in %.2fs", time.time() - start)
+        result_id = None
+        try:
+            details = getattr(poller, "details", None)
+            if details and isinstance(details, dict):
+                result_id = details.get("operation_id")
+        except Exception:
+            result_id = None
         if hasattr(result, "as_dict"):
-            return result.as_dict()  # type: ignore[no-any-return]
+            return result.as_dict(), client, result_id  # type: ignore[no-any-return]
         if hasattr(result, "to_dict"):
-            return result.to_dict()  # type: ignore[no-any-return]
-        return result  # type: ignore[no-any-return]
+            return result.to_dict(), client, result_id  # type: ignore[no-any-return]
+        return result, client, result_id  # type: ignore[no-any-return]
 
 
 def run_cu_analysis(trimmed_pdf: str, api_version: str, analyzer_id: str, endpoint: str, key: str) -> Dict[str, Any]:
@@ -378,6 +413,55 @@ def run_cu_analysis(trimmed_pdf: str, api_version: str, analyzer_id: str, endpoi
     )
     response.raise_for_status()
     return response.json()
+
+
+def _sanitize_figure_filename(name: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "_", name or "")
+    return cleaned or "figure"
+
+
+def _download_di_figures(
+    client: Optional[DocumentIntelligenceClient],
+    model_id: str,
+    result_id: Optional[str],
+    figures: Optional[List[Dict[str, Any]]],
+    chunk_output: Optional[str],
+    trimmed_pdf: str,
+) -> Tuple[Dict[str, Dict[str, Any]], Optional[Path]]:
+    """Fetch cropped figure images and return per-figure metadata to attach to elements."""
+    if not client or not result_id or not figures:
+        return {}, None
+
+    base_dir = Path(chunk_output).parent if chunk_output else Path(trimmed_pdf).parent
+    stem = Path(chunk_output).stem if chunk_output else Path(trimmed_pdf).stem
+    fig_dir = base_dir / f"{stem}.figures"
+    fig_dir.mkdir(parents=True, exist_ok=True)
+
+    meta: Dict[str, Dict[str, Any]] = {}
+    for fig in figures:
+        fig_id = fig.get("id")
+        if not fig_id:
+            continue
+        try:
+            content = b"".join(client.get_analyze_result_figure(model_id=model_id, result_id=result_id, figure_id=fig_id))
+        except Exception as e:  # pragma: no cover - best effort fetch
+            sys.stderr.write(f"Warning: failed to download figure {fig_id}: {e}\n")
+            continue
+        if not content:
+            continue
+        fname = _sanitize_figure_filename(fig_id) + ".png"
+        dest = fig_dir / fname
+        try:
+            dest.write_bytes(content)
+        except Exception as e:  # pragma: no cover - best effort write
+            sys.stderr.write(f"Warning: failed to write figure {fig_id}: {e}\n")
+            continue
+        rel_path = dest.relative_to(base_dir)
+        meta[fig_id] = {
+            "image_path": str(rel_path),
+            "image_mime_type": "image/png",
+        }
+    return meta, fig_dir
 
 
 def build_run_config(
@@ -465,7 +549,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         api_version = args.api_version or DEFAULT_DI_API_VERSION
         features = _parse_csv_list(args.features)
         outputs = _parse_csv_list(args.outputs)
-        result = run_di_analysis(
+        want_figures = any((o or "").lower() == "figures" for o in (outputs or []))
+        result_payload, di_client, di_result_id = run_di_analysis(
             input_pdf=args.input,
             trimmed_pdf=trimmed,
             model_id=model_id,
@@ -480,11 +565,23 @@ def main(argv: Optional[List[str]] = None) -> int:
             endpoint=endpoint,
             key=key,
         )
-        an_result = _extract_analyze_result(result)
-        elems = normalize_elements(an_result)
+        an_result = _extract_analyze_result(result_payload)
+        figure_images, figures_dir = _download_di_figures(
+            client=di_client,
+            model_id=model_id,
+            result_id=di_result_id,
+            figures=an_result.get("figures") if isinstance(an_result, dict) else None,
+            chunk_output=args.output,
+            trimmed_pdf=trimmed,
+        ) if want_figures else ({}, None)
+        elems = normalize_elements(an_result, figure_images)
         run_provider = "azure-di"
         args.api_version = api_version
         run_config = build_run_config(run_provider, args, features=features, outputs=outputs, endpoint=endpoint)
+        if want_figures:
+            run_config["figure_count"] = len(an_result.get("figures") or []) if isinstance(an_result, dict) else 0
+            if figures_dir:
+                run_config["figures_dir"] = str(figures_dir)
     else:
         endpoint = args.endpoint or os.environ.get(DEFAULT_ENDPOINT_ENV, "")
         key = args.key or os.environ.get(DEFAULT_KEY_ENV, "")
