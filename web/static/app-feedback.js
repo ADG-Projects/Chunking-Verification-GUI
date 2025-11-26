@@ -214,15 +214,29 @@ async function refreshFeedbackIndex(provider = FEEDBACK_PROVIDER_FILTER) {
 function renderFeedbackAnalysis(data) {
   const el = $('feedbackAnalysis');
   if (!el) return;
-  let text = '';
-  if (data?.comparison) {
-    text = JSON.stringify(data.comparison, null, 2);
-  } else if (data?.summary) {
-    text = JSON.stringify(data.summary, null, 2);
-  } else {
-    text = JSON.stringify(data, null, 2);
-  }
-  el.textContent = text || 'No analysis yet.';
+  const parseMaybeJson = (val) => {
+    if (typeof val !== 'string') return val;
+    try {
+      return JSON.parse(val);
+    } catch (_) {
+      return val;
+    }
+  };
+  const normalize = (val) => {
+    const parsed = parseMaybeJson(val);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const out = {};
+      for (const [k, v] of Object.entries(parsed)) {
+        out[k] = parseMaybeJson(v);
+      }
+      return out;
+    }
+    return parsed;
+  };
+  let payload = data?.comparison ?? data?.summary ?? data;
+  payload = normalize(payload);
+  el.textContent =
+    typeof payload === 'string' ? payload : JSON.stringify(payload || 'No analysis yet.', null, 2);
 }
 
 async function analyzeFeedbackSelection() {
