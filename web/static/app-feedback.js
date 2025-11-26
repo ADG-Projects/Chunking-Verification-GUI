@@ -247,17 +247,20 @@ function downloadFeedbackHtml() {
   downloadBlob(body, 'feedback.html', 'text/html');
 }
 
-async function jumpToRunFromFeedback(slug) {
+async function jumpToRunFromFeedback(slug, provider) {
   if (!slug) return;
+  const providerKey = (provider || 'unstructured').trim() || 'unstructured';
   try {
     await refreshRuns();
     const sel = $('runSelect');
     if (sel) {
-      sel.value = slug;
+      const targetKey = runKey(slug, providerKey);
+      const exists = Array.from(sel.options || []).some((opt) => opt.value === targetKey);
+      sel.value = exists ? targetKey : sel.value;
       sel.dispatchEvent(new Event('change'));
     }
     switchView('inspect');
-    await loadRun(slug);
+    await loadRun(slug, providerKey);
   } catch (e) {
     showToast(`Failed to open run: ${e.message}`, 'err', 2500);
   }
@@ -301,7 +304,7 @@ function wireFeedbackEvents() {
     runsHost.addEventListener('click', (ev) => {
       const btn = ev.target.closest('.feedback-inspect-btn');
       if (btn && btn.dataset.slug) {
-        jumpToRunFromFeedback(btn.dataset.slug);
+        jumpToRunFromFeedback(btn.dataset.slug, btn.dataset.provider);
       }
     });
   }
