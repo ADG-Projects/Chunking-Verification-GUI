@@ -1,17 +1,24 @@
 const RUN_JOB_POLL_INTERVAL_MS = 10000;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function providerSupportsChunks(provider) {
+  if (!provider) return true;
+  if (provider === 'unstructured-partition') return false;
+  if (provider.startsWith('azure')) return false;
+  return true;
+}
+
 async function loadRun(slug) {
   CURRENT_SLUG = slug;
   CURRENT_RUN = (RUNS_CACHE || []).find(r => r.slug === slug) || null;
   CURRENT_PROVIDER = (CURRENT_RUN && CURRENT_RUN.provider) || CURRENT_PROVIDER || 'unstructured';
-  setChunksTabVisible(CURRENT_PROVIDER !== 'unstructured-partition');
+  setChunksTabVisible(providerSupportsChunks(CURRENT_PROVIDER));
   const providerSel = $('providerSelect');
   if (providerSel) {
     providerSel.value = CURRENT_PROVIDER;
     providerSel.dispatchEvent(new Event('change'));
   }
-  CURRENT_RUN_HAS_CHUNKS = Boolean(CURRENT_RUN && CURRENT_RUN.chunks_file);
+  CURRENT_RUN_HAS_CHUNKS = providerSupportsChunks(CURRENT_PROVIDER) && Boolean(CURRENT_RUN && CURRENT_RUN.chunks_file);
   CURRENT_CHUNK_LOOKUP = {};
   CURRENT_CHUNK_TYPE_FILTER = 'All';
   CURRENT_CHUNK_REVIEW_FILTER = 'All';
@@ -531,7 +538,7 @@ function wireRunForm() {
       }
       toggleAdv();
     }
-    setChunksTabVisible(!isPartition);
+    setChunksTabVisible(providerSupportsChunks(CURRENT_PROVIDER));
     updateStrategyOptions(CURRENT_PROVIDER);
   };
   if (providerSel) providerSel.addEventListener('change', handleProviderChange);

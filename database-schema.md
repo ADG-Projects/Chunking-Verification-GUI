@@ -4,6 +4,7 @@ The project does not persist to a database yet. Instead, artifacts are written t
 - `outputs/unstructured/` — Unstructured runs (existing behavior).
 - `outputs/unstructured/partition_api/` — Unstructured Partition (hosted API) runs (elements-only; no local chunking).
 - `outputs/azure/document_intelligence/` and `outputs/azure/content_understanding/` — Azure runs (Document Intelligence Layout and Content Understanding prebuilt analyzers). API endpoints accept an optional `provider` query parameter to resolve the correct directory.
+- Azure Document Intelligence runs are elements-only in the UI; the Chunks tab stays hidden even if chunk-style JSONL artifacts are present.
 - Reviews are stored per provider under `<provider_out_dir>/reviews/<slug>.reviews.json`.
 - Azure AnalyzeResult payloads are now coerced via the SDK `as_dict` helper and polygon coordinates are scaled to PDF points (72/in) so overlays line up; rerun any older Azure slices that produced empty `.tables.jsonl` files.
 
