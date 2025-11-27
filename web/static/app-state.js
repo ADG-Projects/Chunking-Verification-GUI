@@ -91,11 +91,12 @@ function applyTablePreviewDirection(element, options = {}) {
   if (!element) return;
   const { track = true } = options;
   const rtl = isArabicDocument();
+  const tableDir = rtl ? 'rtl' : 'ltr';
   try {
-    element.setAttribute('dir', 'ltr');
+    element.setAttribute('dir', tableDir);
   } catch (_) {}
   if (element.style) {
-    element.style.direction = 'ltr';
+    element.style.direction = tableDir;
     element.style.unicodeBidi = 'plaintext';
   }
   const cells = element.querySelectorAll('td, th');
