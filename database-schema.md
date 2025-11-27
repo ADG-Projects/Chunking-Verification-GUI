@@ -11,6 +11,7 @@ The project does not persist to a database yet. Instead, artifacts are written t
 
 Source PDFs are read from a configurable directory:
 
+- **v4.3 (2025-11-27)** – Figure elements in Azure DI outline view, direct page jump input, What's New modal, RTL table fix, fixed PDF legend, Azure DI as default provider.
 - **v4.2 (2025-11-26)** – Enhanced feedback analysis with provider-level comparisons, smoothed scoring formulas, multi-dimensional insights (per-element suggestions, issue taxonomies, review-gap callouts), and improved JSON/HTML exports that include LLM analysis payloads.
 - **v4.1 (2025-11-26)** – Azure Document Intelligence figure crops are stored alongside run artifacts (`<stem>.figures/<id>.png`) and referenced in element metadata for UI previews; Azure settings recap now hides API version for non-Azure runs.
 - **v4.0 (2025-11-25)** – Added Unstructured Partition (hosted API) support as elements-only runs alongside existing outputs, keeping chunk artifacts limited to local Unstructured/Azure providers.
@@ -23,6 +24,7 @@ Source PDFs are read from a configurable directory:
   - New UI runs now also record a compact “Running” state in the frontend only: while `/api/run` is processing, the New Run modal hides its fields and the header button reflects the in-flight status, but the persisted `run_config.form_snapshot` continues to store the full parameter set as before.
 - `/api/run` enqueues work instead of blocking: the response contains a job descriptor (`id`, `status`, `slug`, `pdf`, `pages`, command preview, stdout/stderr tails). The UI polls `/api/run-jobs/{id}` until the chunker reports `succeeded` or `failed`, and job logs stay cached in memory until the server restarts.
 
+- **v4.3 (2025-11-27)** – Figure elements in Azure DI outline view, direct page jump input, What's New modal, RTL table fix, fixed PDF legend, Azure DI as default provider.
 - **v4.2 (2025-11-26)** – Enhanced feedback analysis with provider-level comparisons, smoothed scoring formulas, multi-dimensional insights (per-element suggestions, issue taxonomies, review-gap callouts), and improved JSON/HTML exports that include LLM analysis payloads.
 - **v4.1 (2025-11-26)** – Azure Document Intelligence figure crops are stored alongside run artifacts (`<stem>.figures/<id>.png`) and referenced in element metadata for UI previews; Azure settings recap now hides API version for non-Azure runs.
 - **v4.0 (2025-11-25)** – Added the Unstructured Partition (hosted) provider for elements-only runs (no local chunking) and moved the Docker base image to ECR Public to avoid Docker Hub rate limits.

@@ -56,8 +56,8 @@ let CURRENT_CHUNK_DRAWER_ID = null;
 let CURRENT_ELEMENT_DRAWER_ID = null;
 let CURRENT_RUN_JOB_ID = null;
 let CURRENT_RUN_JOB_STATUS = null;
-let CURRENT_PROVIDER = 'unstructured';
-let CURRENT_ELEMENT_VIEW_MODE = 'flat'; // 'flat' | 'outline'
+let CURRENT_PROVIDER = 'azure-di';
+let CURRENT_ELEMENT_VIEW_MODE = 'outline'; // 'flat' | 'outline'
 let ELEMENT_OUTLINE_STATE = { collapsedByPage: {}, expanded: {} };
 
 const RTL_AWARE_ELEMENTS = new Set();
@@ -91,11 +91,12 @@ function applyTablePreviewDirection(element, options = {}) {
   if (!element) return;
   const { track = true } = options;
   const rtl = isArabicDocument();
+  const tableDir = rtl ? 'rtl' : 'ltr';
   try {
-    element.setAttribute('dir', 'ltr');
+    element.setAttribute('dir', tableDir);
   } catch (_) {}
   if (element.style) {
-    element.style.direction = 'ltr';
+    element.style.direction = tableDir;
     element.style.unicodeBidi = 'plaintext';
   }
   const cells = element.querySelectorAll('td, th');

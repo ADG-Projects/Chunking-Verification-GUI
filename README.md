@@ -107,6 +107,7 @@ Outputs for Azure runs live under `outputs/azure/document_intelligence/` with th
 
 ## Release history
 
+- **v4.3 (2025-11-27)** – Figure elements in Azure DI outline view, direct page jump input, What's New modal, RTL table fix, fixed PDF legend positioning, and Azure DI as default provider.
 - **v4.2 (2025-11-26)** – Enhanced feedback analysis with provider-level comparisons, smoothed scoring, multi-dimensional insights (per-element suggestions, issue taxonomies, review-gap callouts), and improved JSON/HTML exports that include LLM analysis payloads.
   - Verification steps:
     1. `uv run uvicorn main:app --host 127.0.0.1 --port 8765`, navigate to Feedback tab, add reviews to multiple providers, and confirm the provider score chart displays smoothed scores with confidence labels.

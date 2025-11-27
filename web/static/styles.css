@@ -56,6 +56,12 @@ header h1 {
   font-size: 11px;
   line-height: 1.1;
   color: var(--muted);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.version-badge:hover {
+  color: var(--accent);
 }
 
 /* Top-level view tabs */
@@ -278,6 +284,8 @@ section.left {
   flex-direction: column;
   height: 100%;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   /* allow PDF pane to scroll instead of forcing right drawer to shrink */
 }
 
@@ -303,26 +311,45 @@ section.left {
   width: 160px;
 }
 
+.page-controls input[type="number"] {
+  width: 48px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid #2a2f38;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 14px;
+  text-align: center;
+  -moz-appearance: textfield;
+}
+
+.page-controls input[type="number"]::-webkit-outer-spin-button,
+.page-controls input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.page-controls input[type="number"]:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 #pdfContainer {
   position: relative;
   flex: 1;
   overflow: auto;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
   padding: 8px;
   z-index: 1;
   /* keep below drawer/tooltips */
   min-height: 0;
+  height: 0;
   width: 100%;
 }
 
 .page-layer {
   position: relative;
   z-index: 1;
-  display: flex;
-  align-items: flex-start;
-  flex: 0 0 auto;
+  display: inline-block;
   /* keep canvas size independent of container width */
 }
 
@@ -359,7 +386,7 @@ section.left {
 }
 
 .legend {
-  position: absolute;
+  position: sticky;
   top: 12px;
   left: 12px;
   z-index: 3;
@@ -369,6 +396,7 @@ section.left {
   border-radius: 6px;
   display: grid;
   gap: 4px;
+  width: fit-content;
 }
 
 .legend.hidden {
@@ -2485,4 +2513,55 @@ body.drawer-open #right-metrics {
   grid-template-columns: repeat(2, 1fr);
   gap: 8px;
   margin-top: 6px;
+}
+
+/* What's New Modal */
+.whats-new-modal {
+  width: min(600px, calc(100vw - 24px));
+}
+
+.whats-new-body {
+  padding: 16px 20px;
+  overflow-y: auto;
+  max-height: calc(92vh - 60px);
+}
+
+.version-section {
+  margin-bottom: 20px;
+}
+
+.version-section:last-child {
+  margin-bottom: 0;
+}
+
+.version-header {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+  color: var(--fg);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.version-date {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.version-section ul {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--fg-dim);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.version-section li {
+  margin-bottom: 4px;
+}
+
+.version-section li:last-child {
+  margin-bottom: 0;
 }
