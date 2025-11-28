@@ -180,16 +180,38 @@ function outlineExpandedChildren(filteredEntries) {
   }
   if (!expandedIds.length) return null;
   const { childMap } = buildElementHierarchy(filteredEntries);
-  const allowed = new Set();
-  const visit = (id) => {
+  const expandedSet = new Set(expandedIds);
+  const cache = new Map();
+  const hasExpandedDescendant = (id) => {
+    if (cache.has(id)) return cache.get(id);
     const children = childMap.get(id) || [];
     for (const [cid] of children) {
-      if (allowed.has(cid)) continue;
+      if (expandedSet.has(cid)) {
+        cache.set(id, true);
+        return true;
+      }
+      if (hasExpandedDescendant(cid)) {
+        cache.set(id, true);
+        return true;
+      }
+    }
+    cache.set(id, false);
+    return false;
+  };
+  const deepestExpanded = expandedIds.filter(id => !hasExpandedDescendant(id));
+  const allowed = new Set();
+
+  const addDescendants = (parentId) => {
+    const children = childMap.get(parentId) || [];
+    for (const [cid] of children) {
       allowed.add(cid);
-      visit(cid);
+      addDescendants(cid);
     }
   };
-  expandedIds.forEach(visit);
+
+  for (const id of deepestExpanded) {
+    addDescendants(id);
+  }
   return allowed;
 }
 
@@ -206,9 +228,13 @@ function refreshElementOverlaysForCurrentPage() {
   const selectedId = CURRENT_INSPECT_ELEMENT_ID;
   const drawList = [];
   if (overlayAllowed) {
+    const allowedSet = new Set(overlayAllowed);
+    if (selectedId && CURRENT_PAGE_BOXES[selectedId]) {
+      allowedSet.add(selectedId);
+    }
     for (const item of filtered) {
       const [id] = item;
-      if (overlayAllowed.has(id)) drawList.push(item);
+      if (allowedSet.has(id)) drawList.push(item);
     }
   } else if (selectedId && CURRENT_PAGE_BOXES[selectedId]) {
     drawList.push([selectedId, CURRENT_PAGE_BOXES[selectedId], getReview('element', selectedId)]);
