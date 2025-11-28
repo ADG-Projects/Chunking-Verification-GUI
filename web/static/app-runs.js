@@ -11,16 +11,16 @@ function updateZoomSlider() {
   zoomInput.value = String(pct);
 }
 
-function runKey(slug, provider = CURRENT_PROVIDER || 'unstructured') {
-  const prov = (provider || 'unstructured').trim() || 'unstructured';
+function runKey(slug, provider = CURRENT_PROVIDER || 'unstructured/local') {
+  const prov = (provider || 'unstructured/local').trim() || 'unstructured/local';
   return `${prov}:::${slug || ''}`;
 }
 
 function parseRunKey(key) {
   const raw = key || '';
   const sep = raw.indexOf(':::');
-  if (sep === -1) return { slug: raw, provider: CURRENT_PROVIDER || 'unstructured' };
-  const provider = raw.slice(0, sep) || 'unstructured';
+  if (sep === -1) return { slug: raw, provider: CURRENT_PROVIDER || 'unstructured/local' };
+  const provider = raw.slice(0, sep) || 'unstructured/local';
   const slug = raw.slice(sep + 3) || '';
   return { slug, provider };
 }
@@ -31,13 +31,13 @@ function providerSupportsChunks(provider) {
 }
 
 async function loadRun(slug, provider = CURRENT_PROVIDER) {
-  const providerKey = (provider || CURRENT_PROVIDER || 'unstructured').trim() || 'unstructured';
+  const providerKey = (provider || CURRENT_PROVIDER || 'unstructured/local').trim() || 'unstructured/local';
   CURRENT_SLUG = slug;
   CURRENT_PROVIDER = providerKey;
   CURRENT_RUN = (RUNS_CACHE || []).find(
-    (r) => r.slug === slug && (r.provider || 'unstructured') === providerKey,
+    (r) => r.slug === slug && (r.provider || 'unstructured/local') === providerKey,
   ) || (RUNS_CACHE || []).find((r) => r.slug === slug) || null;
-  CURRENT_PROVIDER = (CURRENT_RUN && CURRENT_RUN.provider) || CURRENT_PROVIDER || 'unstructured';
+  CURRENT_PROVIDER = (CURRENT_RUN && CURRENT_RUN.provider) || CURRENT_PROVIDER || 'unstructured/local';
   setChunksTabVisible(providerSupportsChunks(CURRENT_PROVIDER));
   const providerSel = $('providerSelect');
   if (providerSel) {
@@ -298,7 +298,7 @@ async function refreshRuns() {
   sel.innerHTML = '';
   for (const r of runs) {
     const opt = document.createElement('option');
-    const prov = r.provider || 'unstructured';
+    const prov = r.provider || 'unstructured/local';
     opt.value = runKey(r.slug, prov);
     opt.dataset.slug = r.slug;
     opt.dataset.provider = prov;
@@ -309,11 +309,11 @@ async function refreshRuns() {
   }
   if (runs.length) {
     const existing = runs.find(
-      (r) => r.slug === CURRENT_SLUG && (r.provider || 'unstructured') === (CURRENT_PROVIDER || 'unstructured'),
+      (r) => r.slug === CURRENT_SLUG && (r.provider || 'unstructured/local') === (CURRENT_PROVIDER || 'unstructured/local'),
     );
     const chosenRun = existing || runs[0];
     CURRENT_SLUG = chosenRun.slug;
-    CURRENT_PROVIDER = chosenRun.provider || 'unstructured';
+    CURRENT_PROVIDER = chosenRun.provider || 'unstructured/local';
     sel.value = runKey(CURRENT_SLUG, CURRENT_PROVIDER);
     await loadRun(CURRENT_SLUG, CURRENT_PROVIDER);
   } else {
@@ -340,9 +340,9 @@ async function refreshRuns() {
   sel.onchange = async () => {
     const { slug, provider } = parseRunKey(sel.value);
     CURRENT_SLUG = slug;
-    CURRENT_PROVIDER = provider || 'unstructured';
+    CURRENT_PROVIDER = provider || 'unstructured/local';
     const selected = (RUNS_CACHE || []).find(
-      (r) => r.slug === CURRENT_SLUG && (r.provider || 'unstructured') === CURRENT_PROVIDER,
+      (r) => r.slug === CURRENT_SLUG && (r.provider || 'unstructured/local') === CURRENT_PROVIDER,
     );
     if (selected && selected.provider) CURRENT_PROVIDER = selected.provider;
     await loadRun(CURRENT_SLUG, CURRENT_PROVIDER);
@@ -538,7 +538,7 @@ async function pollRunJob(jobId) {
     if (status === 'succeeded') {
       if (statusSpan) statusSpan.textContent = 'Completed';
       const slug = detail?.result?.slug;
-      const provider = detail?.provider || detail?.result?.provider || CURRENT_PROVIDER || 'unstructured';
+      const provider = detail?.provider || detail?.result?.provider || CURRENT_PROVIDER || 'unstructured/local';
       if (provider) CURRENT_PROVIDER = provider;
       if (slug) CURRENT_SLUG = slug;
       try {
@@ -579,9 +579,9 @@ function wireRunForm() {
     if (!sel) return;
     const allowedUnstructured = new Set(['auto', 'fast', 'hi_res']);
     const allowedPartition = new Set(['auto', 'fast', 'hi_res', 'ocr_only', 'vlm']);
-    const allowed = provider === 'unstructured'
+    const allowed = provider === 'unstructured/local'
       ? allowedUnstructured
-      : (provider === 'unstructured-partition' ? allowedPartition : allowedUnstructured);
+      : (provider === 'unstructured/partition' ? allowedPartition : allowedUnstructured);
     let current = sel.value;
     for (const opt of sel.options) {
       const ok = allowed.has(opt.value);
@@ -595,10 +595,10 @@ function wireRunForm() {
     }
   };
   const handleProviderChange = () => {
-    const val = providerSel ? providerSel.value : 'unstructured';
-    CURRENT_PROVIDER = val || 'unstructured';
-    const isUnstructured = val === 'unstructured';
-    const isPartition = val === 'unstructured-partition';
+    const val = providerSel ? providerSel.value : 'unstructured/local';
+    CURRENT_PROVIDER = val || 'unstructured/local';
+    const isUnstructured = val === 'unstructured/local';
+    const isPartition = val === 'unstructured/partition';
     const isUnstructuredFamily = isUnstructured || isPartition;
     const isAzure = val.startsWith('azure');
     unstructuredBlocks.forEach((el) => { if (el) el.classList.toggle('hidden', !isUnstructuredFamily); });
@@ -671,10 +671,10 @@ function wireRunForm() {
   $('runBtn').addEventListener('click', async () => {
     const status = $('runStatus');
     status.textContent = '';
-    const provider = (providerSel ? providerSel.value : 'unstructured') || 'unstructured';
+    const provider = (providerSel ? providerSel.value : 'unstructured/local') || 'unstructured/local';
     const isAzure = provider.startsWith('azure');
-    const isPartition = provider === 'unstructured-partition';
-    const isUnstructured = provider === 'unstructured';
+    const isPartition = provider === 'unstructured/partition';
+    const isUnstructured = provider === 'unstructured/local';
     const isUnstructuredFamily = isUnstructured || isPartition;
     const payload = {
       provider,
@@ -760,7 +760,7 @@ function wireRunForm() {
       detect_language_per_element: payload.detect_language_per_element,
       provider: payload.provider,
     };
-    if (payload.provider === 'unstructured') {
+    if (payload.provider === 'unstructured/local') {
       payload.form_snapshot.strategy = payload.strategy;
       payload.form_snapshot.infer_table_structure = payload.infer_table_structure;
       {
@@ -1033,6 +1033,10 @@ function wireChunkerModal() {
     // Populate source run dropdown from existing runs
     if (sourceSelect) {
       sourceSelect.innerHTML = '';
+      let preselectValue = null;
+      if (CURRENT_SLUG) {
+        preselectValue = JSON.stringify({ slug: CURRENT_SLUG, provider: CURRENT_PROVIDER || 'unstructured/local' });
+      }
       try {
         const runs = await fetchJSON('/api/runs');
         if (runs && runs.length > 0) {
@@ -1042,6 +1046,10 @@ function wireChunkerModal() {
             opt.textContent = `${run.slug} (${run.provider})`;
             sourceSelect.appendChild(opt);
           });
+          if (preselectValue) {
+            const existing = Array.from(sourceSelect.options).find(o => o.value === preselectValue);
+            if (existing) sourceSelect.value = preselectValue;
+          }
         } else {
           const opt = document.createElement('option');
           opt.value = '';
@@ -1082,9 +1090,6 @@ function wireChunkerModal() {
         return;
       }
 
-      const maxChars = parseInt($('chunkerMaxChars')?.value || '1000', 10);
-      const overlap = parseInt($('chunkerOverlap')?.value || '0', 10);
-
       if (status) status.textContent = 'Running chunker...';
       runBtn.disabled = true;
 
@@ -1092,10 +1097,6 @@ function wireChunkerModal() {
         const payload = {
           source_slug: sourceData.slug,
           source_provider: sourceData.provider,
-          config: {
-            max_characters: maxChars,
-            overlap_characters: overlap,
-          }
         };
 
         const r = await fetch('/api/chunk', {

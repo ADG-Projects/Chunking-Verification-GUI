@@ -109,13 +109,12 @@ async def api_chunk(request: Request) -> Dict[str, Any]:
 
     # Build chunking config from payload
     config_dict = payload.get("config") or {}
-    config = ChunkingConfig(
-        max_characters=config_dict.get("max_characters", 1000),
-        soft_max_characters=config_dict.get("soft_max_characters", 800),
-        overlap_characters=config_dict.get("overlap_characters", 0),
-        respect_page_boundaries=config_dict.get("respect_page_boundaries", True),
-        include_orig_elements=config_dict.get("include_orig_elements", True),
-    )
+    config_kwargs: Dict[str, Any] = {}
+    if "include_orig_elements" in config_dict:
+        config_kwargs["include_orig_elements"] = bool(
+            config_dict.get("include_orig_elements")
+        )
+    config = ChunkingConfig(**config_kwargs)
 
     # Find and load source elements
     try:
