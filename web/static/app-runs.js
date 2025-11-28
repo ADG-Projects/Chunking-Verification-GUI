@@ -1117,6 +1117,7 @@ function wireChunkerModal() {
         try {
           switchView('inspect', true);
           switchInspectTab('chunks', true);
+          closeChunkerModal();
         } catch (err) {
           console.warn('Failed to switch to chunks tab after chunking', err);
         }
