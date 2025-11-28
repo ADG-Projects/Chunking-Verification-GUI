@@ -572,9 +572,6 @@ async function pollRunJob(jobId) {
 
 function wireRunForm() {
   const providerSel = $('providerSelect');
-  const chunkSel = $('chunkingSelect');
-  const combineRow = $('chunkCombineRow');
-  const multipageRow = $('chunkMultipageRow');
   const unstructuredBlocks = document.querySelectorAll('.unstructured-only');
   const azureHideables = document.querySelectorAll('.azure-hidden');
   const azureSettings = $('azureSettings');
@@ -598,22 +595,6 @@ function wireRunForm() {
       }
     }
   };
-  const toggleAdv = () => {
-    const chunkVal = chunkSel ? chunkSel.value : 'by_title';
-    const isByTitle = chunkVal === 'by_title';
-    const isNone = chunkVal === 'none';
-
-    if (combineRow) combineRow.classList.toggle('hidden', !isByTitle);
-    if (multipageRow) multipageRow.classList.toggle('hidden', !isByTitle);
-    
-    // Hide entire advanced section if chunking is none
-    const advSection = document.querySelector('#chunkAdv');
-    if (advSection) advSection.classList.toggle('hidden', isNone);
-  };
-  if (chunkSel) {
-    chunkSel.addEventListener('change', toggleAdv);
-    toggleAdv();
-  }
   const handleProviderChange = () => {
     const val = providerSel ? providerSel.value : 'unstructured';
     CURRENT_PROVIDER = val || 'unstructured';
@@ -624,15 +605,6 @@ function wireRunForm() {
     unstructuredBlocks.forEach((el) => { if (el) el.classList.toggle('hidden', !isUnstructuredFamily); });
     if (azureSettings) azureSettings.classList.toggle('hidden', isUnstructuredFamily);
     azureHideables.forEach((el) => { if (el) el.classList.toggle('hidden', isAzure); });
-    if (chunkSel) {
-      if (isPartition) {
-        chunkSel.value = 'none';
-        chunkSel.disabled = true;
-      } else {
-        chunkSel.disabled = false;
-      }
-      toggleAdv();
-    }
     setChunksTabVisible(providerSupportsChunks(CURRENT_PROVIDER));
     updateStrategyOptions(CURRENT_PROVIDER);
   };
@@ -755,33 +727,9 @@ function wireRunForm() {
       if (embedImages) payload.extract_image_block_to_payload = true;
       if (isUnstructured) {
         payload.infer_table_structure = $('inferTables').checked;
-        payload.chunking = $('chunkingSelect').value;
-        const maxTokens = parseNumber('chunkMaxTokens');
-        const maxChars = parseNumber('chunkMaxChars');
-        if (maxTokens != null) {
-          payload.chunk_max_tokens = maxTokens;
-          payload.chunk_max_characters = Math.max(1, Math.round(maxTokens * 4));
-        } else if (maxChars != null) {
-          payload.chunk_max_characters = maxChars;
-        }
-        const newAfter = parseNumber('chunkNewAfter');
-        if (newAfter != null) payload.chunk_new_after_n_chars = newAfter;
-        const overlap = parseNumber('chunkOverlap');
-        if (overlap != null) payload.chunk_overlap = overlap;
-        const includeOrig = parseBoolSelect('chunkIncludeOrig');
-        if (includeOrig != null) payload.chunk_include_orig_elements = includeOrig;
-        const overlapAll = parseBoolSelect('chunkOverlapAll');
-        if (overlapAll != null) payload.chunk_overlap_all = overlapAll;
-        if (payload.chunking === 'by_title') {
-          const combine = parseNumber('chunkCombineUnder');
-          if (combine != null) payload.chunk_combine_under_n_chars = combine;
-          const multipage = parseBoolSelect('chunkMultipage');
-          if (multipage != null) payload.chunk_multipage_sections = multipage;
-        }
-      } else {
-        // Partition runs are elements-only; chunking stays none
-        payload.chunking = 'none';
       }
+      // All providers now output elements only; chunking is done separately
+      payload.chunking = 'none';
     } else {
       const azureFeatures = [];
       const azureOutputs = [];
@@ -816,15 +764,6 @@ function wireRunForm() {
     if (payload.provider === 'unstructured') {
       payload.form_snapshot.strategy = payload.strategy;
       payload.form_snapshot.infer_table_structure = payload.infer_table_structure;
-      payload.form_snapshot.chunking = payload.chunking;
-      payload.form_snapshot.max_tokens = parseNumber('chunkMaxTokens');
-      payload.form_snapshot.max_characters = parseNumber('chunkMaxChars');
-      payload.form_snapshot.new_after_n_chars = parseNumber('chunkNewAfter');
-      payload.form_snapshot.combine_under_n_chars = parseNumber('chunkCombineUnder');
-      payload.form_snapshot.overlap = parseNumber('chunkOverlap');
-      payload.form_snapshot.include_orig_elements = parseBoolSelect('chunkIncludeOrig');
-      payload.form_snapshot.overlap_all = parseBoolSelect('chunkOverlapAll');
-      payload.form_snapshot.multipage_sections = parseBoolSelect('chunkMultipage');
       {
         const rawImgTypes = $('extractImageBlockTypes')?.value?.trim() || '';
         const embedImages = $('extractImageToPayload')?.checked;

@@ -146,17 +146,8 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
         strategy = None
 
     infer_table_structure = bool(payload.get("infer_table_structure", True)) if is_unstructured else True
-    chunking = str(payload.get("chunking") or "none") if is_unstructured else "none"
-    if is_unstructured_partition:
-        chunking = "none"
-    if is_unstructured and chunking not in {"basic", "by_title", "none"}:
-        raise HTTPException(status_code=400, detail="chunking must be one of: basic, by_title, none")
-
-    chunk_max_tokens = payload.get("chunk_max_tokens") if is_unstructured else None
-    chunk_max_characters = payload.get("chunk_max_characters") if is_unstructured else None
-    chunk_new_after_n_chars = payload.get("chunk_new_after_n_chars") if is_unstructured else None
-    chunk_combine_under_n_chars = payload.get("chunk_combine_under_n_chars") if is_unstructured else None
-    chunk_overlap = payload.get("chunk_overlap") if is_unstructured else None
+    # All providers now output elements only; chunking is done via separate custom chunker
+    chunking = "none"
     ocr_languages = str(payload.get("ocr_languages") or "eng+ara").strip() or None
     languages_raw = payload.get("languages")
     primary_language = str(payload.get("primary_language") or "eng").strip().lower()
@@ -250,9 +241,6 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
                 return False
         raise HTTPException(status_code=400, detail=f"{name} must be a boolean")
 
-    chunk_include_orig_elements = _coerce_bool("chunk_include_orig_elements") if is_unstructured else None
-    chunk_overlap_all = _coerce_bool("chunk_overlap_all") if is_unstructured else None
-    chunk_multipage_sections = _coerce_bool("chunk_multipage_sections") if is_unstructured else None
     detect_language_per_element = _coerce_bool("detect_language_per_element") if is_unstructured else False
     if detect_language_per_element is None:
         detect_language_per_element = False
@@ -294,15 +282,6 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
         "tag": raw_tag or None,
         "strategy": strategy,
         "infer_table_structure": infer_table_structure if is_unstructured else None,
-        "chunking": chunking if is_unstructured else None,
-        "max_tokens": chunk_max_tokens,
-        "chunk_max_characters": chunk_max_characters,
-        "chunk_new_after_n_chars": chunk_new_after_n_chars,
-        "chunk_combine_under_n_chars": chunk_combine_under_n_chars,
-        "chunk_overlap": chunk_overlap,
-        "chunk_include_orig_elements": chunk_include_orig_elements,
-        "chunk_overlap_all": chunk_overlap_all,
-        "chunk_multipage_sections": chunk_multipage_sections,
         "ocr_languages": ocr_languages,
         "languages": languages,
         "detect_language_per_element": detect_language_per_element,
@@ -360,27 +339,8 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
         ]
         if not infer_table_structure:
             cmd.append("--no-infer-table-structure")
-        cmd += ["--chunking", chunking]
-        if chunk_max_characters is not None:
-            cmd += ["--chunk-max-characters", str(int(chunk_max_characters))]
-        if chunk_new_after_n_chars is not None:
-            cmd += ["--chunk-new-after-n-chars", str(int(chunk_new_after_n_chars))]
-        if chunk_combine_under_n_chars is not None:
-            cmd += ["--chunk-combine-under-n-chars", str(int(chunk_combine_under_n_chars))]
-        if chunk_overlap is not None:
-            cmd += ["--chunk-overlap", str(int(chunk_overlap))]
-        if chunk_include_orig_elements is True:
-            cmd.append("--chunk-include-orig-elements")
-        elif chunk_include_orig_elements is False:
-            cmd.append("--chunk-no-include-orig-elements")
-        if chunk_overlap_all is True:
-            cmd.append("--chunk-overlap-all")
-        elif chunk_overlap_all is False:
-            cmd.append("--chunk-no-overlap-all")
-        if chunk_multipage_sections is True:
-            cmd.append("--chunk-multipage-sections")
-        elif chunk_multipage_sections is False:
-            cmd.append("--chunk-no-multipage-sections")
+        # Always use --chunking none; custom chunking done separately
+        cmd += ["--chunking", "none"]
         if ocr_languages:
             cmd += ["--ocr-languages", ocr_languages]
         if languages:

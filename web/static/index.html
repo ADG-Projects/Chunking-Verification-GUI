@@ -446,64 +446,6 @@
                   <input id="extractImageToPayload" type="checkbox" />
                   <span class="lab">Embed extracted images in payload <span class="info" tabindex="0">i</span><div class="tip">Set <code>extract_image_block_to_payload=true</code> so image bytes are returned as base64 alongside metadata.</div></span>
                 </label>
-                <label>
-                  <div class="lab">Chunking <span class="info" tabindex="0">i</span><div class="tip">Group output into chunks: <b>by_title</b> uses section titles; <b>basic</b> uses size‑only chunking.</div></div>
-                  <select id="chunkingSelect">
-                    <option value="none" selected>none (elements only)</option>
-                    <option value="by_title">by_title</option>
-                    <option value="basic">basic</option>
-                  </select>
-                </label>
-              </div>
-              <div id="chunkAdv" class="chunk-adv">
-                <div class="adv-grid">
-                  <label>
-                    <div class="lab">max_tokens <span class="info" tabindex="0">i</span><div class="tip">Target tokens per chunk. When set, <code>max_characters</code> is derived as <code>tokens × 4</code>.</div></div>
-                    <input id="chunkMaxTokens" type="number" min="50" step="10" placeholder="e.g. 500" />
-                  </label>
-                  <label>
-                    <div class="lab">max_characters <span class="info" tabindex="0">i</span><div class="tip">Hard character cap per chunk. Used when <code>max_tokens</code> is not provided.</div></div>
-                    <input id="chunkMaxChars" type="number" min="50" step="10" placeholder="e.g. 2000" />
-                  </label>
-                  <label>
-                    <div class="lab">new_after_n_chars <span class="info" tabindex="0">i</span><div class="tip">Start a new chunk after N characters have been appended.</div></div>
-                    <input id="chunkNewAfter" type="number" min="50" step="10" placeholder="e.g. 1500" />
-                  </label>
-                  <label id="chunkCombineRow">
-                    <div class="lab">combine_under_n_chars <span class="info" tabindex="0">i</span><div class="tip">Merge small chunks below N characters with the next chunk. Applies to <b>by_title</b>.</div></div>
-                    <input id="chunkCombineUnder" type="number" min="0" step="10" placeholder="e.g. 500" />
-                  </label>
-                  <label>
-                    <div class="lab">overlap <span class="info" tabindex="0">i</span><div class="tip">Overlap N trailing characters between adjacent chunks to preserve context.</div></div>
-                    <input id="chunkOverlap" type="number" min="0" step="10" placeholder="e.g. 100" />
-                  </label>
-                </div>
-                <div class="adv-grid">
-                  <label>
-                    <div class="lab">include_orig_elements <span class="info" tabindex="0">i</span><div class="tip">Include original atomic elements alongside chunk spans in outputs/overlays.</div></div>
-                    <select id="chunkIncludeOrig">
-                      <option value="">default (true)</option>
-                      <option value="true">true</option>
-                      <option value="false">false</option>
-                    </select>
-                  </label>
-                  <label>
-                    <div class="lab">overlap_all <span class="info" tabindex="0">i</span><div class="tip">Apply overlap to all boundaries, including section breaks.</div></div>
-                    <select id="chunkOverlapAll">
-                      <option value="">default (false)</option>
-                      <option value="true">true</option>
-                      <option value="false">false</option>
-                    </select>
-                  </label>
-                  <label id="chunkMultipageRow">
-                    <div class="lab">multipage_sections <span class="info" tabindex="0">i</span><div class="tip">Allow <b>by_title</b> chunks to span multiple pages until the next title.</div></div>
-                    <select id="chunkMultipage">
-                      <option value="">default (true)</option>
-                      <option value="true">true</option>
-                      <option value="false">false</option>
-                    </select>
-                  </label>
-                </div>
               </div>
             </div>
             <label>
