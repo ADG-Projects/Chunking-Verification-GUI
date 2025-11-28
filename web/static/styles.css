@@ -2269,6 +2269,54 @@ body.drawer-open #right-metrics {
   display: block;
 }
 
+/* Chunker Modal */
+.chunker-modal {
+  max-width: 500px;
+}
+
+.chunker-modal-body {
+  padding: 16px;
+}
+
+.chunker-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.chunker-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chunker-options-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.chunker-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.chunker-actions .btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.chunker-actions .btn-primary:hover {
+  background: #3a8fd9;
+}
+
+.chunker-actions .btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 @keyframes run-spin {
   0% {
     transform: rotate(0deg);

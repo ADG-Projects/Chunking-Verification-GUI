@@ -93,7 +93,8 @@
           <select id="runSelect"></select>
         </label>
         <button id="reviewSummaryChip" class="review-chip disabled" type="button" title="Click Elements or Chunks to focus reviews"></button>
-        <button id="openRunModal" class="btn">New Run</button>
+        <button id="openRunModal" class="btn">New Run Provider</button>
+        <button id="openChunkerModal" class="btn">New Run Chunker</button>
         <button id="deleteRunBtn" class="btn" title="Delete current run">Delete run</button>
       </div>
     </header>
@@ -360,12 +361,12 @@
 
     <div id="toast" class="toast"></div>
 
-    <!-- New Run Modal -->
+    <!-- New Run Provider Modal -->
     <div id="runModal" class="modal hidden">
       <div class="modal-backdrop" id="runModalBackdrop"></div>
       <div class="modal-content card">
         <div class="modal-header">
-          <div class="modal-title">New Run</div>
+          <div class="modal-title">New Run Provider</div>
           <button id="closeRunModal" class="btn">Close</button>
         </div>
         <div class="run-modal-body">
@@ -511,6 +512,42 @@
             <div class="run-progress-status muted" id="runProgressStatus"></div>
             <div class="run-progress-subtitle muted" id="runProgressHint"></div>
             <pre id="runProgressLogs" class="run-progress-logs"></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- New Run Chunker Modal -->
+    <div id="chunkerModal" class="modal hidden">
+      <div class="modal-backdrop" id="chunkerModalBackdrop"></div>
+      <div class="modal-content card chunker-modal">
+        <div class="modal-header">
+          <div class="modal-title">New Run Chunker</div>
+          <button id="closeChunkerModal" class="btn">Close</button>
+        </div>
+        <div class="chunker-modal-body">
+          <div class="chunker-form">
+            <label class="source-run-picker">
+              <div class="lab">Source Run <span class="info" tabindex="0">i</span><div class="tip">Select an existing run with elements to chunk.</div></div>
+              <select id="chunkerSourceRun"></select>
+            </label>
+            <div class="chunker-options">
+              <div class="lab">Chunking Options</div>
+              <div class="chunker-options-grid">
+                <label>
+                  <div class="lab">max_characters <span class="info" tabindex="0">i</span><div class="tip">Maximum characters per chunk.</div></div>
+                  <input id="chunkerMaxChars" type="number" min="100" step="100" placeholder="e.g. 1000" value="1000" />
+                </label>
+                <label>
+                  <div class="lab">overlap <span class="info" tabindex="0">i</span><div class="tip">Characters to overlap between chunks.</div></div>
+                  <input id="chunkerOverlap" type="number" min="0" step="10" placeholder="e.g. 0" value="0" />
+                </label>
+              </div>
+            </div>
+            <div class="chunker-actions">
+              <button id="runChunkerBtn" class="btn btn-primary">Run Chunker</button>
+              <span id="chunkerStatus" class="muted"></span>
+            </div>
           </div>
         </div>
       </div>

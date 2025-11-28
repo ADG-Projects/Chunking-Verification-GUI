@@ -178,6 +178,7 @@ async function init() {
   wireRunForm();
   setupInspectTabs();
   wireModal();
+  wireChunkerModal();
   document.querySelectorAll('.view-tabs .tab').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const target = btn.dataset.view || 'inspect';
@@ -1016,6 +1017,127 @@ function closeRunModal() {
     if (status) status.textContent = '';
     modal.classList.add('hidden');
     modal.classList.remove('running');
+  }
+}
+
+function wireChunkerModal() {
+  const openBtn = $('openChunkerModal');
+  const closeBtn = $('closeChunkerModal');
+  const backdrop = $('chunkerModalBackdrop');
+  const modal = $('chunkerModal');
+  const runBtn = $('runChunkerBtn');
+  const status = $('chunkerStatus');
+  const sourceSelect = $('chunkerSourceRun');
+
+  if (!openBtn || !modal) return;
+
+  openBtn.addEventListener('click', async () => {
+    // Populate source run dropdown from existing runs
+    if (sourceSelect) {
+      sourceSelect.innerHTML = '';
+      try {
+        const runs = await fetchJSON('/api/runs');
+        if (runs && runs.length > 0) {
+          runs.forEach(run => {
+            const opt = document.createElement('option');
+            opt.value = JSON.stringify({ slug: run.slug, provider: run.provider });
+            opt.textContent = `${run.slug} (${run.provider})`;
+            sourceSelect.appendChild(opt);
+          });
+        } else {
+          const opt = document.createElement('option');
+          opt.value = '';
+          opt.textContent = 'No runs available';
+          sourceSelect.appendChild(opt);
+        }
+      } catch (e) {
+        console.error('Failed to load runs for chunker:', e);
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = 'Error loading runs';
+        sourceSelect.appendChild(opt);
+      }
+    }
+    modal.classList.remove('hidden');
+    if (status) status.textContent = '';
+  });
+
+  const close = () => {
+    modal.classList.add('hidden');
+    if (status) status.textContent = '';
+  };
+  if (closeBtn) closeBtn.addEventListener('click', close);
+  if (backdrop) backdrop.addEventListener('click', close);
+
+  if (runBtn) {
+    runBtn.addEventListener('click', async () => {
+      if (!sourceSelect || !sourceSelect.value) {
+        if (status) status.textContent = 'Please select a source run';
+        return;
+      }
+
+      let sourceData;
+      try {
+        sourceData = JSON.parse(sourceSelect.value);
+      } catch {
+        if (status) status.textContent = 'Invalid source run selection';
+        return;
+      }
+
+      const maxChars = parseInt($('chunkerMaxChars')?.value || '1000', 10);
+      const overlap = parseInt($('chunkerOverlap')?.value || '0', 10);
+
+      if (status) status.textContent = 'Running chunker...';
+      runBtn.disabled = true;
+
+      try {
+        const payload = {
+          source_slug: sourceData.slug,
+          source_provider: sourceData.provider,
+          config: {
+            max_characters: maxChars,
+            overlap_characters: overlap,
+          }
+        };
+
+        const r = await fetch('/api/chunk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const result = await r.json();
+
+        if (!r.ok) {
+          throw new Error(result?.detail || `HTTP ${r.status}`);
+        }
+
+        if (status) {
+          status.textContent = `Done! ${result.summary?.count || 0} chunks created`;
+        }
+        showToast(`Chunker complete: ${result.summary?.count || 0} chunks`, 'ok', 3000);
+
+        // Refresh runs list after a short delay
+        setTimeout(() => {
+          refreshRuns();
+        }, 500);
+
+      } catch (e) {
+        console.error('Chunker failed:', e);
+        if (status) status.textContent = `Error: ${e.message}`;
+        showToast(`Chunker failed: ${e.message}`, 'err');
+      } finally {
+        runBtn.disabled = false;
+      }
+    });
+  }
+}
+
+function closeChunkerModal() {
+  const modal = $('chunkerModal');
+  if (modal) {
+    const status = $('chunkerStatus');
+    if (status) status.textContent = '';
+    modal.classList.add('hidden');
   }
 }
 
