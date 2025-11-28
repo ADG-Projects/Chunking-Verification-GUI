@@ -133,6 +133,61 @@ function filterElementEntriesByReview(entries) {
   return filtered;
 }
 
+function buildElementHierarchy(filteredEntries) {
+  const sorted = Array.isArray(filteredEntries) ? filteredEntries.slice() : [];
+  sorted.sort((a, b) => {
+    const ea = a[1] || {};
+    const eb = b[1] || {};
+    const ya = Number(ea.y || 0) - Number(eb.y || 0);
+    if (ya !== 0) return ya;
+    return Number(ea.x || 0) - Number(eb.x || 0);
+  });
+  const childMap = new Map();
+  const childIds = new Set();
+  const byArea = sorted.slice().sort((a, b) => {
+    const ea = a[1] || {};
+    const eb = b[1] || {};
+    const areaA = Number(ea.w || 0) * Number(ea.h || 0);
+    const areaB = Number(eb.w || 0) * Number(eb.h || 0);
+    if (areaA !== areaB) return areaA - areaB;
+    const ya = Number(ea.y || 0) - Number(eb.y || 0);
+    if (ya !== 0) return ya;
+    return Number(ea.x || 0) - Number(eb.x || 0);
+  });
+  for (const item of byArea) {
+    const [id, entry] = item;
+    if (!entry) continue;
+    const allowedChildren = containerChildTypes(entry.type);
+    if (!allowedChildren) continue;
+    const children = findContainedElements(entry, sorted, allowedChildren, childIds);
+    if (children.length) {
+      childMap.set(id, children);
+      children.forEach(([cid]) => childIds.add(cid));
+    }
+  }
+  const roots = sorted.filter(([id]) => !childIds.has(id));
+  return { sorted, childMap, childIds, roots };
+}
+
+function outlineExpandedChildren(filteredEntries) {
+  const effectiveMode = isAzureProvider() ? CURRENT_ELEMENT_VIEW_MODE : 'flat';
+  if (effectiveMode !== 'outline') return null;
+  const expandedMap = ELEMENT_OUTLINE_STATE?.expanded || {};
+  const idsOnPage = new Set(filteredEntries.map(([id]) => id));
+  const expandedIds = [];
+  for (const [id, isExpanded] of Object.entries(expandedMap)) {
+    if (isExpanded && idsOnPage.has(id)) expandedIds.push(id);
+  }
+  if (!expandedIds.length) return null;
+  const { childMap } = buildElementHierarchy(filteredEntries);
+  const allowed = new Set();
+  for (const id of expandedIds) {
+    const children = childMap.get(id) || [];
+    children.forEach(([cid]) => allowed.add(cid));
+  }
+  return allowed;
+}
+
 function refreshElementOverlaysForCurrentPage() {
   clearBoxes();
   if (!CURRENT_PAGE_BOXES || !SHOW_ELEMENT_OVERLAYS) {
@@ -141,26 +196,28 @@ function refreshElementOverlaysForCurrentPage() {
   }
   const entries = sortElementEntries(Object.entries(CURRENT_PAGE_BOXES));
   const filtered = filterElementEntriesByReview(entries);
-  const filteredIds = new Set(filtered.map(([id]) => id));
+  const overlayAllowed = outlineExpandedChildren(filtered);
   const typesPresent = new Set();
   const selectedId = CURRENT_INSPECT_ELEMENT_ID;
-  if (selectedId && CURRENT_PAGE_BOXES[selectedId]) {
-    const entry = CURRENT_PAGE_BOXES[selectedId];
-    if (entry && entry.layout_w && entry.layout_h) {
-      const rect = { x: entry.x, y: entry.y, w: entry.w, h: entry.h };
-      const meta = { kind: 'element', id: selectedId, origId: entry.orig_id, type: entry.type, page: entry.page_trimmed };
-      addBox(rect, entry.layout_w, entry.layout_h, true, entry.type, null, 'element', meta);
-      if (entry.type) typesPresent.add(entry.type);
+  const drawList = [];
+  if (overlayAllowed) {
+    for (const item of filtered) {
+      const [id] = item;
+      if (overlayAllowed.has(id)) drawList.push(item);
     }
+  } else if (selectedId && CURRENT_PAGE_BOXES[selectedId]) {
+    drawList.push([selectedId, CURRENT_PAGE_BOXES[selectedId], getReview('element', selectedId)]);
   } else if (!selectedId) {
-    for (const [id, entry] of entries) {
-      if (!entry || !filteredIds.has(id)) continue;
-      if (!(entry.layout_w && entry.layout_h)) continue;
-      const rect = { x: entry.x, y: entry.y, w: entry.w, h: entry.h };
-      const meta = { kind: 'element', id, origId: entry.orig_id, type: entry.type, page: entry.page_trimmed };
-      addBox(rect, entry.layout_w, entry.layout_h, false, entry.type, null, 'element', meta);
-      if (entry.type) typesPresent.add(entry.type);
-    }
+    drawList.push(...filtered);
+  }
+  for (const [id, entry] of drawList) {
+    if (!entry) continue;
+    if (!(entry.layout_w && entry.layout_h)) continue;
+    const rect = { x: entry.x, y: entry.y, w: entry.w, h: entry.h };
+    const meta = { kind: 'element', id, origId: entry.orig_id, type: entry.type, page: entry.page_trimmed };
+    const isBest = Boolean(selectedId && id === selectedId);
+    addBox(rect, entry.layout_w, entry.layout_h, isBest, entry.type, null, 'element', meta);
+    if (entry.type) typesPresent.add(entry.type);
   }
   updateLegend(Array.from(typesPresent));
 }
@@ -255,36 +312,7 @@ function renderElementOutline(host, filtered) {
     { type: 'Line', label: 'Lines' },
   ];
   const byTypeCounts = {};
-  const sorted = filtered.slice().sort((a, b) => {
-    const ea = a[1] || {};
-    const eb = b[1] || {};
-    const ya = Number(ea.y || 0) - Number(eb.y || 0);
-    if (ya !== 0) return ya;
-    return Number(ea.x || 0) - Number(eb.x || 0);
-  });
-  const childMap = new Map();
-  const childIds = new Set();
-  const byArea = sorted.slice().sort((a, b) => {
-    const ea = a[1] || {};
-    const eb = b[1] || {};
-    const areaA = Number(ea.w || 0) * Number(ea.h || 0);
-    const areaB = Number(eb.w || 0) * Number(eb.h || 0);
-    if (areaA !== areaB) return areaA - areaB;
-    const ya = Number(ea.y || 0) - Number(eb.y || 0);
-    if (ya !== 0) return ya;
-    return Number(ea.x || 0) - Number(eb.x || 0);
-  });
-  for (const item of byArea) {
-    const [id, entry] = item;
-    if (!entry) continue;
-    const allowedChildren = containerChildTypes(entry.type);
-    if (!allowedChildren) continue;
-    const children = findContainedElements(entry, sorted, allowedChildren, childIds);
-    if (children.length) {
-      childMap.set(id, children);
-      children.forEach(([cid]) => childIds.add(cid));
-    }
-  }
+  const { sorted, childMap, childIds } = buildElementHierarchy(filtered);
   const wrap = document.createElement('div');
   wrap.className = 'elements-outline-page';
   const head = document.createElement('div');
