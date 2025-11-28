@@ -181,10 +181,15 @@ function outlineExpandedChildren(filteredEntries) {
   if (!expandedIds.length) return null;
   const { childMap } = buildElementHierarchy(filteredEntries);
   const allowed = new Set();
-  for (const id of expandedIds) {
+  const visit = (id) => {
     const children = childMap.get(id) || [];
-    children.forEach(([cid]) => allowed.add(cid));
-  }
+    for (const [cid] of children) {
+      if (allowed.has(cid)) continue;
+      allowed.add(cid);
+      visit(cid);
+    }
+  };
+  expandedIds.forEach(visit);
   return allowed;
 }
 
@@ -339,6 +344,7 @@ function renderElementOutline(host, filtered) {
   toggle.addEventListener('click', () => {
     collapse.set(!collapsed);
     renderElementsListForCurrentPage(CURRENT_PAGE_BOXES);
+    refreshElementOverlaysForCurrentPage();
   });
   head.appendChild(toggle);
   wrap.appendChild(head);
@@ -383,6 +389,7 @@ function renderElementOutline(host, filtered) {
           ev.stopPropagation();
           state.set(!expanded);
           renderElementsListForCurrentPage(CURRENT_PAGE_BOXES);
+          refreshElementOverlaysForCurrentPage();
         });
         card.appendChild(toggle);
         cardWrap.appendChild(card);
