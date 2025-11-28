@@ -1114,6 +1114,12 @@ function wireChunkerModal() {
           status.textContent = `Done! ${result.summary?.count || 0} chunks created`;
         }
         showToast(`Chunker complete: ${result.summary?.count || 0} chunks`, 'ok', 3000);
+        try {
+          switchView('inspect', true);
+          switchInspectTab('chunks', true);
+        } catch (err) {
+          console.warn('Failed to switch to chunks tab after chunking', err);
+        }
 
         // Refresh runs list after a short delay
         setTimeout(() => {
