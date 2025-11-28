@@ -1,6 +1,16 @@
 const RUN_JOB_POLL_INTERVAL_MS = 10000;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function updateZoomSlider() {
+  const zoomInput = $('zoom');
+  if (!zoomInput) return;
+  let pct = Math.round(SCALE * 100);
+  const min = Number(zoomInput.min) || 50;
+  const max = Number(zoomInput.max) || 200;
+  pct = Math.max(min, Math.min(max, pct));
+  zoomInput.value = String(pct);
+}
+
 function runKey(slug, provider = CURRENT_PROVIDER || 'unstructured') {
   const prov = (provider || 'unstructured').trim() || 'unstructured';
   return `${prov}:::${slug || ''}`;
@@ -201,6 +211,38 @@ async function init() {
   $('zoom').addEventListener('input', async (e) => {
     SCALE_IS_MANUAL = true;
     SCALE = Number(e.target.value) / 100;
+    await renderPage(CURRENT_PAGE);
+  });
+  $('fitWidth').addEventListener('click', async () => {
+    if (!PDF_DOC) return;
+    const page = await PDF_DOC.getPage(CURRENT_PAGE);
+    const rotation = page.rotate || 0;
+    const container = $('pdfContainer');
+    const rect = container.getBoundingClientRect();
+    const style = getComputedStyle(container);
+    const paddingLeft = parseFloat(style.paddingLeft) || 0;
+    const paddingRight = parseFloat(style.paddingRight) || 0;
+    const availableWidth = rect.width - paddingLeft - paddingRight;
+    const baseViewport = page.getViewport({ scale: 1, rotation });
+    SCALE = availableWidth / baseViewport.width;
+    SCALE_IS_MANUAL = true;
+    updateZoomSlider();
+    await renderPage(CURRENT_PAGE);
+  });
+  $('fitHeight').addEventListener('click', async () => {
+    if (!PDF_DOC) return;
+    const page = await PDF_DOC.getPage(CURRENT_PAGE);
+    const rotation = page.rotate || 0;
+    const container = $('pdfContainer');
+    const rect = container.getBoundingClientRect();
+    const style = getComputedStyle(container);
+    const paddingTop = parseFloat(style.paddingTop) || 0;
+    const paddingBottom = parseFloat(style.paddingBottom) || 0;
+    const availableHeight = rect.height - paddingTop - paddingBottom;
+    const baseViewport = page.getViewport({ scale: 1, rotation });
+    SCALE = availableHeight / baseViewport.height;
+    SCALE_IS_MANUAL = true;
+    updateZoomSlider();
     await renderPage(CURRENT_PAGE);
   });
   const pageNumInput = $('pageNum');
