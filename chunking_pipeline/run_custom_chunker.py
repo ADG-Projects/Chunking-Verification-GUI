@@ -11,17 +11,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-
-from loguru import logger
 
 from chunking_pipeline.custom_chunker import (
     ChunkingConfig,
     chunk_elements,
     get_chunk_summary,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def load_elements(path: Path) -> List[Dict[str, Any]]:
@@ -129,7 +130,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     logger.info(f"Saving chunks to {args.output}")
     save_chunks(chunks, args.output)
 
-    logger.success("Chunking complete")
+    logger.info("Chunking complete")
     return 0
 
 
