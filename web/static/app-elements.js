@@ -264,12 +264,22 @@ function renderElementOutline(host, filtered) {
   });
   const childMap = new Map();
   const childIds = new Set();
-  for (const item of sorted) {
+  const byArea = sorted.slice().sort((a, b) => {
+    const ea = a[1] || {};
+    const eb = b[1] || {};
+    const areaA = Number(ea.w || 0) * Number(ea.h || 0);
+    const areaB = Number(eb.w || 0) * Number(eb.h || 0);
+    if (areaA !== areaB) return areaA - areaB;
+    const ya = Number(ea.y || 0) - Number(eb.y || 0);
+    if (ya !== 0) return ya;
+    return Number(ea.x || 0) - Number(eb.x || 0);
+  });
+  for (const item of byArea) {
     const [id, entry] = item;
     if (!entry) continue;
     const allowedChildren = containerChildTypes(entry.type);
     if (!allowedChildren) continue;
-    const children = findContainedElements(entry, sorted, allowedChildren);
+    const children = findContainedElements(entry, sorted, allowedChildren, childIds);
     if (children.length) {
       childMap.set(id, children);
       children.forEach(([cid]) => childIds.add(cid));
@@ -542,7 +552,7 @@ function buildElementImageSection(data) {
   wrap.appendChild(img);
   return wrap;
 }
-function findContainedElements(parentEntry, items, allowedTypes) {
+function findContainedElements(parentEntry, items, allowedTypes, skipIds = null) {
   if (!parentEntry || !(allowedTypes && allowedTypes.size)) return [];
   const px = Number(parentEntry.x || 0);
   const py = Number(parentEntry.y || 0);
@@ -556,6 +566,7 @@ function findContainedElements(parentEntry, items, allowedTypes) {
   for (const item of items) {
     const [id, entry, review] = item;
     if (!entry || entry === parentEntry) continue;
+    if (skipIds && skipIds.has(id)) continue;
     if ((entry.page_trimmed || entry.page) !== page) continue;
     if (!allowedTypes.has(entry.type || '')) continue;
     const cx = Number(entry.x || 0);
