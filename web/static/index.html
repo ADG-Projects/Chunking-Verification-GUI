@@ -116,84 +116,18 @@
       </div>
     </header>
 
-    <!-- Settings Recap Bar -->
-    <div id="settingsRecap" class="settings-recap">
-      <div class="setting-item">
-        <span class="setting-label">PROV <span class="info" tabindex="0">i</span><div class="tip">Run provider: Unstructured (local), Unstructured Partition (API), or Azure Document Intelligence (Layout).</div></span>
-        <span class="setting-value" id="settingProvider">-</span>
+    <!-- Settings Banner (Smart Contextual) -->
+    <div id="settingsBanner" class="settings-banner">
+      <div class="settings-banner-row settings-banner-top" id="settingsBannerTop">
+        <!-- Critical params populated by JS -->
       </div>
-      <div class="setting-item" id="settingModelItem">
-        <span class="setting-label">MODEL <span class="info" tabindex="0">i</span><div class="tip">Model id used for this run (e.g., prebuilt-layout).</div></span>
-        <span class="setting-value" id="settingModel">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">FEAT <span class="info" tabindex="0">i</span><div class="tip">Feature flags passed to the provider (comma-separated).</div></span>
-        <span class="setting-value" id="settingFeatures">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">STRAT <span class="info" tabindex="0">i</span><div class="tip">Extraction strategy in Unstructured: auto lets the library pick, fast is lighter, hi_res uses high‑resolution vision for layout accuracy.</div></span>
-        <span class="setting-value" id="settingStrategy">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">INF‑TBL <span class="info" tabindex="0">i</span><div class="tip">Infer table structure (rows and cells) from detected lines/glyphs. When off, tables are generic blocks.</div></span>
-        <span class="setting-value" id="settingInferTables">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">CHUNK <span class="info" tabindex="0">i</span><div class="tip">How elements are grouped: by_title uses headings as section boundaries; basic creates size‑based text chunks.</div></span>
-        <span class="setting-value" id="settingChunking">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">LANG <span class="info" tabindex="0">i</span><div class="tip">Primary document language. Arabic toggles RTL previews and prioritizes Arabic OCR.</div></span>
-        <span class="setting-value">
-          <select id="settingPrimaryLang" class="setting-lang-select" aria-label="Primary document language">
-            <option value="eng">English (LTR)</option>
-            <option value="ara">Arabic (RTL)</option>
-          </select>
-        </span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">TOK <span class="info" tabindex="0">i</span><div class="tip">Approximate target tokens per chunk (LLM). If provided, max_characters ≈ tokens × 4.</div></span>
-        <span class="setting-value" id="settingMaxTokens">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">CHARS <span class="info" tabindex="0">i</span><div class="tip">Hard character cap per chunk. Used if max_tokens is not set.</div></span>
-        <span class="setting-value" id="settingMaxChars">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">NEW <span class="info" tabindex="0">i</span><div class="tip">Start a new chunk after this many characters have been appended.</div></span>
-        <span class="setting-value" id="settingNewAfter">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">COMB <span class="info" tabindex="0">i</span><div class="tip">If a chunk is smaller than this, merge it with the next. Applies to by_title.</div></span>
-        <span class="setting-value" id="settingCombineUnder">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">OVRLP <span class="info" tabindex="0">i</span><div class="tip">Trailing characters to overlap between adjacent chunks to preserve context.</div></span>
-        <span class="setting-value" id="settingOverlap">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">INCL <span class="info" tabindex="0">i</span><div class="tip">Include original atomic elements alongside chunk spans in outputs/overlays.</div></span>
-        <span class="setting-value" id="settingIncludeOrig">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">OVRLP* <span class="info" tabindex="0">i</span><div class="tip">Apply overlap to all boundaries, including section breaks. When off, overlap only within contiguous text.</div></span>
-        <span class="setting-value" id="settingOverlapAll">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">MPAGE <span class="info" tabindex="0">i</span><div class="tip">Allow by_title chunks to span multiple pages until the next title appears.</div></span>
-        <span class="setting-value" id="settingMultipage">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">PDF <span class="info" tabindex="0">i</span><div class="tip">Input PDF used to generate this run.</div></span>
-        <span class="setting-value truncate" id="settingPdf">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">PAGES <span class="info" tabindex="0">i</span><div class="tip">Pages processed (list or ranges, e.g., 5-7,12).</div></span>
-        <span class="setting-value truncate" id="settingPages">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">TAG <span class="info" tabindex="0">i</span><div class="tip">Optional variant tag appended to the run slug for comparison.</div></span>
-        <span class="setting-value truncate" id="settingTag">-</span>
+      <div class="settings-banner-row settings-banner-bottom" id="settingsBannerBottom">
+        <!-- Secondary params populated by JS -->
+        <button id="bannerPinBtn" class="banner-pin-btn" aria-label="Pin banner" title="Keep banner expanded">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M7 1L9 5L13 6L9 7L7 13L5 7L1 6L5 5L7 1Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
       </div>
     </div>
 
