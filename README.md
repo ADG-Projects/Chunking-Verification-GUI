@@ -107,7 +107,8 @@ Outputs for Azure runs live under `outputs/azure/document_intelligence/` with th
 
 ## Release history
 
-- **v4.4 patch (2025-12-01)** – Custom chunker keeps section headings that fall inside figure/table boxes attached to the container chunk so captions stay with the figure instead of becoming separate chunks, and merges consecutive section headings into a single section so you don't get header-only chunks between them.
+- **v5.0 (2025-12-01)** – Custom chunker improvements: section headings inside Table/Figure boxes stay attached to container (captions stay with figures), consecutive headings merge into single section, paragraphs inside tables filtered, tables/figures included in parent sections. UI: element drawer hierarchy context, resizable panels, centered PDF viewer, smart parameter banner, alternating chunk overlay colors, and run persistence across reloads.
+- **v4.4 (2025-11-28)** – Apple Liquid Glass UI redesign with frosted glass effects, dark/light theme toggle, Apple system color palette, smooth spring animations, and enhanced button/card styling.
 - **v4.3 (2025-11-27)** – Figure elements in Azure DI outline view, direct page jump input, What's New modal, RTL table fix, fixed PDF legend positioning, and Azure DI as default provider.
 - **v4.2 (2025-11-26)** – Enhanced feedback analysis with provider-level comparisons, smoothed scoring, multi-dimensional insights (per-element suggestions, issue taxonomies, review-gap callouts), and improved JSON/HTML exports that include LLM analysis payloads.
   - Verification steps:

@@ -5,9 +5,16 @@
 
 ## Completed
 
+- [x] 2025-12-01 Release v5.0 (Custom chunker improvements, element drawer hierarchy, resizable panels, smart parameter banner, run persistence).
 - [x] 2025-12-01 Keep section headings that fall inside figure/table bounding boxes attached to the container chunk so figure captions stay with the figure chunk, and merge consecutive section headings into a single section chunk so intermediate header-only chunks go away.
 - [x] 2025-12-01 Add element drawer hierarchy context mirroring the outline view so ancestors/children stay visible while reviewing.
+- [x] 2025-12-01 Add resizable right panel and chunk details drawer.
+- [x] 2025-12-01 Center PDF viewer horizontally in available space.
+- [x] 2025-12-01 Add smart contextual banner for run parameters.
+- [x] 2025-12-01 Alternate chunk overlay colors by global index for better visibility.
+- [x] 2025-12-01 Remember last opened run across page reloads.
 
+- [x] 2025-11-28 Release v4.4 (Apple Liquid Glass UI redesign, dark/light theme toggle, smooth animations).
 - [x] 2025-11-27 Release v4.3 (Figure outline view, direct page jump, What's New modal, RTL/legend fixes, Azure DI default).
 - [x] 2025-11-26 Release v4.2 (Enhanced feedback analysis with provider comparisons, smoothed scoring, and LLM-powered insights).
 - [x] 2025-11-26 Add LLM analysis payloads to feedback JSON export so downloads include model responses.
