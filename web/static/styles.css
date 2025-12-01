@@ -3125,6 +3125,22 @@ body.drawer-open #right-metrics {
   background: color-mix(in srgb, var(--type-text) 18%, transparent);
 }
 
+/* Alternate colors for consecutive CompositeElement chunks on same page */
+.box.type-CompositeElement.alt-1 {
+  border-color: var(--type-header);
+  background: color-mix(in srgb, var(--type-header) 18%, transparent);
+}
+
+.box.type-CompositeElement.alt-2 {
+  border-color: var(--type-figure);
+  background: color-mix(in srgb, var(--type-figure) 18%, transparent);
+}
+
+.box.type-CompositeElement.alt-3 {
+  border-color: var(--type-title);
+  background: color-mix(in srgb, var(--type-title) 18%, transparent);
+}
+
 .box.type-ListItem {
   border-color: var(--type-list);
   background: color-mix(in srgb, var(--type-list) 18%, transparent);

@@ -29,7 +29,7 @@ function hidePortalTooltip() {
   if (tip) tip.style.opacity = '0';
 }
 
-function addBox(rect, layoutW, layoutH, isBest = false, type = null, color = null, variant = 'chunk', meta = null) {
+function addBox(rect, layoutW, layoutH, isBest = false, type = null, color = null, variant = 'chunk', meta = null, altIndex = null) {
   const overlay = $('overlay');
   const canvas = $('pdfCanvas');
   if (!overlay || !canvas || !layoutW || !layoutH) return;
@@ -40,6 +40,9 @@ function addBox(rect, layoutW, layoutH, isBest = false, type = null, color = nul
   const el = document.createElement('div');
   const typeClass = type ? ` type-${String(type).replace(/[^A-Za-z0-9_-]/g, '')}` : '';
   el.className = 'box' + (isBest ? ' best' : '') + typeClass;
+  if (altIndex !== null && altIndex > 0) {
+    el.classList.add(`alt-${altIndex % 4}`);
+  }
   if (variant === 'orig') {
     el.classList.add('orig');
   }
@@ -181,13 +184,15 @@ function drawChunksModeForPage(pageNum) {
     }
   } else {
     if (SHOW_CHUNK_OVERLAYS) {
+      const allChunks = CURRENT_CHUNKS?.chunks || [];
       for (const { chunk } of filteredChunks) {
         if (!chunk) continue;
         // Use page-specific bbox for multi-page chunks
         const box = chunkBox(chunk, pageNum);
         if (box && box.page_trimmed === pageNum) {
+          const globalIndex = allChunks.indexOf(chunk);
           const meta = { kind: 'chunk', id: chunk.element_id, type: chunk.type, page: box.page_trimmed, chars: chunk.char_len };
-          addBox({ x: box.x, y: box.y, w: box.w, h: box.h }, box.layout_w, box.layout_h, false, chunk.type, null, 'chunk', meta);
+          addBox({ x: box.x, y: box.y, w: box.w, h: box.h }, box.layout_w, box.layout_h, false, chunk.type, null, 'chunk', meta, globalIndex);
           if (chunk.type) chunkTypesPresent.add(chunk.type);
         }
       }
