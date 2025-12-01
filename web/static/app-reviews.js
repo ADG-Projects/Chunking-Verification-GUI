@@ -1,3 +1,11 @@
+function debounce(fn, delay) {
+  let timer;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), delay);
+  };
+}
+
 function reviewKey(kind, itemId) {
   return `${kind}:${itemId}`;
 }
@@ -247,38 +255,18 @@ function buildDrawerReviewSection(kind, itemId) {
   } else {
     note.value = existing?.note || '';
   }
+  const debouncedSave = debounce(async () => {
+    const state = getReview(kind, itemId);
+    if (state?.rating) {
+      const trimmed = note.value.trim();
+      await saveReview(kind, itemId, { note: trimmed });
+    }
+  }, 600);
   note.addEventListener('input', () => {
     setReviewDraft(kind, itemId, note.value);
+    debouncedSave();
   });
   noteWrap.appendChild(note);
-  const actions = document.createElement('div');
-  actions.className = 'drawer-review-actions';
-  const saveBtn = document.createElement('button');
-  saveBtn.className = 'btn';
-  saveBtn.textContent = 'Save note';
-  saveBtn.addEventListener('click', async (ev) => {
-    ev.stopPropagation();
-    const state = getReview(kind, itemId);
-    if (!state || !state.rating) {
-      showToast('Pick Good or Bad before saving a note.', 'err');
-      return;
-    }
-    const trimmed = note.value.trim();
-    await saveReview(kind, itemId, { note: trimmed });
-    note.value = trimmed;
-    setReviewDraft(kind, itemId, trimmed);
-  });
-  const clearBtn = document.createElement('button');
-  clearBtn.className = 'btn btn-secondary';
-  clearBtn.textContent = 'Clear';
-  clearBtn.addEventListener('click', (ev) => {
-    ev.stopPropagation();
-    note.value = '';
-    setReviewDraft(kind, itemId, '');
-  });
-  actions.appendChild(saveBtn);
-  actions.appendChild(clearBtn);
-  noteWrap.appendChild(actions);
   reviewSection.appendChild(noteWrap);
   return reviewSection;
 }

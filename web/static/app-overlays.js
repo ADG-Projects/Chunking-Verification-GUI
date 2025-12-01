@@ -3,7 +3,33 @@ function clearBoxes() {
   overlay.innerHTML = '';
 }
 
-function addBox(rect, layoutW, layoutH, isBest = false, type = null, color = null, variant = 'chunk', meta = null) {
+function showPortalTooltip(boxEl, text) {
+  const portal = document.getElementById('tooltip-portal');
+  if (!portal) return;
+
+  let tip = portal.querySelector('.box-tip');
+  if (!tip) {
+    tip = document.createElement('div');
+    tip.className = 'box-tip';
+    portal.appendChild(tip);
+  }
+
+  tip.textContent = text;
+  tip.style.opacity = '1';
+
+  const rect = boxEl.getBoundingClientRect();
+  tip.style.left = `${rect.left}px`;
+  tip.style.top = `${rect.top - 8}px`;
+  tip.style.transform = 'translateY(-100%)';
+}
+
+function hidePortalTooltip() {
+  const portal = document.getElementById('tooltip-portal');
+  const tip = portal?.querySelector('.box-tip');
+  if (tip) tip.style.opacity = '0';
+}
+
+function addBox(rect, layoutW, layoutH, isBest = false, type = null, color = null, variant = 'chunk', meta = null, altIndex = null) {
   const overlay = $('overlay');
   const canvas = $('pdfCanvas');
   if (!overlay || !canvas || !layoutW || !layoutH) return;
@@ -14,6 +40,9 @@ function addBox(rect, layoutW, layoutH, isBest = false, type = null, color = nul
   const el = document.createElement('div');
   const typeClass = type ? ` type-${String(type).replace(/[^A-Za-z0-9_-]/g, '')}` : '';
   el.className = 'box' + (isBest ? ' best' : '') + typeClass;
+  if (altIndex !== null && altIndex > 0) {
+    el.classList.add(`alt-${altIndex % 4}`);
+  }
   if (variant === 'orig') {
     el.classList.add('orig');
   }
@@ -33,10 +62,9 @@ function addBox(rect, layoutW, layoutH, isBest = false, type = null, color = nul
   if (info.extra) titleLines.push(String(info.extra));
   const tipText = titleLines.join(' · ');
   if (tipText) el.title = tipText;
-  const tip = document.createElement('div');
-  tip.className = 'box-tip';
-  tip.textContent = tipText || (kind === 'chunk' ? 'Chunk' : 'Element');
-  el.appendChild(tip);
+  const finalTipText = tipText || (kind === 'chunk' ? 'Chunk' : 'Element');
+  el.addEventListener('mouseenter', () => showPortalTooltip(el, finalTipText));
+  el.addEventListener('mouseleave', hidePortalTooltip);
 
   el.dataset.kind = kind;
   if (info && info.id) el.dataset.id = String(info.id);
@@ -76,10 +104,32 @@ function addBox(rect, layoutW, layoutH, isBest = false, type = null, color = nul
   overlay.appendChild(el);
 }
 
-function chunkBox(chunk) {
+function chunkBox(chunk, pageNum = null) {
   if (!chunk) return null;
-  if (chunk.segment_bbox) return chunk.segment_bbox;
+  // Only use segment_bbox for single-element chunks (pure table segments).
+  // For multi-element chunks (e.g., heading + table), use the full bbox
+  // so the overlay covers all elements.
+  const hasMultipleElements = chunk.orig_boxes && chunk.orig_boxes.length > 1;
+  if (chunk.segment_bbox && !hasMultipleElements) return chunk.segment_bbox;
+  // For multi-page chunks, find the bbox for the specific page
+  if (pageNum !== null && chunk.page_bboxes && chunk.page_bboxes.length > 0) {
+    const pageBbox = chunk.page_bboxes.find(pb => pb.page_trimmed === pageNum);
+    if (pageBbox) return pageBbox;
+  }
   return chunk.bbox || null;
+}
+
+// Get all pages that a chunk spans (for multi-page chunks)
+function chunkPages(chunk) {
+  if (!chunk) return [];
+  if (chunk.page_bboxes && chunk.page_bboxes.length > 0) {
+    return chunk.page_bboxes.map(pb => pb.page_trimmed).filter(p => p != null);
+  }
+  const box = chunk.segment_bbox || chunk.bbox;
+  if (box && box.page_trimmed != null) {
+    return [box.page_trimmed];
+  }
+  return [];
 }
 
 function drawOrigBoxesForChunk(chunkId, pageNum, color) {
@@ -114,7 +164,8 @@ function drawChunksModeForPage(pageNum) {
 
   if (selectedChunk && selectedChunkVisible) {
     if (SHOW_CHUNK_OVERLAYS) {
-      const box = chunkBox(selectedChunk);
+      // Use page-specific bbox for multi-page chunks
+      const box = chunkBox(selectedChunk, pageNum);
       if (box && box.page_trimmed === pageNum) {
         const meta = { kind: 'chunk', id: selectedChunk.element_id, type: selectedChunk.type, page: box.page_trimmed, chars: selectedChunk.char_len };
         addBox({ x: box.x, y: box.y, w: box.w, h: box.h }, box.layout_w, box.layout_h, true, selectedChunk.type, null, 'chunk', meta);
@@ -133,12 +184,15 @@ function drawChunksModeForPage(pageNum) {
     }
   } else {
     if (SHOW_CHUNK_OVERLAYS) {
+      const allChunks = CURRENT_CHUNKS?.chunks || [];
       for (const { chunk } of filteredChunks) {
         if (!chunk) continue;
-        const box = chunkBox(chunk);
+        // Use page-specific bbox for multi-page chunks
+        const box = chunkBox(chunk, pageNum);
         if (box && box.page_trimmed === pageNum) {
+          const globalIndex = allChunks.indexOf(chunk);
           const meta = { kind: 'chunk', id: chunk.element_id, type: chunk.type, page: box.page_trimmed, chars: chunk.char_len };
-          addBox({ x: box.x, y: box.y, w: box.w, h: box.h }, box.layout_w, box.layout_h, false, chunk.type, null, 'chunk', meta);
+          addBox({ x: box.x, y: box.y, w: box.w, h: box.h }, box.layout_w, box.layout_h, false, chunk.type, null, 'chunk', meta, globalIndex);
           if (chunk.type) chunkTypesPresent.add(chunk.type);
         }
       }
@@ -146,8 +200,10 @@ function drawChunksModeForPage(pageNum) {
     if (SHOW_ELEMENT_OVERLAYS) {
       for (const { chunk } of filteredChunks) {
         if (!chunk || !chunk.element_id) continue;
-        const box = chunkBox(chunk);
-        if (box && box.page_trimmed === pageNum) {
+        // Check if chunk has content on this page (via page_bboxes or orig_boxes)
+        const chunkOnPage = chunkPages(chunk).includes(pageNum) ||
+          (chunk.orig_boxes && chunk.orig_boxes.some(ob => ob.page_trimmed === pageNum));
+        if (chunkOnPage) {
           drawOrigBoxesForChunk(chunk.element_id, pageNum, null);
           if (chunk.orig_boxes) {
             for (const origBox of chunk.orig_boxes) {
@@ -161,17 +217,15 @@ function drawChunksModeForPage(pageNum) {
     }
   }
 
-  const typesToShow = SHOW_ELEMENT_OVERLAYS && elementTypesPresent.size > 0
-    ? Array.from(elementTypesPresent)
-    : Array.from(chunkTypesPresent);
-  updateLegend(typesToShow);
+  updateLegend([]);
 }
 
 function drawChunkOverlayForId(chunkId, pageNum) {
   if (!chunkId || !CURRENT_CHUNK_LOOKUP) return;
   const chunk = CURRENT_CHUNK_LOOKUP[chunkId];
   if (!chunk) return;
-  const box = chunkBox(chunk);
+  // Use page-specific bbox for multi-page chunks
+  const box = chunkBox(chunk, pageNum);
   if (!box || box.page_trimmed !== pageNum) return;
   clearBoxes();
   const meta = {
@@ -182,8 +236,7 @@ function drawChunkOverlayForId(chunkId, pageNum) {
     chars: chunk.char_len,
   };
   addBox({ x: box.x, y: box.y, w: box.w, h: box.h }, box.layout_w, box.layout_h, true, chunk.type, null, 'chunk', meta);
-  const typesToShow = chunk.type ? [chunk.type] : [];
-  updateLegend(typesToShow);
+  updateLegend([]);
 }
 
 function redrawOverlaysForCurrentContext() {

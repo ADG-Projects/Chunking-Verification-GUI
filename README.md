@@ -107,6 +107,8 @@ Outputs for Azure runs live under `outputs/azure/document_intelligence/` with th
 
 ## Release history
 
+- **v5.0 (2025-12-01)** – Custom chunker improvements: section headings inside Table/Figure boxes stay attached to container (captions stay with figures), consecutive headings merge into single section, paragraphs inside tables filtered, tables/figures included in parent sections. UI: element drawer hierarchy context, resizable panels, centered PDF viewer, smart parameter banner, alternating chunk overlay colors, and run persistence across reloads.
+- **v4.4 (2025-11-28)** – Apple Liquid Glass UI redesign with frosted glass effects, dark/light theme toggle, Apple system color palette, smooth spring animations, and enhanced button/card styling.
 - **v4.3 (2025-11-27)** – Figure elements in Azure DI outline view, direct page jump input, What's New modal, RTL table fix, fixed PDF legend positioning, and Azure DI as default provider.
 - **v4.2 (2025-11-26)** – Enhanced feedback analysis with provider-level comparisons, smoothed scoring, multi-dimensional insights (per-element suggestions, issue taxonomies, review-gap callouts), and improved JSON/HTML exports that include LLM analysis payloads.
   - Verification steps:
@@ -177,7 +179,7 @@ What you get:
 - Overlay UX: hover for ID/type/page/tooltips; colors are fixed per element type; chunk overlays honor Type/Review filters and redraw immediately; Azure polygons stay scaled to PDF points; the Elements outline groups Azure pageHeader/pageNumber/Tables/Paragraphs/Lines by page order with breadcrumbs in drawers.
 - Reviews: leave Good/Bad ratings with optional notes for any chunk or element, filter by rating, and use the header chip to jump into scored items.
 - Inspect → Chunks: browse chunk summary + list; selecting a chunk jumps to its page, shows its overlays, and expands its source elements; cards size to the amount of text.
-- Inspect → Elements: filter by type, toggle outline mode (Azure), see original element IDs and inline previews, switch overlays between chunk and element modes based on the active tab, and view extracted images for Unstructured elements (image payloads) or Azure figures (`--outputs figures`).
+- Inspect → Elements: filter by type, toggle outline mode (Azure), see original element IDs and inline previews, switch overlays between chunk and element modes based on the active tab, view extracted images for Unstructured elements (image payloads) or Azure figures (`--outputs figures`), and inspect the drawer’s Hierarchy context block to see the selected element within the same outline tree (ancestors + descendants) as the sidebar.
 - Unstructured Partition runs support image extraction: set `extract_image_block_types` (e.g., `Image` or `Image,Table`) and enable “Embed extracted images in payload” to return `image_base64` for drawer previews.
 
 Data sources used by the UI:
@@ -210,7 +212,7 @@ Endpoints (served by FastAPI):
 - `POST /api/run` — execute a new run. Body:
   - `pdf` (string, required): filename under `res/`.
   - `pages` (string, optional): page list/range (e.g., `4-6`, `4,5,6`). If omitted or blank, the server processes the entire document (equivalent to `1-<num_pages>`). The server trims the PDF first and only processes those pages.
-  - `provider` (`unstructured|unstructured-partition|azure-di`, default `unstructured`).
+  - `provider` (`unstructured/local|unstructured/partition|azure/document_intelligence`, default `azure/document_intelligence`).
   - Unstructured: `strategy` (`auto|fast|hi_res`, default `auto`); `infer_table_structure` (bool, default `true`); `chunking` (`basic|by_title`, default `by_title`) plus the chunking knobs (`chunk_max_characters`, `chunk_new_after_n_chars`, `chunk_overlap`, `chunk_include_orig_elements`, `chunk_overlap_all`, `chunk_combine_under_n_chars`, `chunk_multipage_sections`).
   - Unstructured Partition (API): elements-only; honors `strategy` (`auto|fast|hi_res`) and optional `languages` while emitting raw element lines in `*.chunks.jsonl` (no local chunking is applied).
 - Azure: `model_id`, `features`, `locale`, `string_index_type`, `output_content_format`, and `query_fields`. Chunking flags are ignored for Azure providers.

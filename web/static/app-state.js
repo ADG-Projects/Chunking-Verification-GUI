@@ -33,6 +33,8 @@ let RUN_RANGE_START = null;
 let HINTED_HIRES = false;
 let RETURN_TO = null;
 let CURRENT_DOC_LANGUAGE = 'eng';
+let SETTINGS_BANNER_PINNED = localStorage.getItem('settings_banner_pinned') === 'true';
+let SETTINGS_BANNER_TIMER = null;
 let FEEDBACK_INDEX = null;
 let FEEDBACK_PROVIDER_FILTER = 'all';
 let FEEDBACK_CHART = null;
@@ -56,7 +58,7 @@ let CURRENT_CHUNK_DRAWER_ID = null;
 let CURRENT_ELEMENT_DRAWER_ID = null;
 let CURRENT_RUN_JOB_ID = null;
 let CURRENT_RUN_JOB_STATUS = null;
-let CURRENT_PROVIDER = 'azure-di';
+let CURRENT_PROVIDER = 'azure/document_intelligence';
 let CURRENT_ELEMENT_VIEW_MODE = 'outline'; // 'flat' | 'outline'
 let ELEMENT_OUTLINE_STATE = { collapsedByPage: {}, expanded: {} };
 
@@ -227,12 +229,12 @@ function resolvePrimaryLanguage(cfg, snap) {
   );
 }
 
-function providerParam(provider = CURRENT_PROVIDER || 'unstructured') {
-  const p = provider || 'unstructured';
+function providerParam(provider = CURRENT_PROVIDER || 'unstructured/local') {
+  const p = provider || 'unstructured/local';
   return `provider=${encodeURIComponent(p)}`;
 }
 
-function withProvider(url, provider = CURRENT_PROVIDER || 'unstructured') {
+function withProvider(url, provider = CURRENT_PROVIDER || 'unstructured/local') {
   const param = providerParam(provider);
   return url.includes('?') ? `${url}&${param}` : `${url}?${param}`;
 }

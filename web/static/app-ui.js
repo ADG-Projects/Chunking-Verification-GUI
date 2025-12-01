@@ -20,7 +20,7 @@ function updateLegend(types) {
   host.classList.remove('hidden');
 }
 
-function showToast(text, kind='ok', ms=3000) {
+function showToast(text, kind = 'ok', ms = 3000) {
   const host = $('toast');
   if (!host) return;
   const item = document.createElement('div');
@@ -30,11 +30,14 @@ function showToast(text, kind='ok', ms=3000) {
   setTimeout(() => { item.remove(); }, ms);
 }
 
-function typeBorderColor(t) {
-  const cls = String(t || '').replace(/[^A-Za-z0-9_-]/g,'');
+function typeBorderColor(t, altIndex = null) {
+  const cls = String(t || '').replace(/[^A-Za-z0-9_-]/g, '');
   if (!cls) return '#6bbcff';
   const fake = document.createElement('div');
   fake.className = `box type-${cls}`;
+  if (altIndex !== null && altIndex > 0) {
+    fake.classList.add(`alt-${altIndex % 4}`);
+  }
   document.body.appendChild(fake);
   const color = window.getComputedStyle(fake).borderColor;
   document.body.removeChild(fake);
@@ -189,4 +192,100 @@ function wireWhatsNewModal() {
   badge.addEventListener('click', () => modal.classList.remove('hidden'));
   if (closeBtn) closeBtn.addEventListener('click', () => modal.classList.add('hidden'));
   if (backdrop) backdrop.addEventListener('click', () => modal.classList.add('hidden'));
+}
+
+// Right panel resize functionality
+const DRAWER_RESIZE_KEY = 'drawer-width';
+const DRAWER_MIN_WIDTH = 360;
+
+function getDrawerMaxWidth() {
+  // Max is 70% of window width (but at least min width)
+  return Math.max(DRAWER_MIN_WIDTH, Math.round(window.innerWidth * 0.7));
+}
+
+function getDefaultDrawerWidth() {
+  // Calculate a sensible default based on window size
+  // Use ~35% of window width, clamped to min/max
+  const preferred = Math.round(window.innerWidth * 0.35);
+  return Math.max(DRAWER_MIN_WIDTH, Math.min(getDrawerMaxWidth(), preferred));
+}
+
+function updateDrawerWidth(width) {
+  // Sync the fixed-position drawer overlay width with the right panel
+  document.documentElement.style.setProperty('--drawer-width', `${width}px`);
+}
+
+function initDrawerResize() {
+  const panelHandle = document.getElementById('drawer-resize-handle');
+  const drawerHandle = document.getElementById('drawer-overlay-resize-handle');
+  const shell = document.querySelector('.inspect-shell');
+  if (!shell) return;
+
+  let isDragging = false;
+  let activeHandle = null;
+  let currentWidth = null;
+
+  // Restore saved width on load
+  const savedWidth = localStorage.getItem(DRAWER_RESIZE_KEY);
+  if (savedWidth) {
+    const width = parseInt(savedWidth, 10);
+    if (width >= DRAWER_MIN_WIDTH && width <= getDrawerMaxWidth()) {
+      shell.style.gridTemplateColumns = `minmax(0, 1fr) ${width}px`;
+      updateDrawerWidth(width);
+      currentWidth = width;
+    }
+  } else {
+    // No saved width - sync drawer with default panel width
+    updateDrawerWidth(getDefaultDrawerWidth());
+  }
+
+  function startDrag(handle, e) {
+    isDragging = true;
+    activeHandle = handle;
+    handle.classList.add('dragging');
+    document.body.classList.add('resizing-drawer');
+    e.preventDefault();
+  }
+
+  function resetToDefault() {
+    const defaultWidth = getDefaultDrawerWidth();
+    shell.style.gridTemplateColumns = `minmax(0, 1fr) ${defaultWidth}px`;
+    updateDrawerWidth(defaultWidth);
+    currentWidth = defaultWidth;
+    localStorage.removeItem(DRAWER_RESIZE_KEY);
+  }
+
+  // Set up event listeners for both handles
+  if (panelHandle) {
+    panelHandle.addEventListener('mousedown', (e) => startDrag(panelHandle, e));
+    panelHandle.addEventListener('dblclick', resetToDefault);
+  }
+  if (drawerHandle) {
+    drawerHandle.addEventListener('mousedown', (e) => startDrag(drawerHandle, e));
+    drawerHandle.addEventListener('dblclick', resetToDefault);
+  }
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    // For drawer overlay, calculate width from right edge of viewport
+    const newWidth = Math.max(DRAWER_MIN_WIDTH, Math.min(getDrawerMaxWidth(), window.innerWidth - e.clientX));
+    shell.style.gridTemplateColumns = `minmax(0, 1fr) ${newWidth}px`;
+    updateDrawerWidth(newWidth);
+    currentWidth = newWidth;
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (isDragging) {
+      isDragging = false;
+      if (activeHandle) {
+        activeHandle.classList.remove('dragging');
+      }
+      activeHandle = null;
+      document.body.classList.remove('resizing-drawer');
+      // Save width to localStorage
+      if (currentWidth !== null) {
+        localStorage.setItem(DRAWER_RESIZE_KEY, String(currentWidth));
+      }
+    }
+  });
 }

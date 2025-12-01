@@ -17,6 +17,10 @@ async function loadChunksForRun(slug, provider = CURRENT_PROVIDER) {
     CURRENT_CHUNK_LOOKUP[fallbackId] = chunk;
   });
   renderChunksTab();
+  if (CURRENT_VIEW === 'inspect' && INSPECT_TAB === 'chunks') {
+    // Ensure overlays reflect freshly loaded chunks without needing a page change
+    redrawOverlaysForCurrentContext();
+  }
 }
 
 function getChunksForCurrentPage() {
@@ -46,9 +50,16 @@ function chunkMatchesReviewFilter(chunk, id) {
 
 function filterChunksForCurrentPage(chunks, page = CURRENT_PAGE) {
   return chunks.filter(({ chunk, id }) => {
-    const b = chunkBox(chunk);
-    if (!b || !Number.isFinite(b.page_trimmed)) return false;
-    if (b.page_trimmed !== page) return false;
+    // Check if chunk appears on this page (supports multi-page chunks)
+    const pages = chunkPages(chunk);
+    const onPage = pages.includes(page);
+    if (!onPage) {
+      // Fallback to single bbox check for backwards compatibility
+      const b = chunkBox(chunk);
+      if (!b || !Number.isFinite(b.page_trimmed) || b.page_trimmed !== page) {
+        return false;
+      }
+    }
     if (!chunkMatchesTypeFilter(chunk)) return false;
     if (!chunkMatchesReviewFilter(chunk, id)) return false;
     return true;
@@ -155,7 +166,9 @@ function renderChunksTab() {
     card.className = 'chunk-card';
     const chunkId = id || `chunk-${idx}`;
     card.dataset.chunkId = chunkId;
-    const color = typeBorderColor(chunk.type || '');
+    const allChunks = CURRENT_CHUNKS?.chunks || [];
+    const globalIndex = allChunks.indexOf(chunk);
+    const color = typeBorderColor(chunk.type || '', globalIndex);
     card.style.borderLeft = `4px solid ${color}`;
     const chunkReview = getReview('chunk', chunkId);
     const derivedElementReview = chunkHasReviewedElements(chunk);
@@ -193,7 +206,7 @@ function renderChunksTab() {
         const row = document.createElement('div');
         row.className = 'element-row';
         const idDisp = (b.orig_id || b.element_id || '').toString();
-        const short = idDisp.length > 16 ? `${idDisp.slice(0,12)}…` : idDisp || '(no id)';
+        const short = idDisp.length > 16 ? `${idDisp.slice(0, 12)}…` : idDisp || '(no id)';
         row.innerHTML = `<span>${b.type || 'Element'} · p${b.page_trimmed ?? '?'}</span><span class="meta">${short}</span>`;
         row.addEventListener('click', async (ev) => {
           ev.stopPropagation();
@@ -362,6 +375,10 @@ async function openChunkDetailsDrawer(chunkId, elementsSublist) {
           await openElementDetails(b.orig_id);
           stable = await findStableIdByOrig(b.orig_id, p);
           if (stable) { CURRENT_INSPECT_ELEMENT_ID = stable; await drawBoxesForCurrentPage(); }
+        } else if (b.element_id) {
+          CURRENT_INSPECT_ELEMENT_ID = null;
+          await drawBoxesForCurrentPage();
+          await openElementDetails(b.element_id);
         }
       });
       elemList.appendChild(row);
@@ -401,5 +418,5 @@ function revealChunkInList(chunkId, expand = true) {
     const sub = card.querySelector('.elements-sublist');
     if (sub) sub.classList.remove('hidden');
   }
-  try { card.scrollIntoView({ block: 'nearest' }); } catch(e) {}
+  try { card.scrollIntoView({ block: 'nearest' }); } catch (e) { }
 }

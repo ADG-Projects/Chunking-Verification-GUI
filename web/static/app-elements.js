@@ -133,6 +133,88 @@ function filterElementEntriesByReview(entries) {
   return filtered;
 }
 
+function buildElementHierarchy(filteredEntries) {
+  const sorted = Array.isArray(filteredEntries) ? filteredEntries.slice() : [];
+  sorted.sort((a, b) => {
+    const ea = a[1] || {};
+    const eb = b[1] || {};
+    const ya = Number(ea.y || 0) - Number(eb.y || 0);
+    if (ya !== 0) return ya;
+    return Number(ea.x || 0) - Number(eb.x || 0);
+  });
+  const childMap = new Map();
+  const childIds = new Set();
+  const byArea = sorted.slice().sort((a, b) => {
+    const ea = a[1] || {};
+    const eb = b[1] || {};
+    const areaA = Number(ea.w || 0) * Number(ea.h || 0);
+    const areaB = Number(eb.w || 0) * Number(eb.h || 0);
+    if (areaA !== areaB) return areaA - areaB;
+    const ya = Number(ea.y || 0) - Number(eb.y || 0);
+    if (ya !== 0) return ya;
+    return Number(ea.x || 0) - Number(eb.x || 0);
+  });
+  for (const item of byArea) {
+    const [id, entry] = item;
+    if (!entry) continue;
+    const allowedChildren = containerChildTypes(entry.type);
+    if (!allowedChildren) continue;
+    const children = findContainedElements(entry, sorted, allowedChildren, childIds);
+    if (children.length) {
+      childMap.set(id, children);
+      children.forEach(([cid]) => childIds.add(cid));
+    }
+  }
+  const roots = sorted.filter(([id]) => !childIds.has(id));
+  return { sorted, childMap, childIds, roots };
+}
+
+function outlineExpandedChildren(filteredEntries) {
+  const effectiveMode = isAzureProvider() ? CURRENT_ELEMENT_VIEW_MODE : 'flat';
+  if (effectiveMode !== 'outline') return null;
+  const expandedMap = ELEMENT_OUTLINE_STATE?.expanded || {};
+  const idsOnPage = new Set(filteredEntries.map(([id]) => id));
+  const expandedIds = [];
+  for (const [id, isExpanded] of Object.entries(expandedMap)) {
+    if (isExpanded && idsOnPage.has(id)) expandedIds.push(id);
+  }
+  if (!expandedIds.length) return null;
+  const { childMap } = buildElementHierarchy(filteredEntries);
+  const expandedSet = new Set(expandedIds);
+  const cache = new Map();
+  const hasExpandedDescendant = (id) => {
+    if (cache.has(id)) return cache.get(id);
+    const children = childMap.get(id) || [];
+    for (const [cid] of children) {
+      if (expandedSet.has(cid)) {
+        cache.set(id, true);
+        return true;
+      }
+      if (hasExpandedDescendant(cid)) {
+        cache.set(id, true);
+        return true;
+      }
+    }
+    cache.set(id, false);
+    return false;
+  };
+  const deepestExpanded = expandedIds.filter(id => !hasExpandedDescendant(id));
+  const allowed = new Set();
+
+  const addDescendants = (parentId) => {
+    const children = childMap.get(parentId) || [];
+    for (const [cid] of children) {
+      allowed.add(cid);
+      addDescendants(cid);
+    }
+  };
+
+  for (const id of deepestExpanded) {
+    addDescendants(id);
+  }
+  return allowed;
+}
+
 function refreshElementOverlaysForCurrentPage() {
   clearBoxes();
   if (!CURRENT_PAGE_BOXES || !SHOW_ELEMENT_OVERLAYS) {
@@ -141,26 +223,32 @@ function refreshElementOverlaysForCurrentPage() {
   }
   const entries = sortElementEntries(Object.entries(CURRENT_PAGE_BOXES));
   const filtered = filterElementEntriesByReview(entries);
-  const filteredIds = new Set(filtered.map(([id]) => id));
+  const overlayAllowed = outlineExpandedChildren(filtered);
   const typesPresent = new Set();
   const selectedId = CURRENT_INSPECT_ELEMENT_ID;
-  if (selectedId && CURRENT_PAGE_BOXES[selectedId]) {
-    const entry = CURRENT_PAGE_BOXES[selectedId];
-    if (entry && entry.layout_w && entry.layout_h) {
-      const rect = { x: entry.x, y: entry.y, w: entry.w, h: entry.h };
-      const meta = { kind: 'element', id: selectedId, origId: entry.orig_id, type: entry.type, page: entry.page_trimmed };
-      addBox(rect, entry.layout_w, entry.layout_h, true, entry.type, null, 'element', meta);
-      if (entry.type) typesPresent.add(entry.type);
+  const drawList = [];
+  if (overlayAllowed) {
+    const allowedSet = new Set(overlayAllowed);
+    if (selectedId && CURRENT_PAGE_BOXES[selectedId]) {
+      allowedSet.add(selectedId);
     }
+    for (const item of filtered) {
+      const [id] = item;
+      if (allowedSet.has(id)) drawList.push(item);
+    }
+  } else if (selectedId && CURRENT_PAGE_BOXES[selectedId]) {
+    drawList.push([selectedId, CURRENT_PAGE_BOXES[selectedId], getReview('element', selectedId)]);
   } else if (!selectedId) {
-    for (const [id, entry] of entries) {
-      if (!entry || !filteredIds.has(id)) continue;
-      if (!(entry.layout_w && entry.layout_h)) continue;
-      const rect = { x: entry.x, y: entry.y, w: entry.w, h: entry.h };
-      const meta = { kind: 'element', id, origId: entry.orig_id, type: entry.type, page: entry.page_trimmed };
-      addBox(rect, entry.layout_w, entry.layout_h, false, entry.type, null, 'element', meta);
-      if (entry.type) typesPresent.add(entry.type);
-    }
+    drawList.push(...filtered);
+  }
+  for (const [id, entry] of drawList) {
+    if (!entry) continue;
+    if (!(entry.layout_w && entry.layout_h)) continue;
+    const rect = { x: entry.x, y: entry.y, w: entry.w, h: entry.h };
+    const meta = { kind: 'element', id, origId: entry.orig_id, type: entry.type, page: entry.page_trimmed };
+    const isBest = Boolean(selectedId && id === selectedId);
+    addBox(rect, entry.layout_w, entry.layout_h, isBest, entry.type, null, 'element', meta);
+    if (entry.type) typesPresent.add(entry.type);
   }
   updateLegend(Array.from(typesPresent));
 }
@@ -242,39 +330,26 @@ function containerChildTypes(parentType) {
   return vals ? new Set(vals) : null;
 }
 
+const ELEMENT_OUTLINE_ORDER = [
+  { type: 'pageHeader', label: 'Page header' },
+  { type: 'pageNumber', label: 'Page number' },
+  { type: 'Table', label: 'Tables' },
+  { type: 'Figure', label: 'Figures' },
+  { type: 'Paragraph', label: 'Paragraphs' },
+  { type: 'Line', label: 'Lines' },
+];
+
+function outlineLabelForType(type) {
+  const meta = ELEMENT_OUTLINE_ORDER.find((o) => o.type === type);
+  return meta ? meta.label : (type || 'Unknown');
+}
+
 function renderElementOutline(host, filtered) {
   const pageNum = Number(filtered[0]?.[1]?.page_trimmed || CURRENT_PAGE || 1);
   const collapse = outlineCollapseState(pageNum);
   const collapsed = collapse.get();
-  const order = [
-    { type: 'pageHeader', label: 'Page header' },
-    { type: 'pageNumber', label: 'Page number' },
-    { type: 'Table', label: 'Tables' },
-    { type: 'Figure', label: 'Figures' },
-    { type: 'Paragraph', label: 'Paragraphs' },
-    { type: 'Line', label: 'Lines' },
-  ];
   const byTypeCounts = {};
-  const sorted = filtered.slice().sort((a, b) => {
-    const ea = a[1] || {};
-    const eb = b[1] || {};
-    const ya = Number(ea.y || 0) - Number(eb.y || 0);
-    if (ya !== 0) return ya;
-    return Number(ea.x || 0) - Number(eb.x || 0);
-  });
-  const childMap = new Map();
-  const childIds = new Set();
-  for (const item of sorted) {
-    const [id, entry] = item;
-    if (!entry) continue;
-    const allowedChildren = containerChildTypes(entry.type);
-    if (!allowedChildren) continue;
-    const children = findContainedElements(entry, sorted, allowedChildren);
-    if (children.length) {
-      childMap.set(id, children);
-      children.forEach(([cid]) => childIds.add(cid));
-    }
-  }
+  const { sorted, childMap, childIds } = buildElementHierarchy(filtered);
   const wrap = document.createElement('div');
   wrap.className = 'elements-outline-page';
   const head = document.createElement('div');
@@ -285,7 +360,7 @@ function renderElementOutline(host, filtered) {
   head.appendChild(title);
   const counts = document.createElement('div');
   counts.className = 'elements-outline-counts';
-  counts.textContent = order
+  counts.textContent = ELEMENT_OUTLINE_ORDER
     .map((o) => {
       const count = sorted.filter(([, entry]) => (entry?.type || '') === o.type).length;
       if (count) byTypeCounts[o.type] = count;
@@ -301,6 +376,7 @@ function renderElementOutline(host, filtered) {
   toggle.addEventListener('click', () => {
     collapse.set(!collapsed);
     renderElementsListForCurrentPage(CURRENT_PAGE_BOXES);
+    refreshElementOverlaysForCurrentPage();
   });
   head.appendChild(toggle);
   wrap.appendChild(head);
@@ -311,8 +387,7 @@ function renderElementOutline(host, filtered) {
   const renderRows = (parentEl, nodes, depth = 0) => {
     for (const [id, entry, review] of nodes) {
       const t = entry?.type || 'Unknown';
-      const orderMeta = order.find((o) => o.type === t);
-      const label = orderMeta ? orderMeta.label : t;
+      const label = outlineLabelForType(t);
       counters[t] = (counters[t] || 0) + 1;
       const row = document.createElement('div');
       row.className = 'elements-outline-row';
@@ -345,6 +420,7 @@ function renderElementOutline(host, filtered) {
           ev.stopPropagation();
           state.set(!expanded);
           renderElementsListForCurrentPage(CURRENT_PAGE_BOXES);
+          refreshElementOverlaysForCurrentPage();
         });
         card.appendChild(toggle);
         cardWrap.appendChild(card);
@@ -387,6 +463,8 @@ async function openElementDetails(elementId) {
     const data = await fetchJSON(withProvider(`/api/element/${encodeURIComponent(CURRENT_SLUG)}/${encodeURIComponent(elementId)}`));
     const container = $('preview');
     resetDrawerScrollState();
+    CURRENT_INSPECT_ELEMENT_ID = elementId;
+    refreshElementOverlaysForCurrentPage();
     CURRENT_ELEMENT_DRAWER_ID = elementId;
     CURRENT_CHUNK_DRAWER_ID = null;
     $('drawerTitle').textContent = 'Element';
@@ -410,6 +488,15 @@ async function openElementDetails(elementId) {
     ];
     structure.innerHTML = crumbs.join(' › ');
     container.appendChild(structure);
+
+    // Hierarchy Section
+    if (CURRENT_PAGE_BOXES) {
+      const outlineEntries = sortElementEntries(Object.entries(CURRENT_PAGE_BOXES || {}))
+        .map(([id, entry]) => [id, entry, getReview('element', id)]);
+      const hierarchySection = buildElementHierarchySection(elementId, outlineEntries);
+      if (hierarchySection) container.appendChild(hierarchySection);
+    }
+
     container.appendChild(buildDrawerReviewSection('element', elementId));
     const imageSection = buildElementImageSection(data);
     if (imageSection) {
@@ -448,6 +535,183 @@ async function openElementDetails(elementId) {
   } catch (e) {
     showToast(`Failed to load element: ${e.message}`, 'err');
   }
+}
+
+function buildElementHierarchySection(elementId, entries) {
+  if (!Array.isArray(entries) || !entries.length) return null;
+  const entryMap = new Map(entries.map(([id, entry]) => [id, entry]));
+  if (!entryMap.has(elementId)) return null;
+  const { sorted, childMap, childIds } = buildElementHierarchy(entries);
+  const allowed = new Set([elementId]);
+  const badgeLookup = new Map();
+  const typeCounters = {};
+  const parentMap = new Map();
+  for (const [pid, children] of childMap.entries()) {
+    for (const [cid] of children) parentMap.set(cid, pid);
+  }
+  const ancestorList = [];
+  let cursor = elementId;
+  while (parentMap.has(cursor)) {
+    const pid = parentMap.get(cursor);
+    ancestorList.unshift(pid);
+    allowed.add(pid);
+    cursor = pid;
+  }
+  const collectDesc = (id) => {
+    const kids = childMap.get(id) || [];
+    for (const [cid] of kids) {
+      if (!allowed.has(cid)) {
+        allowed.add(cid);
+        collectDesc(cid);
+      }
+    }
+  };
+  collectDesc(elementId);
+  const filteredSorted = sorted.filter(([id]) => allowed.has(id));
+  for (const [id, entry] of filteredSorted) {
+    const t = entry?.type || 'Unknown';
+    typeCounters[t] = (typeCounters[t] || 0) + 1;
+    badgeLookup.set(id, `${outlineLabelForType(t)} ${typeCounters[t]}`);
+  }
+  const ancestorSet = new Set(ancestorList);
+  const defaultExpanded = new Set([...ancestorSet]);
+  const localExpansion = new Map();
+  const isExpanded = (id) => {
+    if (localExpansion.has(id)) return localExpansion.get(id);
+    return defaultExpanded.has(id);
+  };
+  const setExpanded = (id, val) => {
+    localExpansion.set(id, !!val);
+  };
+  let collapsed = false;
+  const wrap = document.createElement('div');
+  wrap.className = 'element-hierarchy-section';
+  const title = document.createElement('div');
+  title.className = 'section-title';
+  title.textContent = 'Hierarchy context';
+  wrap.appendChild(title);
+  const tree = document.createElement('div');
+  tree.className = 'element-hierarchy-tree';
+  wrap.appendChild(tree);
+  const outline = document.createElement('div');
+  outline.className = 'elements-outline-page elements-outline-page-embedded';
+  tree.appendChild(outline);
+  const head = document.createElement('div');
+  head.className = 'elements-outline-page-head';
+  const titleEl = document.createElement('div');
+  titleEl.className = 'elements-outline-title';
+  const pageNum = Number(entries[0]?.[1]?.page_trimmed || CURRENT_PAGE || 1);
+  titleEl.textContent = `Page ${pageNum}`;
+  head.appendChild(titleEl);
+  const counts = document.createElement('div');
+  counts.className = 'elements-outline-counts';
+  counts.textContent = ELEMENT_OUTLINE_ORDER
+    .map((o) => {
+      const count = filteredSorted.filter(([, entry]) => (entry?.type || '') === o.type).length;
+      return count ? `${o.label} ${count}` : null;
+    })
+    .filter(Boolean)
+    .join(' · ');
+  if (!counts.textContent) counts.textContent = `${filteredSorted.length} elements`;
+  head.appendChild(counts);
+  const collapseBtn = document.createElement('button');
+  collapseBtn.type = 'button';
+  collapseBtn.className = 'outline-toggle';
+  const updateCollapseLabel = () => {
+    collapseBtn.textContent = collapsed ? 'Expand' : 'Collapse';
+  };
+  updateCollapseLabel();
+  collapseBtn.addEventListener('click', () => {
+    collapsed = !collapsed;
+    body.classList.toggle('collapsed', collapsed);
+    updateCollapseLabel();
+  });
+  head.appendChild(collapseBtn);
+  outline.appendChild(head);
+  const body = document.createElement('div');
+  body.className = 'elements-outline-body';
+  outline.appendChild(body);
+  const allowedChildIds = new Set();
+  for (const [pid, children] of childMap.entries()) {
+    if (!allowed.has(pid)) continue;
+    children.forEach(([cid]) => allowedChildIds.add(cid));
+  }
+  const renderRows = (parentEl, nodes) => {
+    for (const [id, entry, review] of nodes) {
+      if (!allowed.has(id)) continue;
+      const t = entry?.type || 'Unknown';
+      const row = document.createElement('div');
+      row.className = 'elements-outline-row';
+      const left = document.createElement('div');
+      left.className = 'elements-outline-left';
+      const badge = document.createElement('span');
+      badge.className = 'outline-badge';
+      badge.textContent = badgeLookup.get(id) || outlineLabelForType(t);
+      left.appendChild(badge);
+      row.appendChild(left);
+      const cardWrap = document.createElement('div');
+      cardWrap.className = 'elements-outline-card';
+      const card = buildElementCard(id, entry, review, { compact: true });
+      if (id === elementId) {
+        card.classList.add('hierarchy-current');
+      } else if (ancestorSet.has(id)) {
+        card.classList.add('hierarchy-ancestor');
+      }
+      const children = (childMap.get(id) || []).filter(([cid]) => allowed.has(cid));
+      if (children.length) {
+        row.classList.add('outline-has-children');
+        card.classList.add('has-children');
+        const expanded = isExpanded(id);
+        if (expanded) card.classList.add('children-expanded');
+        const summary = summarizeChildren(children);
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'outline-child-toggle';
+        const updateText = (next) => {
+          toggle.textContent = next
+            ? summary ? `Hide children (${summary})` : 'Hide children'
+            : summary ? `Show children (${summary})` : 'Show children';
+        };
+        updateText(expanded);
+        const childWrap = document.createElement('div');
+        childWrap.className = 'elements-outline-children';
+        if (!expanded) {
+          childWrap.classList.add('hidden');
+        } else {
+          renderRows(childWrap, children);
+        }
+        toggle.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          const next = childWrap.classList.contains('hidden');
+          setExpanded(id, next);
+          childWrap.classList.toggle('hidden', !next);
+          if (next && !childWrap.childElementCount) {
+            renderRows(childWrap, children);
+          }
+          card.classList.toggle('children-expanded', next);
+          updateText(next);
+        });
+        card.appendChild(toggle);
+        cardWrap.appendChild(card);
+        cardWrap.appendChild(childWrap);
+      } else {
+        cardWrap.appendChild(card);
+      }
+      row.appendChild(cardWrap);
+      parentEl.appendChild(row);
+    }
+  };
+  const roots = filteredSorted.filter(([id]) => allowed.has(id) && !allowedChildIds.has(id));
+  renderRows(body, roots);
+  setTimeout(() => {
+    const card = wrap.querySelector('.element-card.hierarchy-current');
+    if (card) {
+      try {
+        card.scrollIntoView({ block: 'center' });
+      } catch (e) { }
+    }
+  }, 0);
+  return wrap;
 }
 
 async function findStableIdByOrig(origId, page) {
@@ -542,7 +806,7 @@ function buildElementImageSection(data) {
   wrap.appendChild(img);
   return wrap;
 }
-function findContainedElements(parentEntry, items, allowedTypes) {
+function findContainedElements(parentEntry, items, allowedTypes, skipIds = null) {
   if (!parentEntry || !(allowedTypes && allowedTypes.size)) return [];
   const px = Number(parentEntry.x || 0);
   const py = Number(parentEntry.y || 0);
@@ -556,6 +820,7 @@ function findContainedElements(parentEntry, items, allowedTypes) {
   for (const item of items) {
     const [id, entry, review] = item;
     if (!entry || entry === parentEntry) continue;
+    if (skipIds && skipIds.has(id)) continue;
     if ((entry.page_trimmed || entry.page) !== page) continue;
     if (!allowedTypes.has(entry.type || '')) continue;
     const cx = Number(entry.x || 0);

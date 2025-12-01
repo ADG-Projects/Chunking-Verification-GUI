@@ -26,8 +26,9 @@ router = APIRouter()
 logger = logging.getLogger("chunking.routes.runs")
 
 
-def _parse_slug_from_chunk(path: Path) -> Tuple[str, Optional[str]]:
-    stem = path.name[:-len(".chunks.jsonl")] if path.name.endswith(".chunks.jsonl") else path.stem
+def _parse_slug_from_elements(path: Path) -> Tuple[str, Optional[str]]:
+    """Parse slug and page range from an elements file path."""
+    stem = path.name[:-len(".elements.jsonl")] if path.name.endswith(".elements.jsonl") else path.stem
     m = re.match(r"^(?P<slug>.+?)\.pages(?P<range>[0-9_\-,]+)$", stem)
     if not m:
         return stem, None
@@ -41,12 +42,13 @@ def discover_runs(provider: Optional[str] = None) -> List[Dict[str, Any]]:
         out_dir = get_out_dir(prov)
         if not out_dir.exists():
             continue
-        chunk_files = sorted(out_dir.glob("*.chunks.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
-        for chunk_file in chunk_files:
-            ui_slug, page_tag = _parse_slug_from_chunk(chunk_file)
-            base_stem = chunk_file.name[:-len(".chunks.jsonl")]
+        elements_files = sorted(out_dir.glob("*.elements.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+        for elements_file in elements_files:
+            ui_slug, page_tag = _parse_slug_from_elements(elements_file)
+            base_stem = elements_file.name[:-len(".elements.jsonl")]
             pdf_path = out_dir / f"{base_stem}.pdf"
             meta_path = out_dir / f"{base_stem}.run.json"
+            chunks_path = out_dir / f"{base_stem}.chunks.jsonl"
             page_range = (page_tag or "").replace("_", ",") or None
             run_config: Dict[str, Any] = {}
             if meta_path.exists():
@@ -61,7 +63,8 @@ def discover_runs(provider: Optional[str] = None) -> List[Dict[str, Any]]:
                     "provider": prov,
                     "pdf_file": relative_to_root(pdf_path) if pdf_path.exists() else None,
                     "page_range": page_range,
-                    "chunks_file": relative_to_root(chunk_file),
+                    "elements_file": relative_to_root(elements_file),
+                    "chunks_file": relative_to_root(chunks_path) if chunks_path.exists() else None,
                     "run_config": run_config or None,
                 }
             )
@@ -91,9 +94,10 @@ def api_runs(provider: Optional[str] = Query(default=None)) -> List[Dict[str, An
 def api_delete_run(slug: str, provider: str = Query(default=DEFAULT_PROVIDER)) -> Dict[str, Any]:
     out_dir = get_out_dir(provider)
     removed: List[str] = []
-    patterns = [f"{slug}.chunks.jsonl", f"{slug}.pdf", f"{slug}.run.json"]
+    patterns = [f"{slug}.elements.jsonl", f"{slug}.chunks.jsonl", f"{slug}.pdf", f"{slug}.run.json"]
     if ".pages" in slug:
         base, _, rest = slug.partition(".pages")
+        patterns.append(f"{base}.pages{rest}.elements.jsonl")
         patterns.append(f"{base}.pages{rest}.chunks.jsonl")
         patterns.append(f"{base}.pages{rest}.pdf")
         patterns.append(f"{base}.pages{rest}.run.json")
@@ -125,9 +129,9 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
     if not pdf_name:
         raise HTTPException(status_code=400, detail="Field 'pdf' is required")
 
-    is_unstructured = provider == "unstructured"
-    is_unstructured_partition = provider == "unstructured-partition"
-    is_azure_di = provider == "azure-di"
+    is_unstructured = provider == "unstructured/local"
+    is_unstructured_partition = provider == "unstructured/partition"
+    is_azure_di = provider == "azure/document_intelligence"
 
     strategy = str(payload.get("strategy") or "auto")
     allowed_partition_strategies = {"auto", "fast", "hi_res", "ocr_only", "vlm"}
@@ -146,17 +150,8 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
         strategy = None
 
     infer_table_structure = bool(payload.get("infer_table_structure", True)) if is_unstructured else True
-    chunking = str(payload.get("chunking") or "none") if is_unstructured else "none"
-    if is_unstructured_partition:
-        chunking = "none"
-    if is_unstructured and chunking not in {"basic", "by_title", "none"}:
-        raise HTTPException(status_code=400, detail="chunking must be one of: basic, by_title, none")
-
-    chunk_max_tokens = payload.get("chunk_max_tokens") if is_unstructured else None
-    chunk_max_characters = payload.get("chunk_max_characters") if is_unstructured else None
-    chunk_new_after_n_chars = payload.get("chunk_new_after_n_chars") if is_unstructured else None
-    chunk_combine_under_n_chars = payload.get("chunk_combine_under_n_chars") if is_unstructured else None
-    chunk_overlap = payload.get("chunk_overlap") if is_unstructured else None
+    # All providers now output elements only; chunking is done via separate custom chunker
+    chunking = "none"
     ocr_languages = str(payload.get("ocr_languages") or "eng+ara").strip() or None
     languages_raw = payload.get("languages")
     primary_language = str(payload.get("primary_language") or "eng").strip().lower()
@@ -250,9 +245,6 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
                 return False
         raise HTTPException(status_code=400, detail=f"{name} must be a boolean")
 
-    chunk_include_orig_elements = _coerce_bool("chunk_include_orig_elements") if is_unstructured else None
-    chunk_overlap_all = _coerce_bool("chunk_overlap_all") if is_unstructured else None
-    chunk_multipage_sections = _coerce_bool("chunk_multipage_sections") if is_unstructured else None
     detect_language_per_element = _coerce_bool("detect_language_per_element") if is_unstructured else False
     if detect_language_per_element is None:
         detect_language_per_element = False
@@ -294,15 +286,6 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
         "tag": raw_tag or None,
         "strategy": strategy,
         "infer_table_structure": infer_table_structure if is_unstructured else None,
-        "chunking": chunking if is_unstructured else None,
-        "max_tokens": chunk_max_tokens,
-        "chunk_max_characters": chunk_max_characters,
-        "chunk_new_after_n_chars": chunk_new_after_n_chars,
-        "chunk_combine_under_n_chars": chunk_combine_under_n_chars,
-        "chunk_overlap": chunk_overlap,
-        "chunk_include_orig_elements": chunk_include_orig_elements,
-        "chunk_overlap_all": chunk_overlap_all,
-        "chunk_multipage_sections": chunk_multipage_sections,
         "ocr_languages": ocr_languages,
         "languages": languages,
         "detect_language_per_element": detect_language_per_element,
@@ -324,21 +307,21 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
     def build_paths(slug_val: str):
         return (
             out_dir / f"{slug_val}.{pages_tag}.pdf",
-            out_dir / f"{slug_val}.{pages_tag}.chunks.jsonl",
+            out_dir / f"{slug_val}.{pages_tag}.elements.jsonl",
             out_dir / f"{slug_val}.{pages_tag}.run.json",
         )
 
-    trimmed_out, chunk_out, meta_out = build_paths(run_slug)
+    trimmed_out, elements_out, meta_out = build_paths(run_slug)
 
-    if trimmed_out.exists() or chunk_out.exists():
+    if trimmed_out.exists() or elements_out.exists():
         n = 2
         base_variant = run_slug
         while True:
             candidate = f"{base_variant}__r{n}"
-            p_out, c_out, m_out = build_paths(candidate)
-            if not (c_out.exists() or p_out.exists()):
+            p_out, e_out, m_out = build_paths(candidate)
+            if not (e_out.exists() or p_out.exists()):
                 run_slug = candidate
-                trimmed_out, chunk_out, meta_out = p_out, c_out, m_out
+                trimmed_out, elements_out, meta_out = p_out, e_out, m_out
                 break
             n += 1
 
@@ -355,32 +338,13 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
             strategy or "auto",
             "--trimmed-out",
             str(trimmed_out),
-            "--chunk-output",
-            str(chunk_out),
+            "--elements-output",
+            str(elements_out),
         ]
         if not infer_table_structure:
             cmd.append("--no-infer-table-structure")
-        cmd += ["--chunking", chunking]
-        if chunk_max_characters is not None:
-            cmd += ["--chunk-max-characters", str(int(chunk_max_characters))]
-        if chunk_new_after_n_chars is not None:
-            cmd += ["--chunk-new-after-n-chars", str(int(chunk_new_after_n_chars))]
-        if chunk_combine_under_n_chars is not None:
-            cmd += ["--chunk-combine-under-n-chars", str(int(chunk_combine_under_n_chars))]
-        if chunk_overlap is not None:
-            cmd += ["--chunk-overlap", str(int(chunk_overlap))]
-        if chunk_include_orig_elements is True:
-            cmd.append("--chunk-include-orig-elements")
-        elif chunk_include_orig_elements is False:
-            cmd.append("--chunk-no-include-orig-elements")
-        if chunk_overlap_all is True:
-            cmd.append("--chunk-overlap-all")
-        elif chunk_overlap_all is False:
-            cmd.append("--chunk-no-overlap-all")
-        if chunk_multipage_sections is True:
-            cmd.append("--chunk-multipage-sections")
-        elif chunk_multipage_sections is False:
-            cmd.append("--chunk-no-multipage-sections")
+        # Always use --chunking none; custom chunking done separately
+        cmd += ["--chunking", "none"]
         if ocr_languages:
             cmd += ["--ocr-languages", ocr_languages]
         if languages:
@@ -402,8 +366,8 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
             strategy or "auto",
             "--trimmed-out",
             str(trimmed_out),
-            "--chunk-output",
-            str(chunk_out),
+            "--elements-output",
+            str(elements_out),
             "--run-metadata-out",
             str(meta_out),
         ]
@@ -428,7 +392,7 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
             "--trimmed-out",
             str(trimmed_out),
             "--output",
-            str(chunk_out),
+            str(elements_out),
             "--model-id",
             azure_model_id,
         ]
@@ -472,7 +436,7 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
         "primary_language": primary_language,
         "form_snapshot": payload.get("form_snapshot") or {},
         "trimmed_path": str(trimmed_out),
-        "chunk_path": str(chunk_out),
+        "elements_path": str(elements_out),
         "meta_path": str(meta_out),
         "provider": provider,
     }
@@ -489,7 +453,8 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
         "provider": provider,
         "page_tag": pages_tag,
         "pdf_file": relative_to_root(trimmed_out) if trimmed_out.exists() else None,
-        "chunks_file": relative_to_root(chunk_out) if chunk_out.exists() else None,
+        "elements_file": relative_to_root(elements_out) if elements_out.exists() else None,
+        "chunks_file": None,  # Chunks created separately by chunker
         "run_config": job_metadata.get("form_snapshot"),
     }
     return {"status": "queued", "job": job_data, "run": run_stub}

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Chunking Visualizer</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles.css?v=20251128-glass" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230a223f'/%3E%3Cpath d='M18 42l14-20 14 20-14-7z' fill='%23f5a524'/%3E%3C/svg%3E" />
     <!-- Prefer local vendor copy (server auto-fetches if missing), fallback to CDN -->
     <script>
@@ -76,11 +76,12 @@
     </script>
   </head>
   <body>
+    <div id="tooltip-portal"></div>
     <header>
       <div class="header-left">
         <div class="title-stack">
           <h1>Chunking Visualizer</h1>
-          <span class="version-badge" id="versionBadge" title="What's new">v4.3</span>
+          <span class="version-badge" id="versionBadge" title="What's new">v5.0</span>
         </div>
         <div class="view-tabs" role="tablist" aria-label="Primary view">
           <button id="viewTabInspect" class="tab active" data-view="inspect" role="tab" aria-selected="true">Inspect</button>
@@ -93,89 +94,40 @@
           <select id="runSelect"></select>
         </label>
         <button id="reviewSummaryChip" class="review-chip disabled" type="button" title="Click Elements or Chunks to focus reviews"></button>
-        <button id="openRunModal" class="btn">New Run</button>
+        <button id="openRunModal" class="btn">New Run Provider</button>
+        <button id="openChunkerModal" class="btn">New Run Chunker</button>
         <button id="deleteRunBtn" class="btn" title="Delete current run">Delete run</button>
+        <button id="themeToggle" class="btn btn-icon" type="button" title="Toggle dark/light theme" aria-label="Toggle theme">
+          <svg id="themeIconSun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/>
+            <line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+          <svg id="themeIconMoon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="display:none">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
       </div>
     </header>
 
-    <!-- Settings Recap Bar -->
-    <div id="settingsRecap" class="settings-recap">
-      <div class="setting-item">
-        <span class="setting-label">PROV <span class="info" tabindex="0">i</span><div class="tip">Run provider: Unstructured (local), Unstructured Partition (API), or Azure Document Intelligence (Layout).</div></span>
-        <span class="setting-value" id="settingProvider">-</span>
+    <!-- Settings Banner (Smart Contextual) -->
+    <div id="settingsBanner" class="settings-banner">
+      <div class="settings-banner-row settings-banner-top" id="settingsBannerTop">
+        <!-- Critical params populated by JS -->
       </div>
-      <div class="setting-item" id="settingModelItem">
-        <span class="setting-label">MODEL <span class="info" tabindex="0">i</span><div class="tip">Model id used for this run (e.g., prebuilt-layout).</div></span>
-        <span class="setting-value" id="settingModel">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">FEAT <span class="info" tabindex="0">i</span><div class="tip">Feature flags passed to the provider (comma-separated).</div></span>
-        <span class="setting-value" id="settingFeatures">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">STRAT <span class="info" tabindex="0">i</span><div class="tip">Extraction strategy in Unstructured: auto lets the library pick, fast is lighter, hi_res uses high‑resolution vision for layout accuracy.</div></span>
-        <span class="setting-value" id="settingStrategy">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">INF‑TBL <span class="info" tabindex="0">i</span><div class="tip">Infer table structure (rows and cells) from detected lines/glyphs. When off, tables are generic blocks.</div></span>
-        <span class="setting-value" id="settingInferTables">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">CHUNK <span class="info" tabindex="0">i</span><div class="tip">How elements are grouped: by_title uses headings as section boundaries; basic creates size‑based text chunks.</div></span>
-        <span class="setting-value" id="settingChunking">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">LANG <span class="info" tabindex="0">i</span><div class="tip">Primary document language. Arabic toggles RTL previews and prioritizes Arabic OCR.</div></span>
-        <span class="setting-value">
-          <select id="settingPrimaryLang" class="setting-lang-select" aria-label="Primary document language">
-            <option value="eng">English (LTR)</option>
-            <option value="ara">Arabic (RTL)</option>
-          </select>
-        </span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">TOK <span class="info" tabindex="0">i</span><div class="tip">Approximate target tokens per chunk (LLM). If provided, max_characters ≈ tokens × 4.</div></span>
-        <span class="setting-value" id="settingMaxTokens">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">CHARS <span class="info" tabindex="0">i</span><div class="tip">Hard character cap per chunk. Used if max_tokens is not set.</div></span>
-        <span class="setting-value" id="settingMaxChars">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">NEW <span class="info" tabindex="0">i</span><div class="tip">Start a new chunk after this many characters have been appended.</div></span>
-        <span class="setting-value" id="settingNewAfter">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">COMB <span class="info" tabindex="0">i</span><div class="tip">If a chunk is smaller than this, merge it with the next. Applies to by_title.</div></span>
-        <span class="setting-value" id="settingCombineUnder">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">OVRLP <span class="info" tabindex="0">i</span><div class="tip">Trailing characters to overlap between adjacent chunks to preserve context.</div></span>
-        <span class="setting-value" id="settingOverlap">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">INCL <span class="info" tabindex="0">i</span><div class="tip">Include original atomic elements alongside chunk spans in outputs/overlays.</div></span>
-        <span class="setting-value" id="settingIncludeOrig">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">OVRLP* <span class="info" tabindex="0">i</span><div class="tip">Apply overlap to all boundaries, including section breaks. When off, overlap only within contiguous text.</div></span>
-        <span class="setting-value" id="settingOverlapAll">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">MPAGE <span class="info" tabindex="0">i</span><div class="tip">Allow by_title chunks to span multiple pages until the next title appears.</div></span>
-        <span class="setting-value" id="settingMultipage">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">PDF <span class="info" tabindex="0">i</span><div class="tip">Input PDF used to generate this run.</div></span>
-        <span class="setting-value truncate" id="settingPdf">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">PAGES <span class="info" tabindex="0">i</span><div class="tip">Pages processed (list or ranges, e.g., 5-7,12).</div></span>
-        <span class="setting-value truncate" id="settingPages">-</span>
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">TAG <span class="info" tabindex="0">i</span><div class="tip">Optional variant tag appended to the run slug for comparison.</div></span>
-        <span class="setting-value truncate" id="settingTag">-</span>
+      <div class="settings-banner-row settings-banner-bottom" id="settingsBannerBottom">
+        <!-- Secondary params populated by JS -->
+        <button id="bannerPinBtn" class="banner-pin-btn" aria-label="Pin banner" title="Keep banner expanded">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M7 1L9 5L13 6L9 7L7 13L5 7L1 6L5 5L7 1Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
       </div>
     </div>
 
@@ -187,6 +139,8 @@
           <span>Page <input type="number" id="pageNum" value="1" min="1"> / <span id="pageCount">-</span></span>
           <button id="nextPage">▶</button>
           <input type="range" id="zoom" min="50" max="200" value="100" />
+          <button id="fitWidth" title="Fit to width">↔</button>
+          <button id="fitHeight" title="Fit to height">↕</button>
         </div>
         <div id="pdfContainer">
           <div id="legend" class="legend hidden"></div>
@@ -199,6 +153,7 @@
 
       <!-- Right panel: Inspect view -->
       <section class="right" id="right-inspect" aria-labelledby="viewTabInspect">
+        <div class="resize-handle" id="drawer-resize-handle" title="Drag to resize, double-click to reset"></div>
         <div class="tabs inspect-tabs">
           <button class="tab active" data-inspect="elements">Elements</button>
           <button class="tab" data-inspect="chunks">Chunks</button>
@@ -245,6 +200,7 @@
       </section>
 
       <aside id="drawer" class="drawer hidden">
+        <div class="drawer-resize-handle" id="drawer-overlay-resize-handle" title="Drag to resize, double-click to reset"></div>
         <div class="drawer-header">
           <div>
             <div id="drawerTitle" class="drawer-title">Unstructured Chunks</div>
@@ -269,9 +225,9 @@
             <span class="lab">Provider scope</span>
             <select id="feedbackProviderSelect">
               <option value="all">All providers</option>
-              <option value="unstructured">Unstructured</option>
-              <option value="unstructured-partition">Unstructured Partition</option>
-              <option value="azure-di">Azure Document Intelligence</option>
+              <option value="unstructured/local">Unstructured (Local)</option>
+              <option value="unstructured/partition">Unstructured Partition (API)</option>
+              <option value="azure/document_intelligence">Azure Document Intelligence</option>
               <option value="compare">Compare all providers</option>
             </select>
           </label>
@@ -358,12 +314,12 @@
 
     <div id="toast" class="toast"></div>
 
-    <!-- New Run Modal -->
+    <!-- New Run Provider Modal -->
     <div id="runModal" class="modal hidden">
       <div class="modal-backdrop" id="runModalBackdrop"></div>
       <div class="modal-content card">
         <div class="modal-header">
-          <div class="modal-title">New Run</div>
+          <div class="modal-title">New Run Provider</div>
           <button id="closeRunModal" class="btn">Close</button>
         </div>
         <div class="run-modal-body">
@@ -401,9 +357,9 @@
               <label class="provider-picker">
                 <div class="lab">Provider <span class="info" tabindex="0">i</span><div class="tip">Unstructured (local library), Unstructured Partition (hosted API, elements only), or Azure Document Intelligence (Layout).</div></div>
                 <select id="providerSelect">
-                  <option value="unstructured">Unstructured</option>
-                  <option value="unstructured-partition">Unstructured Partition (API)</option>
-                  <option value="azure-di" selected>Azure Document Intelligence (Layout)</option>
+                  <option value="unstructured/local">Unstructured (Local)</option>
+                  <option value="unstructured/partition">Unstructured Partition (API)</option>
+                  <option value="azure/document_intelligence" selected>Azure Document Intelligence (Layout)</option>
                 </select>
               </label>
             </div>
@@ -444,64 +400,6 @@
                   <input id="extractImageToPayload" type="checkbox" />
                   <span class="lab">Embed extracted images in payload <span class="info" tabindex="0">i</span><div class="tip">Set <code>extract_image_block_to_payload=true</code> so image bytes are returned as base64 alongside metadata.</div></span>
                 </label>
-                <label>
-                  <div class="lab">Chunking <span class="info" tabindex="0">i</span><div class="tip">Group output into chunks: <b>by_title</b> uses section titles; <b>basic</b> uses size‑only chunking.</div></div>
-                  <select id="chunkingSelect">
-                    <option value="none" selected>none (elements only)</option>
-                    <option value="by_title">by_title</option>
-                    <option value="basic">basic</option>
-                  </select>
-                </label>
-              </div>
-              <div id="chunkAdv" class="chunk-adv">
-                <div class="adv-grid">
-                  <label>
-                    <div class="lab">max_tokens <span class="info" tabindex="0">i</span><div class="tip">Target tokens per chunk. When set, <code>max_characters</code> is derived as <code>tokens × 4</code>.</div></div>
-                    <input id="chunkMaxTokens" type="number" min="50" step="10" placeholder="e.g. 500" />
-                  </label>
-                  <label>
-                    <div class="lab">max_characters <span class="info" tabindex="0">i</span><div class="tip">Hard character cap per chunk. Used when <code>max_tokens</code> is not provided.</div></div>
-                    <input id="chunkMaxChars" type="number" min="50" step="10" placeholder="e.g. 2000" />
-                  </label>
-                  <label>
-                    <div class="lab">new_after_n_chars <span class="info" tabindex="0">i</span><div class="tip">Start a new chunk after N characters have been appended.</div></div>
-                    <input id="chunkNewAfter" type="number" min="50" step="10" placeholder="e.g. 1500" />
-                  </label>
-                  <label id="chunkCombineRow">
-                    <div class="lab">combine_under_n_chars <span class="info" tabindex="0">i</span><div class="tip">Merge small chunks below N characters with the next chunk. Applies to <b>by_title</b>.</div></div>
-                    <input id="chunkCombineUnder" type="number" min="0" step="10" placeholder="e.g. 500" />
-                  </label>
-                  <label>
-                    <div class="lab">overlap <span class="info" tabindex="0">i</span><div class="tip">Overlap N trailing characters between adjacent chunks to preserve context.</div></div>
-                    <input id="chunkOverlap" type="number" min="0" step="10" placeholder="e.g. 100" />
-                  </label>
-                </div>
-                <div class="adv-grid">
-                  <label>
-                    <div class="lab">include_orig_elements <span class="info" tabindex="0">i</span><div class="tip">Include original atomic elements alongside chunk spans in outputs/overlays.</div></div>
-                    <select id="chunkIncludeOrig">
-                      <option value="">default (true)</option>
-                      <option value="true">true</option>
-                      <option value="false">false</option>
-                    </select>
-                  </label>
-                  <label>
-                    <div class="lab">overlap_all <span class="info" tabindex="0">i</span><div class="tip">Apply overlap to all boundaries, including section breaks.</div></div>
-                    <select id="chunkOverlapAll">
-                      <option value="">default (false)</option>
-                      <option value="true">true</option>
-                      <option value="false">false</option>
-                    </select>
-                  </label>
-                  <label id="chunkMultipageRow">
-                    <div class="lab">multipage_sections <span class="info" tabindex="0">i</span><div class="tip">Allow <b>by_title</b> chunks to span multiple pages until the next title.</div></div>
-                    <select id="chunkMultipage">
-                      <option value="">default (true)</option>
-                      <option value="true">true</option>
-                      <option value="false">false</option>
-                    </select>
-                  </label>
-                </div>
               </div>
             </div>
             <label>
@@ -572,6 +470,42 @@
       </div>
     </div>
 
+    <!-- New Run Chunker Modal -->
+    <div id="chunkerModal" class="modal hidden">
+      <div class="modal-backdrop" id="chunkerModalBackdrop"></div>
+      <div class="modal-content card chunker-modal">
+        <div class="modal-header">
+          <div class="modal-title">New Run Chunker</div>
+          <button id="closeChunkerModal" class="btn">Close</button>
+        </div>
+        <div class="chunker-modal-body">
+          <div class="chunker-form">
+            <label class="source-run-picker">
+              <div class="lab">Source Run <span class="info" tabindex="0">i</span><div class="tip">Select an existing run with elements to chunk.</div></div>
+              <select id="chunkerSourceRun"></select>
+            </label>
+            <div class="chunker-description card">
+              <div class="lab">How this chunker works</div>
+              <ul class="chunker-rules">
+                <li>Filters noise types: pageHeader, pageFooter, pageNumber, Line.</li>
+                <li>Tables and Figures become standalone chunks (never split).</li>
+                <li>Titles/section headings start new chunks and stay with the following content.</li>
+                <li>Section headings inside Table/Figure boxes stay attached to the container (captions stay with figures).</li>
+                <li>Consecutive section headings merge into a single section (no header-only chunks).</li>
+                <li>Content before the first heading is grouped as a preamble chunk.</li>
+                <li>Paragraphs inside Table bounding boxes are filtered to avoid duplicate content.</li>
+                <li>Original elements stay embedded for overlays; chunks can span pages when elements do.</li>
+              </ul>
+            </div>
+            <div class="chunker-actions">
+              <button id="runChunkerBtn" class="btn btn-primary">Run Chunker</button>
+              <span id="chunkerStatus" class="muted"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- What's New Modal -->
     <div id="whatsNewModal" class="modal hidden">
       <div class="modal-backdrop" id="whatsNewBackdrop"></div>
@@ -581,6 +515,34 @@
           <button id="closeWhatsNew" class="btn">Close</button>
         </div>
         <div class="whats-new-body">
+          <div class="version-section">
+            <h3 class="version-header">v5.0 <span class="version-date">2025-12-01</span></h3>
+            <ul>
+              <li>Custom chunker keeps section headings inside Table/Figure boxes attached to container (captions stay with figures)</li>
+              <li>Consecutive section headings merge into a single section chunk (no header-only chunks)</li>
+              <li>Paragraphs inside Table bounding boxes filtered to avoid duplicate content</li>
+              <li>Tables and Figures included in parent sections instead of standalone chunks</li>
+              <li>Element drawer shows hierarchy context mirroring outline view (ancestors/children visible while reviewing)</li>
+              <li>Resizable right panel and chunk details drawer</li>
+              <li>PDF viewer centered horizontally in available space</li>
+              <li>Smart contextual banner for run parameters</li>
+              <li>Alternate chunk overlay colors by global index for better visibility</li>
+              <li>Remember last opened run across page reloads</li>
+              <li>Improved drawer spacing and overlay color consistency</li>
+            </ul>
+          </div>
+          <div class="version-section">
+            <h3 class="version-header">v4.4 <span class="version-date">2025-11-28</span></h3>
+            <ul>
+              <li>Apple Liquid Glass UI redesign with frosted glass effects</li>
+              <li>Dark/light theme toggle (follows system preference by default)</li>
+              <li>Apple system color palette for element types</li>
+              <li>Smooth spring animations on modals, drawer, and toasts</li>
+              <li>Enhanced button, card, and form styling with blur effects</li>
+              <li>Pill-style tabs and settings items</li>
+              <li>Glow effects on review buttons when active</li>
+            </ul>
+          </div>
           <div class="version-section">
             <h3 class="version-header">v4.3 <span class="version-date">2025-11-27</span></h3>
             <ul>
@@ -681,15 +643,16 @@
     </div>
 
     <script src="/vendor/chartjs/chart.umd.min.js" defer></script>
-    <script src="/app-state.js?v=20251127" defer></script>
-    <script src="/app-ui.js?v=20251127" defer></script>
-    <script src="/app-reviews.js?v=20251127" defer></script>
-    <script src="/app-overlays.js?v=20251127" defer></script>
-    <script src="/app-metrics.js?v=20251127" defer></script>
-    <script src="/app-elements.js?v=20251127" defer></script>
-    <script src="/app-chunks.js?v=20251127" defer></script>
-    <script src="/app-feedback.js?v=20251127" defer></script>
-    <script src="/app-runs.js?v=20251127" defer></script>
-    <script src="/app.js?v=20251127" defer></script>
+    <script src="/app-theme.js?v=20251201"></script>
+    <script src="/app-state.js?v=20251201" defer></script>
+    <script src="/app-ui.js?v=20251201" defer></script>
+    <script src="/app-reviews.js?v=20251201" defer></script>
+    <script src="/app-overlays.js?v=20251201" defer></script>
+    <script src="/app-metrics.js?v=20251201" defer></script>
+    <script src="/app-elements.js?v=20251201" defer></script>
+    <script src="/app-chunks.js?v=20251201" defer></script>
+    <script src="/app-feedback.js?v=20251201" defer></script>
+    <script src="/app-runs.js?v=20251201" defer></script>
+    <script src="/app.js?v=20251201" defer></script>
   </body>
   </html>

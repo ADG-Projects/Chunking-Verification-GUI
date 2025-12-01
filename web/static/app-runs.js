@@ -1,35 +1,44 @@
 const RUN_JOB_POLL_INTERVAL_MS = 10000;
+const LAST_RUN_KEY = 'chunking-visualizer-last-run';
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function runKey(slug, provider = CURRENT_PROVIDER || 'unstructured') {
-  const prov = (provider || 'unstructured').trim() || 'unstructured';
+function updateZoomSlider() {
+  const zoomInput = $('zoom');
+  if (!zoomInput) return;
+  let pct = Math.round(SCALE * 100);
+  const min = Number(zoomInput.min) || 50;
+  const max = Number(zoomInput.max) || 200;
+  pct = Math.max(min, Math.min(max, pct));
+  zoomInput.value = String(pct);
+}
+
+function runKey(slug, provider = CURRENT_PROVIDER || 'unstructured/local') {
+  const prov = (provider || 'unstructured/local').trim() || 'unstructured/local';
   return `${prov}:::${slug || ''}`;
 }
 
 function parseRunKey(key) {
   const raw = key || '';
   const sep = raw.indexOf(':::');
-  if (sep === -1) return { slug: raw, provider: CURRENT_PROVIDER || 'unstructured' };
-  const provider = raw.slice(0, sep) || 'unstructured';
+  if (sep === -1) return { slug: raw, provider: CURRENT_PROVIDER || 'unstructured/local' };
+  const provider = raw.slice(0, sep) || 'unstructured/local';
   const slug = raw.slice(sep + 3) || '';
   return { slug, provider };
 }
 
 function providerSupportsChunks(provider) {
-  if (!provider) return true;
-  if (provider === 'unstructured-partition') return false;
-  if (provider.startsWith('azure')) return false;
+  // All providers support chunks via the custom chunker
   return true;
 }
 
 async function loadRun(slug, provider = CURRENT_PROVIDER) {
-  const providerKey = (provider || CURRENT_PROVIDER || 'unstructured').trim() || 'unstructured';
+  const providerKey = (provider || CURRENT_PROVIDER || 'unstructured/local').trim() || 'unstructured/local';
   CURRENT_SLUG = slug;
   CURRENT_PROVIDER = providerKey;
   CURRENT_RUN = (RUNS_CACHE || []).find(
-    (r) => r.slug === slug && (r.provider || 'unstructured') === providerKey,
+    (r) => r.slug === slug && (r.provider || 'unstructured/local') === providerKey,
   ) || (RUNS_CACHE || []).find((r) => r.slug === slug) || null;
-  CURRENT_PROVIDER = (CURRENT_RUN && CURRENT_RUN.provider) || CURRENT_PROVIDER || 'unstructured';
+  CURRENT_PROVIDER = (CURRENT_RUN && CURRENT_RUN.provider) || CURRENT_PROVIDER || 'unstructured/local';
   setChunksTabVisible(providerSupportsChunks(CURRENT_PROVIDER));
   const providerSel = $('providerSelect');
   if (providerSel) {
@@ -57,6 +66,7 @@ async function loadRun(slug, provider = CURRENT_PROVIDER) {
   updateRunConfigCard();
   if (CURRENT_RUN_HAS_CHUNKS) {
     await loadChunksForRun(slug, CURRENT_PROVIDER);
+    redrawOverlaysForCurrentContext(); // ensure overlays update once chunks are available
   } else {
     CURRENT_CHUNKS = null;
     renderChunksTab();
@@ -168,6 +178,7 @@ async function init() {
   wireRunForm();
   setupInspectTabs();
   wireModal();
+  wireChunkerModal();
   document.querySelectorAll('.view-tabs .tab').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const target = btn.dataset.view || 'inspect';
@@ -201,6 +212,38 @@ async function init() {
   $('zoom').addEventListener('input', async (e) => {
     SCALE_IS_MANUAL = true;
     SCALE = Number(e.target.value) / 100;
+    await renderPage(CURRENT_PAGE);
+  });
+  $('fitWidth').addEventListener('click', async () => {
+    if (!PDF_DOC) return;
+    const page = await PDF_DOC.getPage(CURRENT_PAGE);
+    const rotation = page.rotate || 0;
+    const container = $('pdfContainer');
+    const rect = container.getBoundingClientRect();
+    const style = getComputedStyle(container);
+    const paddingLeft = parseFloat(style.paddingLeft) || 0;
+    const paddingRight = parseFloat(style.paddingRight) || 0;
+    const availableWidth = rect.width - paddingLeft - paddingRight;
+    const baseViewport = page.getViewport({ scale: 1, rotation });
+    SCALE = availableWidth / baseViewport.width;
+    SCALE_IS_MANUAL = true;
+    updateZoomSlider();
+    await renderPage(CURRENT_PAGE);
+  });
+  $('fitHeight').addEventListener('click', async () => {
+    if (!PDF_DOC) return;
+    const page = await PDF_DOC.getPage(CURRENT_PAGE);
+    const rotation = page.rotate || 0;
+    const container = $('pdfContainer');
+    const rect = container.getBoundingClientRect();
+    const style = getComputedStyle(container);
+    const paddingTop = parseFloat(style.paddingTop) || 0;
+    const paddingBottom = parseFloat(style.paddingBottom) || 0;
+    const availableHeight = rect.height - paddingTop - paddingBottom;
+    const baseViewport = page.getViewport({ scale: 1, rotation });
+    SCALE = availableHeight / baseViewport.height;
+    SCALE_IS_MANUAL = true;
+    updateZoomSlider();
     await renderPage(CURRENT_PAGE);
   });
   const pageNumInput = $('pageNum');
@@ -257,7 +300,7 @@ async function refreshRuns() {
   sel.innerHTML = '';
   for (const r of runs) {
     const opt = document.createElement('option');
-    const prov = r.provider || 'unstructured';
+    const prov = r.provider || 'unstructured/local';
     opt.value = runKey(r.slug, prov);
     opt.dataset.slug = r.slug;
     opt.dataset.provider = prov;
@@ -267,12 +310,24 @@ async function refreshRuns() {
     sel.appendChild(opt);
   }
   if (runs.length) {
-    const existing = runs.find(
-      (r) => r.slug === CURRENT_SLUG && (r.provider || 'unstructured') === (CURRENT_PROVIDER || 'unstructured'),
-    );
-    const chosenRun = existing || runs[0];
+    // Try to restore last run from localStorage
+    const lastRunKey = localStorage.getItem(LAST_RUN_KEY);
+    let chosenRun = null;
+    if (lastRunKey) {
+      const { slug, provider } = parseRunKey(lastRunKey);
+      chosenRun = runs.find(
+        (r) => r.slug === slug && (r.provider || 'unstructured/local') === provider,
+      );
+    }
+    // Fall back to existing selection or first run
+    if (!chosenRun) {
+      const existing = runs.find(
+        (r) => r.slug === CURRENT_SLUG && (r.provider || 'unstructured/local') === (CURRENT_PROVIDER || 'unstructured/local'),
+      );
+      chosenRun = existing || runs[0];
+    }
     CURRENT_SLUG = chosenRun.slug;
-    CURRENT_PROVIDER = chosenRun.provider || 'unstructured';
+    CURRENT_PROVIDER = chosenRun.provider || 'unstructured/local';
     sel.value = runKey(CURRENT_SLUG, CURRENT_PROVIDER);
     await loadRun(CURRENT_SLUG, CURRENT_PROVIDER);
   } else {
@@ -299,11 +354,12 @@ async function refreshRuns() {
   sel.onchange = async () => {
     const { slug, provider } = parseRunKey(sel.value);
     CURRENT_SLUG = slug;
-    CURRENT_PROVIDER = provider || 'unstructured';
+    CURRENT_PROVIDER = provider || 'unstructured/local';
     const selected = (RUNS_CACHE || []).find(
-      (r) => r.slug === CURRENT_SLUG && (r.provider || 'unstructured') === CURRENT_PROVIDER,
+      (r) => r.slug === CURRENT_SLUG && (r.provider || 'unstructured/local') === CURRENT_PROVIDER,
     );
     if (selected && selected.provider) CURRENT_PROVIDER = selected.provider;
+    localStorage.setItem(LAST_RUN_KEY, sel.value);
     await loadRun(CURRENT_SLUG, CURRENT_PROVIDER);
   };
 }
@@ -497,7 +553,7 @@ async function pollRunJob(jobId) {
     if (status === 'succeeded') {
       if (statusSpan) statusSpan.textContent = 'Completed';
       const slug = detail?.result?.slug;
-      const provider = detail?.provider || detail?.result?.provider || CURRENT_PROVIDER || 'unstructured';
+      const provider = detail?.provider || detail?.result?.provider || CURRENT_PROVIDER || 'unstructured/local';
       if (provider) CURRENT_PROVIDER = provider;
       if (slug) CURRENT_SLUG = slug;
       try {
@@ -530,9 +586,6 @@ async function pollRunJob(jobId) {
 
 function wireRunForm() {
   const providerSel = $('providerSelect');
-  const chunkSel = $('chunkingSelect');
-  const combineRow = $('chunkCombineRow');
-  const multipageRow = $('chunkMultipageRow');
   const unstructuredBlocks = document.querySelectorAll('.unstructured-only');
   const azureHideables = document.querySelectorAll('.azure-hidden');
   const azureSettings = $('azureSettings');
@@ -541,9 +594,9 @@ function wireRunForm() {
     if (!sel) return;
     const allowedUnstructured = new Set(['auto', 'fast', 'hi_res']);
     const allowedPartition = new Set(['auto', 'fast', 'hi_res', 'ocr_only', 'vlm']);
-    const allowed = provider === 'unstructured'
+    const allowed = provider === 'unstructured/local'
       ? allowedUnstructured
-      : (provider === 'unstructured-partition' ? allowedPartition : allowedUnstructured);
+      : (provider === 'unstructured/partition' ? allowedPartition : allowedUnstructured);
     let current = sel.value;
     for (const opt of sel.options) {
       const ok = allowed.has(opt.value);
@@ -556,41 +609,16 @@ function wireRunForm() {
       }
     }
   };
-  const toggleAdv = () => {
-    const chunkVal = chunkSel ? chunkSel.value : 'by_title';
-    const isByTitle = chunkVal === 'by_title';
-    const isNone = chunkVal === 'none';
-
-    if (combineRow) combineRow.classList.toggle('hidden', !isByTitle);
-    if (multipageRow) multipageRow.classList.toggle('hidden', !isByTitle);
-    
-    // Hide entire advanced section if chunking is none
-    const advSection = document.querySelector('#chunkAdv');
-    if (advSection) advSection.classList.toggle('hidden', isNone);
-  };
-  if (chunkSel) {
-    chunkSel.addEventListener('change', toggleAdv);
-    toggleAdv();
-  }
   const handleProviderChange = () => {
-    const val = providerSel ? providerSel.value : 'unstructured';
-    CURRENT_PROVIDER = val || 'unstructured';
-    const isUnstructured = val === 'unstructured';
-    const isPartition = val === 'unstructured-partition';
+    const val = providerSel ? providerSel.value : 'unstructured/local';
+    CURRENT_PROVIDER = val || 'unstructured/local';
+    const isUnstructured = val === 'unstructured/local';
+    const isPartition = val === 'unstructured/partition';
     const isUnstructuredFamily = isUnstructured || isPartition;
     const isAzure = val.startsWith('azure');
     unstructuredBlocks.forEach((el) => { if (el) el.classList.toggle('hidden', !isUnstructuredFamily); });
     if (azureSettings) azureSettings.classList.toggle('hidden', isUnstructuredFamily);
     azureHideables.forEach((el) => { if (el) el.classList.toggle('hidden', isAzure); });
-    if (chunkSel) {
-      if (isPartition) {
-        chunkSel.value = 'none';
-        chunkSel.disabled = true;
-      } else {
-        chunkSel.disabled = false;
-      }
-      toggleAdv();
-    }
     setChunksTabVisible(providerSupportsChunks(CURRENT_PROVIDER));
     updateStrategyOptions(CURRENT_PROVIDER);
   };
@@ -658,10 +686,10 @@ function wireRunForm() {
   $('runBtn').addEventListener('click', async () => {
     const status = $('runStatus');
     status.textContent = '';
-    const provider = (providerSel ? providerSel.value : 'unstructured') || 'unstructured';
+    const provider = (providerSel ? providerSel.value : 'unstructured/local') || 'unstructured/local';
     const isAzure = provider.startsWith('azure');
-    const isPartition = provider === 'unstructured-partition';
-    const isUnstructured = provider === 'unstructured';
+    const isPartition = provider === 'unstructured/partition';
+    const isUnstructured = provider === 'unstructured/local';
     const isUnstructuredFamily = isUnstructured || isPartition;
     const payload = {
       provider,
@@ -713,33 +741,9 @@ function wireRunForm() {
       if (embedImages) payload.extract_image_block_to_payload = true;
       if (isUnstructured) {
         payload.infer_table_structure = $('inferTables').checked;
-        payload.chunking = $('chunkingSelect').value;
-        const maxTokens = parseNumber('chunkMaxTokens');
-        const maxChars = parseNumber('chunkMaxChars');
-        if (maxTokens != null) {
-          payload.chunk_max_tokens = maxTokens;
-          payload.chunk_max_characters = Math.max(1, Math.round(maxTokens * 4));
-        } else if (maxChars != null) {
-          payload.chunk_max_characters = maxChars;
-        }
-        const newAfter = parseNumber('chunkNewAfter');
-        if (newAfter != null) payload.chunk_new_after_n_chars = newAfter;
-        const overlap = parseNumber('chunkOverlap');
-        if (overlap != null) payload.chunk_overlap = overlap;
-        const includeOrig = parseBoolSelect('chunkIncludeOrig');
-        if (includeOrig != null) payload.chunk_include_orig_elements = includeOrig;
-        const overlapAll = parseBoolSelect('chunkOverlapAll');
-        if (overlapAll != null) payload.chunk_overlap_all = overlapAll;
-        if (payload.chunking === 'by_title') {
-          const combine = parseNumber('chunkCombineUnder');
-          if (combine != null) payload.chunk_combine_under_n_chars = combine;
-          const multipage = parseBoolSelect('chunkMultipage');
-          if (multipage != null) payload.chunk_multipage_sections = multipage;
-        }
-      } else {
-        // Partition runs are elements-only; chunking stays none
-        payload.chunking = 'none';
       }
+      // All providers now output elements only; chunking is done separately
+      payload.chunking = 'none';
     } else {
       const azureFeatures = [];
       const azureOutputs = [];
@@ -771,18 +775,9 @@ function wireRunForm() {
       detect_language_per_element: payload.detect_language_per_element,
       provider: payload.provider,
     };
-    if (payload.provider === 'unstructured') {
+    if (payload.provider === 'unstructured/local') {
       payload.form_snapshot.strategy = payload.strategy;
       payload.form_snapshot.infer_table_structure = payload.infer_table_structure;
-      payload.form_snapshot.chunking = payload.chunking;
-      payload.form_snapshot.max_tokens = parseNumber('chunkMaxTokens');
-      payload.form_snapshot.max_characters = parseNumber('chunkMaxChars');
-      payload.form_snapshot.new_after_n_chars = parseNumber('chunkNewAfter');
-      payload.form_snapshot.combine_under_n_chars = parseNumber('chunkCombineUnder');
-      payload.form_snapshot.overlap = parseNumber('chunkOverlap');
-      payload.form_snapshot.include_orig_elements = parseBoolSelect('chunkIncludeOrig');
-      payload.form_snapshot.overlap_all = parseBoolSelect('chunkOverlapAll');
-      payload.form_snapshot.multipage_sections = parseBoolSelect('chunkMultipage');
       {
         const rawImgTypes = $('extractImageBlockTypes')?.value?.trim() || '';
         const embedImages = $('extractImageToPayload')?.checked;
@@ -1035,6 +1030,146 @@ function closeRunModal() {
     if (status) status.textContent = '';
     modal.classList.add('hidden');
     modal.classList.remove('running');
+  }
+}
+
+function wireChunkerModal() {
+  const openBtn = $('openChunkerModal');
+  const closeBtn = $('closeChunkerModal');
+  const backdrop = $('chunkerModalBackdrop');
+  const modal = $('chunkerModal');
+  const runBtn = $('runChunkerBtn');
+  const status = $('chunkerStatus');
+  const sourceSelect = $('chunkerSourceRun');
+
+  if (!openBtn || !modal) return;
+
+  openBtn.addEventListener('click', async () => {
+    // Populate source run dropdown from existing runs
+    if (sourceSelect) {
+      sourceSelect.innerHTML = '';
+      let preselectValue = null;
+      if (CURRENT_SLUG) {
+        preselectValue = JSON.stringify({ slug: CURRENT_SLUG, provider: CURRENT_PROVIDER || 'unstructured/local' });
+      }
+      try {
+        const runs = await fetchJSON('/api/runs');
+        if (runs && runs.length > 0) {
+          runs.forEach(run => {
+            const opt = document.createElement('option');
+            opt.value = JSON.stringify({ slug: run.slug, provider: run.provider });
+            opt.textContent = `${run.slug} (${run.provider})`;
+            sourceSelect.appendChild(opt);
+          });
+          if (preselectValue) {
+            const existing = Array.from(sourceSelect.options).find(o => o.value === preselectValue);
+            if (existing) sourceSelect.value = preselectValue;
+          }
+        } else {
+          const opt = document.createElement('option');
+          opt.value = '';
+          opt.textContent = 'No runs available';
+          sourceSelect.appendChild(opt);
+        }
+      } catch (e) {
+        console.error('Failed to load runs for chunker:', e);
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = 'Error loading runs';
+        sourceSelect.appendChild(opt);
+      }
+    }
+    modal.classList.remove('hidden');
+    if (status) status.textContent = '';
+  });
+
+  const close = () => {
+    modal.classList.add('hidden');
+    if (status) status.textContent = '';
+  };
+  if (closeBtn) closeBtn.addEventListener('click', close);
+  if (backdrop) backdrop.addEventListener('click', close);
+
+  if (runBtn) {
+    runBtn.addEventListener('click', async () => {
+      if (!sourceSelect || !sourceSelect.value) {
+        if (status) status.textContent = 'Please select a source run';
+        return;
+      }
+
+      let sourceData;
+      try {
+        sourceData = JSON.parse(sourceSelect.value);
+      } catch {
+        if (status) status.textContent = 'Invalid source run selection';
+        return;
+      }
+
+      if (status) status.textContent = 'Running chunker...';
+      runBtn.disabled = true;
+
+      try {
+        const payload = {
+          source_slug: sourceData.slug,
+          source_provider: sourceData.provider,
+        };
+
+        const r = await fetch('/api/chunk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const result = await r.json();
+
+        if (!r.ok) {
+          throw new Error(result?.detail || `HTTP ${r.status}`);
+        }
+
+        if (status) {
+          status.textContent = `Done! ${result.summary?.count || 0} chunks created`;
+        }
+        showToast(`Chunker complete: ${result.summary?.count || 0} chunks`, 'ok', 3000);
+        try {
+          switchView('inspect', true);
+          switchInspectTab('chunks', true);
+          SHOW_ELEMENT_OVERLAYS = false;
+          SHOW_CHUNK_OVERLAYS = true;
+          await refreshRuns();
+          await loadRun(sourceData.slug, sourceData.provider);
+          await renderPage(CURRENT_PAGE); // force PDF+overlay refresh so new chunk boxes appear immediately
+          // Ensure we leave element overlays and immediately draw chunk overlays
+          if (typeof clearBoxes === 'function') clearBoxes();
+          if (typeof drawChunksModeForPage === 'function') {
+            drawChunksModeForPage(CURRENT_PAGE);
+            // Draw again after the tick to catch any late-arriving chunk data
+            setTimeout(() => {
+              try { drawChunksModeForPage(CURRENT_PAGE); } catch (_) {}
+            }, 0);
+          } else {
+            redrawOverlaysForCurrentContext();
+          }
+          closeChunkerModal();
+        } catch (err) {
+          console.warn('Failed to switch to chunks tab after chunking', err);
+        }
+
+      } catch (e) {
+        console.error('Chunker failed:', e);
+        if (status) status.textContent = `Error: ${e.message}`;
+        showToast(`Chunker failed: ${e.message}`, 'err');
+      } finally {
+        runBtn.disabled = false;
+      }
+    });
+  }
+}
+
+function closeChunkerModal() {
+  const modal = $('chunkerModal');
+  if (modal) {
+    const status = $('chunkerStatus');
+    if (status) status.textContent = '';
+    modal.classList.add('hidden');
   }
 }
 
