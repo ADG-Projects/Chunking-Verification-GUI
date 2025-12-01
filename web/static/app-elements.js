@@ -463,6 +463,8 @@ async function openElementDetails(elementId) {
     const data = await fetchJSON(withProvider(`/api/element/${encodeURIComponent(CURRENT_SLUG)}/${encodeURIComponent(elementId)}`));
     const container = $('preview');
     resetDrawerScrollState();
+    CURRENT_INSPECT_ELEMENT_ID = elementId;
+    refreshElementOverlaysForCurrentPage();
     CURRENT_ELEMENT_DRAWER_ID = elementId;
     CURRENT_CHUNK_DRAWER_ID = null;
     $('drawerTitle').textContent = 'Element';
@@ -540,24 +542,38 @@ function buildElementHierarchySection(elementId, entries) {
   const entryMap = new Map(entries.map(([id, entry]) => [id, entry]));
   if (!entryMap.has(elementId)) return null;
   const { sorted, childMap, childIds } = buildElementHierarchy(entries);
+  const allowed = new Set([elementId]);
   const badgeLookup = new Map();
   const typeCounters = {};
-  for (const [id, entry] of sorted) {
-    const t = entry?.type || 'Unknown';
-    typeCounters[t] = (typeCounters[t] || 0) + 1;
-    badgeLookup.set(id, `${outlineLabelForType(t)} ${typeCounters[t]}`);
-  }
   const parentMap = new Map();
   for (const [pid, children] of childMap.entries()) {
     for (const [cid] of children) parentMap.set(cid, pid);
   }
-  const ancestorSet = new Set();
+  const ancestorList = [];
   let cursor = elementId;
   while (parentMap.has(cursor)) {
     const pid = parentMap.get(cursor);
-    ancestorSet.add(pid);
+    ancestorList.unshift(pid);
+    allowed.add(pid);
     cursor = pid;
   }
+  const collectDesc = (id) => {
+    const kids = childMap.get(id) || [];
+    for (const [cid] of kids) {
+      if (!allowed.has(cid)) {
+        allowed.add(cid);
+        collectDesc(cid);
+      }
+    }
+  };
+  collectDesc(elementId);
+  const filteredSorted = sorted.filter(([id]) => allowed.has(id));
+  for (const [id, entry] of filteredSorted) {
+    const t = entry?.type || 'Unknown';
+    typeCounters[t] = (typeCounters[t] || 0) + 1;
+    badgeLookup.set(id, `${outlineLabelForType(t)} ${typeCounters[t]}`);
+  }
+  const ancestorSet = new Set(ancestorList);
   const defaultExpanded = new Set([...ancestorSet]);
   const localExpansion = new Map();
   const isExpanded = (id) => {
@@ -591,12 +607,12 @@ function buildElementHierarchySection(elementId, entries) {
   counts.className = 'elements-outline-counts';
   counts.textContent = ELEMENT_OUTLINE_ORDER
     .map((o) => {
-      const count = sorted.filter(([, entry]) => (entry?.type || '') === o.type).length;
+      const count = filteredSorted.filter(([, entry]) => (entry?.type || '') === o.type).length;
       return count ? `${o.label} ${count}` : null;
     })
     .filter(Boolean)
     .join(' · ');
-  if (!counts.textContent) counts.textContent = `${sorted.length} elements`;
+  if (!counts.textContent) counts.textContent = `${filteredSorted.length} elements`;
   head.appendChild(counts);
   const collapseBtn = document.createElement('button');
   collapseBtn.type = 'button';
@@ -615,8 +631,14 @@ function buildElementHierarchySection(elementId, entries) {
   const body = document.createElement('div');
   body.className = 'elements-outline-body';
   outline.appendChild(body);
+  const allowedChildIds = new Set();
+  for (const [pid, children] of childMap.entries()) {
+    if (!allowed.has(pid)) continue;
+    children.forEach(([cid]) => allowedChildIds.add(cid));
+  }
   const renderRows = (parentEl, nodes) => {
     for (const [id, entry, review] of nodes) {
+      if (!allowed.has(id)) continue;
       const t = entry?.type || 'Unknown';
       const row = document.createElement('div');
       row.className = 'elements-outline-row';
@@ -635,7 +657,7 @@ function buildElementHierarchySection(elementId, entries) {
       } else if (ancestorSet.has(id)) {
         card.classList.add('hierarchy-ancestor');
       }
-      const children = childMap.get(id) || [];
+      const children = (childMap.get(id) || []).filter(([cid]) => allowed.has(cid));
       if (children.length) {
         row.classList.add('outline-has-children');
         card.classList.add('has-children');
@@ -679,7 +701,7 @@ function buildElementHierarchySection(elementId, entries) {
       parentEl.appendChild(row);
     }
   };
-  const roots = sorted.filter(([id]) => !childIds.has(id));
+  const roots = filteredSorted.filter(([id]) => allowed.has(id) && !allowedChildIds.has(id));
   renderRows(body, roots);
   setTimeout(() => {
     const card = wrap.querySelector('.element-card.hierarchy-current');
