@@ -799,6 +799,68 @@ section.left {
   display: none;
 }
 
+
+/* =============================================================================
+   ELEMENT HIERARCHY IN DRAWER
+   ============================================================================= */
+
+.element-hierarchy-section {
+  margin: var(--space-lg) 0;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-lg);
+}
+
+.element-hierarchy-section .section-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-md);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.element-hierarchy-tree {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: var(--space-sm);
+}
+
+.element-card.hierarchy-current {
+  border-color: var(--color-primary);
+  background: var(--surface-glass-active);
+  box-shadow: var(--shadow-sm);
+  margin-left: -4px;
+  /* Pull out slightly to emphasize border */
+  border-left-width: 6px;
+}
+
+.element-card.hierarchy-ancestor {
+  opacity: 0.8;
+}
+
+.element-hierarchy-tree .elements-outline-row {
+  margin-bottom: 4px;
+}
+
+.elements-outline-page.elements-outline-page-embedded {
+  background: var(--surface-glass);
+  border-radius: var(--radius-md);
+  border-color: var(--border-subtle);
+  padding: var(--space-sm);
+}
+
+.elements-outline-page-embedded .elements-outline-page-head {
+  padding: 0 var(--space-xs) var(--space-xs);
+}
+
+.elements-outline-page-embedded .elements-outline-body {
+  padding-bottom: var(--space-xs);
+}
+
+
 .legend .item {
   display: flex;
   align-items: center;

@@ -330,18 +330,24 @@ function containerChildTypes(parentType) {
   return vals ? new Set(vals) : null;
 }
 
+const ELEMENT_OUTLINE_ORDER = [
+  { type: 'pageHeader', label: 'Page header' },
+  { type: 'pageNumber', label: 'Page number' },
+  { type: 'Table', label: 'Tables' },
+  { type: 'Figure', label: 'Figures' },
+  { type: 'Paragraph', label: 'Paragraphs' },
+  { type: 'Line', label: 'Lines' },
+];
+
+function outlineLabelForType(type) {
+  const meta = ELEMENT_OUTLINE_ORDER.find((o) => o.type === type);
+  return meta ? meta.label : (type || 'Unknown');
+}
+
 function renderElementOutline(host, filtered) {
   const pageNum = Number(filtered[0]?.[1]?.page_trimmed || CURRENT_PAGE || 1);
   const collapse = outlineCollapseState(pageNum);
   const collapsed = collapse.get();
-  const order = [
-    { type: 'pageHeader', label: 'Page header' },
-    { type: 'pageNumber', label: 'Page number' },
-    { type: 'Table', label: 'Tables' },
-    { type: 'Figure', label: 'Figures' },
-    { type: 'Paragraph', label: 'Paragraphs' },
-    { type: 'Line', label: 'Lines' },
-  ];
   const byTypeCounts = {};
   const { sorted, childMap, childIds } = buildElementHierarchy(filtered);
   const wrap = document.createElement('div');
@@ -354,7 +360,7 @@ function renderElementOutline(host, filtered) {
   head.appendChild(title);
   const counts = document.createElement('div');
   counts.className = 'elements-outline-counts';
-  counts.textContent = order
+  counts.textContent = ELEMENT_OUTLINE_ORDER
     .map((o) => {
       const count = sorted.filter(([, entry]) => (entry?.type || '') === o.type).length;
       if (count) byTypeCounts[o.type] = count;
@@ -381,8 +387,7 @@ function renderElementOutline(host, filtered) {
   const renderRows = (parentEl, nodes, depth = 0) => {
     for (const [id, entry, review] of nodes) {
       const t = entry?.type || 'Unknown';
-      const orderMeta = order.find((o) => o.type === t);
-      const label = orderMeta ? orderMeta.label : t;
+      const label = outlineLabelForType(t);
       counters[t] = (counters[t] || 0) + 1;
       const row = document.createElement('div');
       row.className = 'elements-outline-row';
@@ -481,6 +486,15 @@ async function openElementDetails(elementId) {
     ];
     structure.innerHTML = crumbs.join(' › ');
     container.appendChild(structure);
+
+    // Hierarchy Section
+    if (CURRENT_PAGE_BOXES) {
+      const outlineEntries = sortElementEntries(Object.entries(CURRENT_PAGE_BOXES || {}))
+        .map(([id, entry]) => [id, entry, getReview('element', id)]);
+      const hierarchySection = buildElementHierarchySection(elementId, outlineEntries);
+      if (hierarchySection) container.appendChild(hierarchySection);
+    }
+
     container.appendChild(buildDrawerReviewSection('element', elementId));
     const imageSection = buildElementImageSection(data);
     if (imageSection) {
@@ -519,6 +533,163 @@ async function openElementDetails(elementId) {
   } catch (e) {
     showToast(`Failed to load element: ${e.message}`, 'err');
   }
+}
+
+function buildElementHierarchySection(elementId, entries) {
+  if (!Array.isArray(entries) || !entries.length) return null;
+  const entryMap = new Map(entries.map(([id, entry]) => [id, entry]));
+  if (!entryMap.has(elementId)) return null;
+  const { sorted, childMap, childIds } = buildElementHierarchy(entries);
+  const badgeLookup = new Map();
+  const typeCounters = {};
+  for (const [id, entry] of sorted) {
+    const t = entry?.type || 'Unknown';
+    typeCounters[t] = (typeCounters[t] || 0) + 1;
+    badgeLookup.set(id, `${outlineLabelForType(t)} ${typeCounters[t]}`);
+  }
+  const parentMap = new Map();
+  for (const [pid, children] of childMap.entries()) {
+    for (const [cid] of children) parentMap.set(cid, pid);
+  }
+  const ancestorSet = new Set();
+  let cursor = elementId;
+  while (parentMap.has(cursor)) {
+    const pid = parentMap.get(cursor);
+    ancestorSet.add(pid);
+    cursor = pid;
+  }
+  const defaultExpanded = new Set([...ancestorSet]);
+  const localExpansion = new Map();
+  const isExpanded = (id) => {
+    if (localExpansion.has(id)) return localExpansion.get(id);
+    return defaultExpanded.has(id);
+  };
+  const setExpanded = (id, val) => {
+    localExpansion.set(id, !!val);
+  };
+  let collapsed = false;
+  const wrap = document.createElement('div');
+  wrap.className = 'element-hierarchy-section';
+  const title = document.createElement('div');
+  title.className = 'section-title';
+  title.textContent = 'Hierarchy context';
+  wrap.appendChild(title);
+  const tree = document.createElement('div');
+  tree.className = 'element-hierarchy-tree';
+  wrap.appendChild(tree);
+  const outline = document.createElement('div');
+  outline.className = 'elements-outline-page elements-outline-page-embedded';
+  tree.appendChild(outline);
+  const head = document.createElement('div');
+  head.className = 'elements-outline-page-head';
+  const titleEl = document.createElement('div');
+  titleEl.className = 'elements-outline-title';
+  const pageNum = Number(entries[0]?.[1]?.page_trimmed || CURRENT_PAGE || 1);
+  titleEl.textContent = `Page ${pageNum}`;
+  head.appendChild(titleEl);
+  const counts = document.createElement('div');
+  counts.className = 'elements-outline-counts';
+  counts.textContent = ELEMENT_OUTLINE_ORDER
+    .map((o) => {
+      const count = sorted.filter(([, entry]) => (entry?.type || '') === o.type).length;
+      return count ? `${o.label} ${count}` : null;
+    })
+    .filter(Boolean)
+    .join(' · ');
+  if (!counts.textContent) counts.textContent = `${sorted.length} elements`;
+  head.appendChild(counts);
+  const collapseBtn = document.createElement('button');
+  collapseBtn.type = 'button';
+  collapseBtn.className = 'outline-toggle';
+  const updateCollapseLabel = () => {
+    collapseBtn.textContent = collapsed ? 'Expand' : 'Collapse';
+  };
+  updateCollapseLabel();
+  collapseBtn.addEventListener('click', () => {
+    collapsed = !collapsed;
+    body.classList.toggle('collapsed', collapsed);
+    updateCollapseLabel();
+  });
+  head.appendChild(collapseBtn);
+  outline.appendChild(head);
+  const body = document.createElement('div');
+  body.className = 'elements-outline-body';
+  outline.appendChild(body);
+  const renderRows = (parentEl, nodes) => {
+    for (const [id, entry, review] of nodes) {
+      const t = entry?.type || 'Unknown';
+      const row = document.createElement('div');
+      row.className = 'elements-outline-row';
+      const left = document.createElement('div');
+      left.className = 'elements-outline-left';
+      const badge = document.createElement('span');
+      badge.className = 'outline-badge';
+      badge.textContent = badgeLookup.get(id) || outlineLabelForType(t);
+      left.appendChild(badge);
+      row.appendChild(left);
+      const cardWrap = document.createElement('div');
+      cardWrap.className = 'elements-outline-card';
+      const card = buildElementCard(id, entry, review, { compact: true });
+      if (id === elementId) {
+        card.classList.add('hierarchy-current');
+      } else if (ancestorSet.has(id)) {
+        card.classList.add('hierarchy-ancestor');
+      }
+      const children = childMap.get(id) || [];
+      if (children.length) {
+        row.classList.add('outline-has-children');
+        card.classList.add('has-children');
+        const expanded = isExpanded(id);
+        if (expanded) card.classList.add('children-expanded');
+        const summary = summarizeChildren(children);
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'outline-child-toggle';
+        const updateText = (next) => {
+          toggle.textContent = next
+            ? summary ? `Hide children (${summary})` : 'Hide children'
+            : summary ? `Show children (${summary})` : 'Show children';
+        };
+        updateText(expanded);
+        const childWrap = document.createElement('div');
+        childWrap.className = 'elements-outline-children';
+        if (!expanded) {
+          childWrap.classList.add('hidden');
+        } else {
+          renderRows(childWrap, children);
+        }
+        toggle.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          const next = childWrap.classList.contains('hidden');
+          setExpanded(id, next);
+          childWrap.classList.toggle('hidden', !next);
+          if (next && !childWrap.childElementCount) {
+            renderRows(childWrap, children);
+          }
+          card.classList.toggle('children-expanded', next);
+          updateText(next);
+        });
+        card.appendChild(toggle);
+        cardWrap.appendChild(card);
+        cardWrap.appendChild(childWrap);
+      } else {
+        cardWrap.appendChild(card);
+      }
+      row.appendChild(cardWrap);
+      parentEl.appendChild(row);
+    }
+  };
+  const roots = sorted.filter(([id]) => !childIds.has(id));
+  renderRows(body, roots);
+  setTimeout(() => {
+    const card = wrap.querySelector('.element-card.hierarchy-current');
+    if (card) {
+      try {
+        card.scrollIntoView({ block: 'center' });
+      } catch (e) { }
+    }
+  }, 0);
+  return wrap;
 }
 
 async function findStableIdByOrig(origId, page) {

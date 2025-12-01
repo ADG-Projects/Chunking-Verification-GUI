@@ -177,7 +177,7 @@ What you get:
 - Overlay UX: hover for ID/type/page/tooltips; colors are fixed per element type; chunk overlays honor Type/Review filters and redraw immediately; Azure polygons stay scaled to PDF points; the Elements outline groups Azure pageHeader/pageNumber/Tables/Paragraphs/Lines by page order with breadcrumbs in drawers.
 - Reviews: leave Good/Bad ratings with optional notes for any chunk or element, filter by rating, and use the header chip to jump into scored items.
 - Inspect → Chunks: browse chunk summary + list; selecting a chunk jumps to its page, shows its overlays, and expands its source elements; cards size to the amount of text.
-- Inspect → Elements: filter by type, toggle outline mode (Azure), see original element IDs and inline previews, switch overlays between chunk and element modes based on the active tab, and view extracted images for Unstructured elements (image payloads) or Azure figures (`--outputs figures`).
+- Inspect → Elements: filter by type, toggle outline mode (Azure), see original element IDs and inline previews, switch overlays between chunk and element modes based on the active tab, view extracted images for Unstructured elements (image payloads) or Azure figures (`--outputs figures`), and inspect the drawer’s Hierarchy context block to see the selected element within the same outline tree (ancestors + descendants) as the sidebar.
 - Unstructured Partition runs support image extraction: set `extract_image_block_types` (e.g., `Image` or `Image,Table`) and enable “Embed extracted images in payload” to return `image_base64` for drawer previews.
 
 Data sources used by the UI:
