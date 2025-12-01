@@ -345,6 +345,40 @@ def _filter_elements_inside_tables(
     return result
 
 
+def _find_section_headings_inside_standalones(
+    elements: List[Dict[str, Any]],
+    config: ChunkingConfig,
+    tolerance: float = 5.0,
+) -> set[str]:
+    """Find section headings that fall inside Table/Figure bounding boxes.
+
+    These headings should stay with the container instead of breaking a new section.
+    """
+    container_bboxes: List[tuple] = []
+    for el in elements:
+        if _classify_element(el, config) == "standalone":
+            bbox = _get_element_bbox(el)
+            if bbox:
+                container_bboxes.append(bbox)
+
+    if not container_bboxes:
+        return set()
+
+    inside: set[str] = set()
+    for el in elements:
+        if _classify_element(el, config) != "section_break":
+            continue
+        el_bbox = _get_element_bbox(el)
+        if not el_bbox:
+            continue
+        if any(_is_inside_bbox(el_bbox, bbox, tolerance) for bbox in container_bboxes):
+            el_id = el.get("element_id")
+            if el_id:
+                inside.add(el_id)
+
+    return inside
+
+
 def chunk_elements(
     elements: List[Dict[str, Any]],
     config: Optional[ChunkingConfig] = None,
@@ -373,6 +407,11 @@ def chunk_elements(
     # Filter out Paragraphs that are inside Table bounding boxes (duplicate content)
     filtered = _filter_elements_inside_tables(filtered, config)
 
+    # Identify section headings that are visually inside standalone containers
+    headings_inside_standalones = _find_section_headings_inside_standalones(
+        filtered, config
+    )
+
     # Sort elements by page and vertical position to ensure proper reading order
     # This is needed because Azure DI groups elements by type (all Tables at end)
     # rather than by visual position
@@ -385,7 +424,25 @@ def chunk_elements(
     for element in filtered:
         classification = _classify_element(element, config)
 
+        # Section headings inside a table/figure should not start a new chunk
+        if (
+            classification == "section_break"
+            and element.get("element_id") in headings_inside_standalones
+        ):
+            classification = "content"
+
         if classification == "section_break":
+            # If we have only section headings so far, treat consecutive
+            # headings as part of the same section instead of starting
+            # empty heading-only chunks.
+            if current_section and all(
+                _classify_element(el, config) == "section_break"
+                for el in current_section
+            ):
+                current_section.append(element)
+                seen_section_break = True
+                continue
+
             # Flush current section
             if current_section:
                 chunks.append(

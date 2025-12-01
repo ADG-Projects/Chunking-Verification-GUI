@@ -5,6 +5,7 @@
 
 ## Completed
 
+- [x] 2025-12-01 Keep section headings that fall inside figure/table bounding boxes attached to the container chunk so figure captions stay with the figure chunk, and merge consecutive section headings into a single section chunk so intermediate header-only chunks go away.
 - [x] 2025-12-01 Add element drawer hierarchy context mirroring the outline view so ancestors/children stay visible while reviewing.
 
 - [x] 2025-11-27 Release v4.3 (Figure outline view, direct page jump, What's New modal, RTL/legend fixes, Azure DI default).
