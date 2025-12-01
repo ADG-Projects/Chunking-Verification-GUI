@@ -1,6 +1,7 @@
 # TODO
 
 ## Upcoming
+- [ ] Create "lite" Docker image with only Azure DI + Unstructured Partition (skip heavy local Unstructured deps like PyTorch/transformers to reduce image from ~3GB to ~400MB).
 - [ ] Remove leftover references to metrics/tables in UI modules (app-metrics.js import vestigial; ensure CSS/tooling stay lean).
 
 ## Completed
