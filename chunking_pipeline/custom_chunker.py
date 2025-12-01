@@ -385,32 +385,7 @@ def chunk_elements(
     for element in filtered:
         classification = _classify_element(element, config)
 
-        if classification == "standalone":
-            # Check if current section is just a heading - if so, combine with standalone
-            if len(current_section) == 1 and _classify_element(
-                current_section[0], config
-            ) == "section_break":
-                # Combine heading with standalone element (e.g., heading + table)
-                current_section.append(element)
-                chunks.append(
-                    _create_chunk(
-                        current_section, config, is_preamble=not seen_section_break
-                    )
-                )
-                current_section = []
-            else:
-                # Flush current section first
-                if current_section:
-                    chunks.append(
-                        _create_chunk(
-                            current_section, config, is_preamble=not seen_section_break
-                        )
-                    )
-                    current_section = []
-                # Add standalone as its own chunk
-                chunks.append(_create_chunk([element], config))
-
-        elif classification == "section_break":
+        if classification == "section_break":
             # Flush current section
             if current_section:
                 chunks.append(
@@ -423,7 +398,7 @@ def chunk_elements(
             current_section = [element]
             seen_section_break = True
 
-        else:  # content
+        else:  # content or standalone (tables/figures) - all go in the current section
             current_section.append(element)
 
     # Flush final section
