@@ -74,8 +74,10 @@ Use `--input-jsonl` when you want to re-evaluate matches from a previously saved
 
 ## Azure runs (Document Intelligence)
 
-Set the Azure credentials before running either via CLI or the UI. You can drop them into a local `.env` (see `.env.example`) and they will be auto-loaded by the app and the CLI helpers. Foundry deployments use a single endpoint/key:
-- `AZURE_FT_ENDPOINT` / `AZURE_FT_KEY`
+Set the Azure credentials before running either via CLI or the UI. You can drop them into a local `.env` (see `.env.example`) and they will be auto-loaded by the app and the CLI helpers. The standard env var names are:
+- `AZURE_DOCUMENTINTELLIGENCE_ENDPOINT` / `AZURE_DOCUMENTINTELLIGENCE_KEY` (PolicyAsCode standard)
+
+Legacy aliases are also supported for backward compatibility: `AZURE_FT_ENDPOINT`/`AZURE_FT_KEY`, `DOCUMENTINTELLIGENCE_ENDPOINT`/`DOCUMENTINTELLIGENCE_API_KEY`.
 
 When Azure language detection is enabled (e.g., including `languages` in the features), detected locales are captured in `run_config` (persisted from the pipeline output) so reloading a run flips previews to RTL automatically for Arabic-heavy documents.
 When Azure returns markdown (e.g., `output_content_format=markdown`), the Inspect drawers render the formatted markdown directly and fall back to plain text only when no richer content is present; table HTML still prefers `text_as_html` for accurate column order.
@@ -85,7 +87,7 @@ Supported DI `features`: `languages`, `barcodes`, `keyValuePairs`, `ocrHighResol
 
 CLI example (Document Intelligence layout):
 ```bash
-AZURE_FT_ENDPOINT=<endpoint> AZURE_FT_KEY=<key> \
+AZURE_DOCUMENTINTELLIGENCE_ENDPOINT=<endpoint> AZURE_DOCUMENTINTELLIGENCE_KEY=<key> \
 uv run python -m chunking_pipeline.azure_pipeline \
   --provider document_intelligence \
   --input res/V3.0_Reviewed_translation_EN_full\ 4.pdf \
