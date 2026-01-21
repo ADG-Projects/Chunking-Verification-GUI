@@ -3,11 +3,18 @@ from __future__ import annotations
 import json
 import logging
 import re
-import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Query
+
+from src.extractors.azure_di import (
+    AzureDIConfig,
+    AzureDIExtractor,
+    parse_pages,
+    resolve_pages_in_document,
+    slice_pdf,
+)
 
 from ..config import (
     DEFAULT_PROVIDER,
@@ -18,8 +25,8 @@ from ..config import (
     safe_pages_tag,
 )
 from ..run_jobs import RUN_JOB_MANAGER
-from .reviews import review_file_path
 from .elements import clear_index_cache
+from .reviews import review_file_path
 
 router = APIRouter()
 logger = logging.getLogger("chunking.routes.runs")
@@ -142,6 +149,102 @@ def api_delete_run(slug: str, provider: str = Query(default=DEFAULT_PROVIDER)) -
 
 # Providers that support creating new runs (Unstructured is sunsetted)
 RUNNABLE_PROVIDERS = {"azure/document_intelligence"}
+
+
+def _write_elements_jsonl(path: Path, elements: List[Dict[str, Any]]) -> None:
+    """Write elements to JSONL file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as fh:
+        for el in elements:
+            fh.write(json.dumps(el, ensure_ascii=False) + "\n")
+
+
+def _write_run_metadata(path: Path, run_config: Dict[str, Any]) -> None:
+    """Write run configuration metadata to JSON file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as fh:
+        json.dump(run_config, fh, ensure_ascii=False, indent=2)
+        fh.write("\n")
+
+
+def _run_extraction(metadata: Dict[str, Any]) -> None:
+    """Worker function for Azure DI extraction.
+
+    Called by the job manager with metadata containing all extraction parameters.
+    Performs PDF slicing, extraction, and writes outputs.
+    """
+    input_pdf = Path(metadata["input_pdf"])
+    trimmed_path = Path(metadata["trimmed_path"])
+    elements_path = Path(metadata["elements_path"])
+    meta_path = Path(metadata["meta_path"])
+    pages_str = metadata["pages"]
+
+    # Parse and validate pages
+    page_list = parse_pages(pages_str)
+    valid_pages, dropped_pages, max_page = resolve_pages_in_document(str(input_pdf), page_list)
+    if not valid_pages:
+        raise ValueError(f"No valid pages requested; {input_pdf} has {max_page} pages.")
+    if dropped_pages:
+        logger.warning(f"Dropping out-of-range pages {dropped_pages}; document has {max_page} pages.")
+
+    # Slice PDF to requested pages (creates the trimmed PDF artifact)
+    slice_pdf(str(input_pdf), valid_pages, str(trimmed_path), warn_on_drop=False)
+
+    # Determine if figures should be downloaded
+    outputs = metadata.get("outputs") or []
+    want_figures = any((o or "").lower() == "figures" for o in outputs)
+
+    # Build extractor config
+    config = AzureDIConfig(
+        model_id=metadata.get("model_id", "prebuilt-layout"),
+        api_version=metadata.get("api_version", "2024-11-30"),
+        features=metadata.get("features"),
+        outputs=outputs or None,
+        locale=metadata.get("locale"),
+        download_figures=want_figures,
+    )
+
+    # Determine figures output directory
+    figures_output_dir = elements_path.parent if want_figures else None
+
+    # Run extraction using PolicyAsCode's AzureDIExtractor
+    extractor = AzureDIExtractor(config)
+    result = extractor.extract(
+        str(trimmed_path),
+        figures_output_dir=figures_output_dir,
+    )
+
+    # Convert elements to dict format for JSONL
+    elems = [el.to_dict() for el in result.elements]
+
+    # Build run configuration metadata
+    run_config: Dict[str, Any] = {
+        "provider": "azure/document_intelligence",
+        "input": str(input_pdf),
+        "pages": ",".join(str(p) for p in valid_pages),
+        "model_id": config.model_id,
+        "api_version": config.api_version,
+        "features": config.features or [],
+    }
+    if config.outputs:
+        run_config["outputs"] = config.outputs
+    if config.locale:
+        run_config["locale"] = config.locale
+    if metadata.get("primary_language"):
+        run_config["primary_language"] = metadata["primary_language"]
+    if metadata.get("ocr_languages"):
+        run_config["ocr_languages"] = metadata["ocr_languages"]
+    if metadata.get("languages"):
+        run_config["languages"] = metadata["languages"]
+
+    # Merge extraction metadata (detected languages, element count, etc.)
+    run_config.update(result.metadata)
+
+    # Write outputs
+    _write_elements_jsonl(elements_path, elems)
+    _write_run_metadata(meta_path, run_config)
+
+    logger.info(f"Extraction complete: {len(elems)} elements written to {elements_path}")
 
 
 @router.post("/api/run")
@@ -299,69 +402,38 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
                 break
             n += 1
 
-    # Build Azure Document Intelligence command
-    cmd: List[str] = [
-        sys.executable,
-        "-m",
-        "chunking_pipeline.azure_pipeline",
-        "--provider",
-        "document_intelligence",
-        "--input",
-        str(input_pdf),
-        "--pages",
-        pages,
-        "--trimmed-out",
-        str(trimmed_out),
-        "--output",
-        str(elements_out),
-        "--model-id",
-        azure_model_id,
-    ]
-    if normalized_features:
-        cmd += ["--features", ",".join(normalized_features)]
-    if normalized_outputs:
-        cmd += ["--outputs", ",".join(normalized_outputs)]
-    if azure_locale:
-        cmd += ["--locale", str(azure_locale)]
-    if azure_string_index_type:
-        cmd += ["--string-index-type", str(azure_string_index_type)]
-    if azure_output_content_format:
-        cmd += ["--output-content-format", str(azure_output_content_format)]
-    if azure_query_fields:
-        if isinstance(azure_query_fields, (list, tuple)):
-            cmd += ["--query-fields", ",".join(str(x) for x in azure_query_fields)]
-        else:
-            cmd += ["--query-fields", str(azure_query_fields)]
-    cmd += ["--run-metadata-out", str(meta_out)]
-    if primary_language:
-        cmd += ["--primary-language", primary_language]
-    if ocr_languages:
-        cmd += ["--ocr-languages", ocr_languages]
-    if languages:
-        cmd += ["--languages", ",".join(languages)]
-
     logger.info(
-        "Submitting run slug=%s provider=%s command=%s",
+        "Submitting run slug=%s provider=%s",
         f"{run_slug}.{pages_tag}",
         provider,
-        " ".join(cmd),
     )
 
+    # Build job metadata with all extraction parameters
     job_metadata = {
+        # Job tracking fields
         "slug_with_pages": f"{run_slug}.{pages_tag}",
         "pages_tag": pages_tag,
         "pdf_name": pdf_name,
         "pages": pages,
         "safe_tag": safe_tag,
         "raw_tag": raw_tag,
-        "primary_language": primary_language,
         "form_snapshot": payload.get("form_snapshot") or {},
+        "provider": provider,
+        # Output paths
+        "input_pdf": str(input_pdf),
         "trimmed_path": str(trimmed_out),
         "elements_path": str(elements_out),
         "meta_path": str(meta_out),
-        "provider": provider,
+        # Extraction parameters for _run_extraction()
+        "model_id": azure_model_id,
+        "features": normalized_features or None,
+        "outputs": normalized_outputs or None,
+        "locale": azure_locale,
+        "primary_language": primary_language,
+        "ocr_languages": ocr_languages,
+        "languages": languages,
     }
-    job = RUN_JOB_MANAGER.enqueue(command=cmd, metadata=job_metadata)
+    job = RUN_JOB_MANAGER.enqueue_callable(callable_fn=_run_extraction, metadata=job_metadata)
     job_data = job.to_dict()
     logger.info(
         "Run queued job_id=%s slug=%s provider=%s",
