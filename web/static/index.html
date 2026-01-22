@@ -86,6 +86,10 @@
         <div class="view-tabs" role="tablist" aria-label="Primary view">
           <button id="viewTabInspect" class="tab active" data-view="inspect" role="tab" aria-selected="true">Inspect</button>
           <button id="viewTabFeedback" class="tab" data-view="feedback" role="tab" aria-selected="false">Feedback</button>
+          <button id="viewTabImages" class="tab" data-view="images" role="tab" aria-selected="false">
+            Images
+            <span class="experimental-badge">EXPERIMENTAL</span>
+          </button>
         </div>
       </div>
       <div class="controls">
@@ -308,6 +312,51 @@
           </div>
         </div>
         <pre id="feedbackAnalysis" class="analysis-output" aria-live="polite"></pre>
+      </div>
+    </section>
+
+    <!-- Images View (EXPERIMENTAL) -->
+    <section id="imagesView" class="images-view hidden" aria-labelledby="viewTabImages">
+      <div class="images-header card">
+        <div class="images-mode-tabs">
+          <button class="mode-tab active" data-mode="pdf-figures">PDF Figures</button>
+          <button class="mode-tab" data-mode="upload">Upload Image</button>
+        </div>
+        <div class="experimental-notice">
+          This feature requires the PolicyAsCode figure-vision branch.
+        </div>
+      </div>
+
+      <!-- PDF Figures Panel -->
+      <div id="imagesPdfFiguresPanel" class="images-panel">
+        <div id="imagesStats" class="images-stats card"></div>
+        <div class="images-content">
+          <div id="imagesFigureList" class="figure-list">
+            <div class="empty-state">Select a run to view figures</div>
+          </div>
+          <div id="imagesFigureDetails" class="figure-details hidden"></div>
+        </div>
+      </div>
+
+      <!-- Upload Panel -->
+      <div id="imagesUploadPanel" class="images-panel hidden">
+        <div class="upload-container card">
+          <form id="imageUploadForm" class="upload-form">
+            <div id="imageUploadZone" class="upload-zone">
+              <div class="upload-icon">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17,8 12,3 7,8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+              </div>
+              <p class="upload-text">Drop an image here or click to browse</p>
+              <p class="upload-hint">Supports PNG, JPEG, WebP</p>
+              <input type="file" id="imageUploadInput" accept="image/png,image/jpeg,image/webp" hidden />
+            </div>
+          </form>
+          <div id="imageUploadResult" class="upload-result-container"></div>
+        </div>
       </div>
     </section>
   </main>
@@ -679,6 +728,7 @@
     <script src="/app-elements.js?v=20251201" defer></script>
     <script src="/app-chunks.js?v=20251201" defer></script>
     <script src="/app-feedback.js?v=20251201" defer></script>
+    <script src="/app-images.js?v=20251201" defer></script>
     <script src="/app-runs.js?v=20251201" defer></script>
     <script src="/app.js?v=20251201" defer></script>
   </body>
