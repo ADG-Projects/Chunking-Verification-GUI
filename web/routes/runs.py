@@ -238,7 +238,16 @@ def _run_extraction(metadata: Dict[str, Any]) -> None:
         run_config["languages"] = metadata["languages"]
 
     # Merge extraction metadata (detected languages, element count, etc.)
-    run_config.update(result.metadata)
+    # Serialize Pydantic models (like DetectedLanguage) to dicts for JSON compatibility
+    for key, val in result.metadata.items():
+        if isinstance(val, list):
+            run_config[key] = [
+                item.model_dump() if hasattr(item, "model_dump") else item for item in val
+            ]
+        elif hasattr(val, "model_dump"):
+            run_config[key] = val.model_dump()
+        else:
+            run_config[key] = val
 
     # Write outputs
     _write_elements_jsonl(elements_path, elems)
