@@ -87,6 +87,11 @@ async function loadRun(slug, provider = CURRENT_PROVIDER) {
   const elemReviewSel = $('elementsReviewSelect');
   if (elemReviewSel) elemReviewSel.value = CURRENT_ELEMENT_REVIEW_FILTER;
   await loadReviews(slug, CURRENT_PROVIDER);
+
+  // Refresh images tab if currently active
+  if (CURRENT_VIEW === 'images' && typeof loadFiguresForCurrentRun === 'function') {
+    loadFiguresForCurrentRun();
+  }
 }
 
 async function renderPage(num) {
@@ -974,7 +979,7 @@ function handleReviewChipClick(kind) {
 }
 
 function switchView(view, skipRedraw = false) {
-  const next = view === 'feedback' ? 'feedback' : 'inspect';
+  const next = view === 'feedback' ? 'feedback' : (view === 'images' ? 'images' : 'inspect');
   CURRENT_VIEW = next;
   document.querySelectorAll('.view-tabs .tab').forEach(el => {
     const active = el.dataset.view === CURRENT_VIEW;
@@ -987,7 +992,9 @@ function switchView(view, skipRedraw = false) {
   if (inspectPane) inspectPane.classList.toggle('hidden', CURRENT_VIEW !== 'inspect');
   const feedbackPane = $('feedbackView');
   if (feedbackPane) feedbackPane.classList.toggle('hidden', CURRENT_VIEW !== 'feedback');
-  if (CURRENT_VIEW === 'feedback') {
+  const imagesPane = $('imagesView');
+  if (imagesPane) imagesPane.classList.toggle('hidden', CURRENT_VIEW !== 'images');
+  if (CURRENT_VIEW === 'feedback' || CURRENT_VIEW === 'images') {
     SHOW_CHUNK_OVERLAYS = false;
     SHOW_ELEMENT_OVERLAYS = false;
     clearDrawer();
@@ -997,6 +1004,9 @@ function switchView(view, skipRedraw = false) {
   }
   if (CURRENT_VIEW === 'inspect' && !skipRedraw) {
     redrawOverlaysForCurrentContext();
+  }
+  if (CURRENT_VIEW === 'images' && typeof onImagesTabActivated === 'function') {
+    onImagesTabActivated();
   }
 }
 
