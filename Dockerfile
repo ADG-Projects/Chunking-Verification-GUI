@@ -4,6 +4,9 @@ ARG PYTHON_VERSION=3.11
 
 FROM public.ecr.aws/docker/library/python:${PYTHON_VERSION}-slim AS runtime
 
+# Cache-bust argument - change this value to force full rebuild
+ARG CACHE_BUST=2025-01-22
+
 ARG WITH_HIRES=1
 ARG DISABLE_HI_RES=0
 
@@ -21,7 +24,7 @@ WORKDIR /app
 
 # Install system dependencies needed for hi_res layout (OpenCV, Tesseract, Poppler, HEIF)
 # Note: git is required for uv to install dependencies from git repositories
-RUN apt-get update && \
+RUN echo "Cache bust: ${CACHE_BUST}" && apt-get update && \
     apt-get install -y --no-install-recommends \
         build-essential \
         curl \
