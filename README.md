@@ -2,6 +2,9 @@
 
 Local playground for document ingestion experiments. It now supports the open-source Unstructured chunker, the hosted Unstructured Partition API (elements-only), and Azure Document Intelligence (Layout) so you can compare layout/ocr quality side by side.
 
+> **Note:** Unstructured providers (Local and Partition API) are deprecated.
+> Use Azure Document Intelligence for new runs. Legacy Unstructured runs remain viewable.
+
 Two helper scripts exist today:
 - `process_unstructured.py`: interactive full-document runs against Unstructured.
 - `scripts/preview_unstructured_pages.py`: fast page slicing + gold-table matching for targeted QA (Unstructured).
@@ -21,7 +24,9 @@ uv sync
 
 `uv sync` creates a `.venv` in the project root and installs all required packages, including `unstructured[pdf]` and `azure-ai-documentintelligence`.
 
-### Unstructured Partition (API) credentials
+### Unstructured Partition (API) credentials (Legacy)
+
+> **Deprecated:** This section is for legacy reference only. Use Azure Document Intelligence for new runs.
 
 Set the hosted Partition API base URL and key (elements-only provider) in your environment or `.env`:
 
@@ -33,7 +38,9 @@ UNSTRUCTURED_PARTITION_API_KEY=<your-key>
 If you omit these, the Partition provider will fail fast in the worker.
 The Partition provider uses the official SDK client, fetches coordinates, and emits elements-only artifacts (the UI hides the Chunks tab for this provider but still renders overlays from the returned elements). Strategies available: `auto`, `fast`, `hi_res`, `ocr_only`, and `vlm`.
 
-## Process a PDF
+## Process a PDF (Legacy)
+
+> **Deprecated:** This script uses the Unstructured provider, which is deprecated. Use Azure Document Intelligence for new runs.
 
 ```bash
 uv run python process_unstructured.py
@@ -47,7 +54,9 @@ The script:
 
 Each JSON document includes the source path, timestamp, optional page limit, element count, and the raw Unstructured element payloads.
 
-## Preview specific pages & compare to gold tables
+## Preview specific pages & compare to gold tables (Legacy)
+
+> **Deprecated:** This script uses the Unstructured provider, which is deprecated. Use Azure Document Intelligence for new runs.
 
 When you just need a few pages (or want to evaluate table extraction quality), use the preview helper:
 
