@@ -91,7 +91,7 @@ class FigureProcessorWrapper:
         """
         from src.figure_processing import FigureProcessor as PolicyFigureProcessor
         from src.figure_processing import FigureType
-        from src.figure_processing.classifier import FigureClassification
+        from src.figure_processing import FigureClassification
 
         processor = self._get_processor()
         service = self._get_service()
