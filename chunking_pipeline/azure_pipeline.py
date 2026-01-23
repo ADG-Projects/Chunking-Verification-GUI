@@ -249,8 +249,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 figures_output_dir,
                 run_id=Path(args.input).stem if args.input else None,
             )
-        except ImportError:
-            logger.warning("Figure processing not available - PolicyAsCode feature branch required")
+        except ImportError as e:
+            logger.warning(f"Figure processing not available - import error: {e}")
         except Exception as e:
             logger.error(f"Figure processing failed: {e}")
 

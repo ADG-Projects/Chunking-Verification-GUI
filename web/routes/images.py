@@ -9,6 +9,7 @@ EXPERIMENTAL: Depends on PolicyAsCode feature branch for full functionality.
 from __future__ import annotations
 
 import base64
+import io
 import json
 import logging
 import mimetypes
@@ -17,14 +18,78 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import fitz  # PyMuPDF
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 
 from ..config import DEFAULT_PROVIDER, get_out_dir
 from ..file_utils import resolve_slug_file
 
 router = APIRouter()
 logger = logging.getLogger("chunking.routes.images")
+
+
+def _resolve_pdf_file(slug: str, provider: str) -> Optional[Path]:
+    """Resolve the trimmed PDF file for a given slug."""
+    try:
+        return resolve_slug_file(slug, "{slug}.pdf", provider=provider)
+    except HTTPException:
+        return None
+
+
+def _extract_figure_from_pdf(
+    pdf_path: Path,
+    page_number: int,
+    coordinates: Dict[str, Any],
+    dpi: int = 150,
+) -> Optional[bytes]:
+    """Extract a figure region from a PDF page as PNG bytes.
+
+    Args:
+        pdf_path: Path to the PDF file
+        page_number: 1-indexed page number
+        coordinates: Dict with 'points' (4 corners) and layout dimensions
+        dpi: Resolution for rendering (default 150)
+
+    Returns:
+        PNG image bytes or None if extraction fails
+    """
+    try:
+        doc = fitz.open(pdf_path)
+        # Convert 1-indexed to 0-indexed
+        page_idx = page_number - 1
+        if page_idx < 0 or page_idx >= len(doc):
+            logger.warning(f"Page {page_number} out of range for {pdf_path}")
+            return None
+
+        page = doc[page_idx]
+
+        # Get coordinates - format is [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
+        points = coordinates.get("points", [])
+        if len(points) < 4:
+            logger.warning(f"Invalid coordinates: {coordinates}")
+            return None
+
+        # Extract bounding box from corner points
+        xs = [p[0] for p in points]
+        ys = [p[1] for p in points]
+        x0, y0 = min(xs), min(ys)
+        x1, y1 = max(xs), max(ys)
+
+        # Create clip rectangle (coordinates are in PDF points)
+        clip = fitz.Rect(x0, y0, x1, y1)
+
+        # Render the clipped region
+        zoom = dpi / 72.0  # PDF default is 72 dpi
+        mat = fitz.Matrix(zoom, zoom)
+        pix = page.get_pixmap(matrix=mat, clip=clip)
+
+        doc.close()
+        return pix.tobytes("png")
+
+    except Exception as e:
+        logger.exception(f"Failed to extract figure from PDF: {e}")
+        return None
 
 
 def _resolve_elements_file(slug: str, provider: str) -> Path:
@@ -55,7 +120,7 @@ def _load_figures_from_elements(elements_path: Path) -> List[Dict[str, Any]]:
                 el = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if el.get("type") == "figure":
+            if el.get("type", "").lower() == "figure":
                 figures.append(el)
     return figures
 
@@ -277,8 +342,13 @@ def api_figure_image_original(
     slug: str,
     element_id: str,
     provider: str = Query(default=None),
-) -> FileResponse:
-    """Serve the original figure image."""
+) -> Response:
+    """Serve the original figure image.
+
+    First tries to find a pre-extracted image file. If not available,
+    falls back to extracting the figure region from the PDF using
+    bounding box coordinates.
+    """
     provider_key = provider or DEFAULT_PROVIDER
     elements_path = _resolve_elements_file(slug, provider_key)
     figures_dir = _get_figures_dir(elements_path)
@@ -297,21 +367,42 @@ def api_figure_image_original(
     md = target.get("metadata", {})
     figure_image = md.get("figure_image_filename") or target.get("figure_image_filename")
 
-    if not figure_image:
-        raise HTTPException(status_code=404, detail="Figure has no associated image")
+    # Try to find pre-extracted image file
+    if figure_image:
+        candidates = [
+            figures_dir.parent / figure_image,
+            figures_dir / figure_image,
+            elements_path.parent / figure_image,
+        ]
+        for path in candidates:
+            if path.exists():
+                return FileResponse(path, media_type=mimetypes.guess_type(path.name)[0] or "image/png")
 
-    # Try multiple locations
-    candidates = [
-        figures_dir.parent / figure_image,
-        figures_dir / figure_image,
-        elements_path.parent / figure_image,
-    ]
+    # Fallback: extract from PDF using bounding box coordinates
+    coordinates = md.get("coordinates", {})
+    page_number = target.get("page_number") or md.get("page_number")
 
-    for path in candidates:
-        if path.exists():
-            return FileResponse(path, media_type=mimetypes.guess_type(path.name)[0] or "image/png")
+    if not coordinates.get("points") or not page_number:
+        raise HTTPException(
+            status_code=404,
+            detail="Figure has no associated image and no coordinates for extraction",
+        )
 
-    raise HTTPException(status_code=404, detail=f"Image file not found: {figure_image}")
+    pdf_path = _resolve_pdf_file(slug, provider_key)
+    if not pdf_path:
+        raise HTTPException(
+            status_code=404,
+            detail="Figure has no associated image and PDF not found for extraction",
+        )
+
+    png_bytes = _extract_figure_from_pdf(pdf_path, page_number, coordinates)
+    if not png_bytes:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to extract figure from PDF",
+        )
+
+    return Response(content=png_bytes, media_type="image/png")
 
 
 @router.get("/api/figures/{slug}/{element_id}/image/annotated")
@@ -463,10 +554,11 @@ def api_figure_reprocess(
             run_id=slug,
         )
         return {"status": "ok", "result": result}
-    except ImportError:
+    except ImportError as e:
+        logger.exception(f"Import error during figure reprocessing: {e}")
         raise HTTPException(
             status_code=503,
-            detail="Figure processing not available - PolicyAsCode feature branch required",
+            detail=f"Figure processing import error: {e}",
         )
     except Exception as e:
         logger.exception(f"Failed to reprocess figure {element_id}")
@@ -516,10 +608,11 @@ async def api_figure_upload(
             "original_image_data_uri": data_uri,
             "result": result,
         }
-    except ImportError:
+    except ImportError as e:
+        logger.exception(f"Import error during figure processing: {e}")
         raise HTTPException(
             status_code=503,
-            detail="Figure processing not available - PolicyAsCode feature branch required",
+            detail=f"Figure processing import error: {e}",
         )
     except Exception as e:
         logger.exception(f"Failed to process uploaded image {file.filename}")

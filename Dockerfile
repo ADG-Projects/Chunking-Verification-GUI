@@ -6,6 +6,9 @@ FROM public.ecr.aws/docker/library/python:${PYTHON_VERSION}-slim AS runtime
 
 ARG WITH_HIRES=1
 ARG DISABLE_HI_RES=0
+# Set to 1 to include SAM3 local server dependencies (torch, transformers)
+# This adds ~3GB to the image - only needed if running SAM3 locally
+ARG WITH_SAM3_LOCAL=0
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -39,9 +42,17 @@ RUN apt-get update && \
 # Install uv so all Python commands use the same resolver/runtime
 RUN pip install --no-cache-dir uv
 
-# Pre-install Python dependencies with full extras (unstructured + hires)
+# Pre-install Python dependencies
+# By default, only core deps (no torch/transformers for smaller image)
+# Use WITH_SAM3_LOCAL=1 to include local SAM3 server deps
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --extra full && \
+RUN if [ "$WITH_SAM3_LOCAL" = "1" ]; then \
+        echo "Installing with SAM3 local server support (full)..." && \
+        uv sync --frozen --no-dev --extra full; \
+    else \
+        echo "Installing core dependencies (remote SAM3 only)..." && \
+        uv sync --frozen --no-dev; \
+    fi && \
     uv pip uninstall opencv-python || true && \
     uv pip install --no-deps opencv-python-headless==4.11.0.86 && \
     if [ "$WITH_HIRES" = "0" ]; then \
