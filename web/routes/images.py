@@ -13,8 +13,10 @@ import io
 import json
 import logging
 import mimetypes
+import shutil
 import tempfile
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -22,11 +24,31 @@ import fitz  # PyMuPDF
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, Response
 
-from ..config import DEFAULT_PROVIDER, get_out_dir
+from ..config import DEFAULT_PROVIDER, ROOT, get_out_dir
 from ..file_utils import resolve_slug_file
 
 router = APIRouter()
 logger = logging.getLogger("chunking.routes.images")
+
+# Directory for storing uploaded images (persisted for two-stage processing)
+UPLOADS_DIR = ROOT / "outputs" / "uploads"
+
+
+def _get_upload_dir(upload_id: str) -> Path:
+    """Get the directory for an uploaded image."""
+    return UPLOADS_DIR / upload_id
+
+
+def _load_upload_metadata(upload_id: str) -> Optional[Dict[str, Any]]:
+    """Load metadata for an uploaded image."""
+    meta_path = _get_upload_dir(upload_id) / "metadata.json"
+    if not meta_path.exists():
+        return None
+    try:
+        with meta_path.open("r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except (json.JSONDecodeError, IOError):
+        return None
 
 
 def _resolve_pdf_file(slug: str, provider: str) -> Optional[Path]:
@@ -166,6 +188,295 @@ def _image_to_data_uri(image_path: Path) -> Optional[str]:
         return f"data:{mime_type};base64,{b64}"
     except IOError:
         return None
+
+
+# =============================================================================
+# Upload Routes (must come BEFORE {slug} routes to avoid path conflicts)
+# =============================================================================
+
+
+@router.post("/api/figures/upload")
+async def api_figure_upload(
+    file: UploadFile = File(...),
+) -> Dict[str, Any]:
+    """Upload an image for processing through the vision pipeline.
+
+    Returns upload_id for subsequent segment/extract-mermaid calls.
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    # Validate file type
+    allowed_types = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
+    content_type = file.content_type or mimetypes.guess_type(file.filename)[0]
+    if content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file type: {content_type}. Allowed: {', '.join(allowed_types)}",
+        )
+
+    # Create upload directory
+    upload_id = str(uuid.uuid4())[:8]
+    upload_dir = _get_upload_dir(upload_id)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save the image
+    suffix = Path(file.filename).suffix or ".png"
+    image_path = upload_dir / f"original{suffix}"
+    content = await file.read()
+    image_path.write_bytes(content)
+
+    # Save metadata
+    metadata = {
+        "upload_id": upload_id,
+        "filename": file.filename,
+        "content_type": content_type,
+        "image_path": str(image_path),
+        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+    }
+    meta_path = upload_dir / "metadata.json"
+    with meta_path.open("w", encoding="utf-8") as fh:
+        json.dump(metadata, fh, ensure_ascii=False, indent=2)
+
+    # Include base64 of original image for display
+    b64 = base64.b64encode(content).decode("ascii")
+    data_uri = f"data:{content_type};base64,{b64}"
+
+    return {
+        "status": "ok",
+        "stage": "uploaded",
+        "upload_id": upload_id,
+        "filename": file.filename,
+        "original_image_data_uri": data_uri,
+    }
+
+
+@router.get("/api/figures/upload/{upload_id}")
+def api_upload_detail(upload_id: str) -> Dict[str, Any]:
+    """Get details for an uploaded image including processing status."""
+    metadata = _load_upload_metadata(upload_id)
+    if not metadata:
+        raise HTTPException(status_code=404, detail=f"Upload {upload_id} not found")
+
+    upload_dir = _get_upload_dir(upload_id)
+
+    # Check processing stages
+    sam3_result = None
+    sam3_path = upload_dir / "sam3.json"
+    if sam3_path.exists():
+        with sam3_path.open("r", encoding="utf-8") as fh:
+            sam3_result = json.load(fh)
+
+    proc_result = None
+    proc_path = upload_dir / "result.json"
+    if proc_path.exists():
+        with proc_path.open("r", encoding="utf-8") as fh:
+            proc_result = json.load(fh)
+
+    # Determine stages
+    stages = {
+        "uploaded": True,
+        "segmented": sam3_result is not None,
+        "extracted": proc_result is not None,
+    }
+
+    # Build response
+    result: Dict[str, Any] = {
+        "upload_id": upload_id,
+        "filename": metadata.get("filename"),
+        "stages": stages,
+    }
+
+    if sam3_result:
+        result["sam3"] = {
+            "figure_type": sam3_result.get("figure_type"),
+            "confidence": sam3_result.get("confidence"),
+            "direction": sam3_result.get("direction"),
+            "shape_count": len(sam3_result.get("shape_positions") or []),
+            "classification_duration_ms": sam3_result.get("classification_duration_ms"),
+            "sam3_duration_ms": sam3_result.get("sam3_duration_ms"),
+        }
+
+    if proc_result:
+        result["processing"] = {
+            "figure_type": proc_result.get("figure_type"),
+            "confidence": proc_result.get("confidence"),
+            "processed_content": proc_result.get("processed_content"),
+            "description": proc_result.get("description"),
+            "intermediate_nodes": proc_result.get("intermediate_nodes"),
+            "intermediate_edges": proc_result.get("intermediate_edges"),
+        }
+
+    # Check for annotated image
+    annotated_path = upload_dir / "annotated.png"
+    result["has_annotated_image"] = annotated_path.exists()
+
+    return result
+
+
+@router.get("/api/figures/upload/{upload_id}/image/original")
+def api_upload_image_original(upload_id: str) -> FileResponse:
+    """Serve the original uploaded image."""
+    metadata = _load_upload_metadata(upload_id)
+    if not metadata:
+        raise HTTPException(status_code=404, detail=f"Upload {upload_id} not found")
+
+    image_path = Path(metadata["image_path"])
+    if not image_path.exists():
+        raise HTTPException(status_code=404, detail="Image file not found")
+
+    return FileResponse(image_path, media_type=metadata.get("content_type", "image/png"))
+
+
+@router.get("/api/figures/upload/{upload_id}/image/annotated")
+def api_upload_image_annotated(upload_id: str) -> FileResponse:
+    """Serve the SAM3-annotated uploaded image."""
+    upload_dir = _get_upload_dir(upload_id)
+    if not upload_dir.exists():
+        raise HTTPException(status_code=404, detail=f"Upload {upload_id} not found")
+
+    annotated_path = upload_dir / "annotated.png"
+    if not annotated_path.exists():
+        raise HTTPException(status_code=404, detail="Annotated image not available")
+
+    return FileResponse(annotated_path, media_type="image/png")
+
+
+@router.post("/api/figures/upload/{upload_id}/segment")
+def api_upload_segment(upload_id: str) -> Dict[str, Any]:
+    """Run SAM3 segmentation on an uploaded image (stage 1)."""
+    metadata = _load_upload_metadata(upload_id)
+    if not metadata:
+        raise HTTPException(status_code=404, detail=f"Upload {upload_id} not found")
+
+    image_path = Path(metadata["image_path"])
+    if not image_path.exists():
+        raise HTTPException(status_code=404, detail="Image file not found")
+
+    upload_dir = _get_upload_dir(upload_id)
+
+    try:
+        from chunking_pipeline.figure_processor import get_processor
+
+        processor = get_processor()
+        result = processor.segment_only(image_path, ocr_text="", run_id=f"upload-{upload_id}")
+
+        # Copy annotated image if generated
+        if result.get("annotated_path"):
+            src_annotated = Path(result["annotated_path"])
+            if src_annotated.exists():
+                dst_annotated = upload_dir / "annotated.png"
+                shutil.copy2(src_annotated, dst_annotated)
+                result["annotated_path"] = str(dst_annotated)
+
+        # Save SAM3 results
+        sam3_data = {
+            "figure_type": result.get("figure_type"),
+            "confidence": result.get("confidence"),
+            "reasoning": result.get("reasoning"),
+            "direction": result.get("direction"),
+            "classification_duration_ms": result.get("classification_duration_ms"),
+            "sam3_duration_ms": result.get("sam3_duration_ms"),
+            "shape_positions": result.get("shape_positions"),
+            "segmented_at": datetime.now(timezone.utc).isoformat(),
+        }
+        sam3_path = upload_dir / "sam3.json"
+        with sam3_path.open("w", encoding="utf-8") as fh:
+            json.dump(sam3_data, fh, ensure_ascii=False, indent=2)
+
+        return {
+            "status": "ok",
+            "stage": "segmented",
+            "upload_id": upload_id,
+            "figure_type": result.get("figure_type"),
+            "confidence": result.get("confidence"),
+            "direction": result.get("direction"),
+            "shape_count": len(result.get("shape_positions") or []),
+            "classification_duration_ms": result.get("classification_duration_ms"),
+            "sam3_duration_ms": result.get("sam3_duration_ms"),
+        }
+    except ImportError as e:
+        logger.exception(f"Import error during segmentation: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Figure processing import error: {e}",
+        )
+    except Exception as e:
+        logger.exception(f"Failed to segment upload {upload_id}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/figures/upload/{upload_id}/extract-mermaid")
+def api_upload_extract_mermaid(upload_id: str) -> Dict[str, Any]:
+    """Run mermaid extraction on an uploaded image (stage 2).
+
+    Prerequisite: /segment must have been called first.
+    """
+    metadata = _load_upload_metadata(upload_id)
+    if not metadata:
+        raise HTTPException(status_code=404, detail=f"Upload {upload_id} not found")
+
+    upload_dir = _get_upload_dir(upload_id)
+
+    # Check SAM3 results exist
+    sam3_path = upload_dir / "sam3.json"
+    if not sam3_path.exists():
+        raise HTTPException(
+            status_code=400,
+            detail="SAM3 segmentation not found. Run /segment first.",
+        )
+
+    with sam3_path.open("r", encoding="utf-8") as fh:
+        sam3_result = json.load(fh)
+
+    image_path = Path(metadata["image_path"])
+    if not image_path.exists():
+        raise HTTPException(status_code=404, detail="Image file not found")
+
+    # Use annotated image if available
+    annotated_path = upload_dir / "annotated.png"
+    if annotated_path.exists():
+        sam3_result["annotated_path"] = str(annotated_path)
+
+    try:
+        from chunking_pipeline.figure_processor import get_processor
+
+        processor = get_processor()
+        result = processor.extract_mermaid_from_sam3(
+            image_path, sam3_result, ocr_text="", run_id=f"upload-{upload_id}"
+        )
+
+        # Save full results
+        result_path = upload_dir / "result.json"
+        with result_path.open("w", encoding="utf-8") as fh:
+            json.dump(result, fh, ensure_ascii=False, indent=2)
+
+        return {
+            "status": "ok",
+            "stage": "complete",
+            "upload_id": upload_id,
+            "figure_type": result.get("figure_type"),
+            "processed_content": result.get("processed_content"),
+            "description": result.get("description"),
+            "intermediate_nodes": result.get("intermediate_nodes"),
+            "intermediate_edges": result.get("intermediate_edges"),
+            "step1_duration_ms": result.get("step1_duration_ms"),
+            "step2_duration_ms": result.get("step2_duration_ms"),
+        }
+    except ImportError as e:
+        logger.exception(f"Import error during mermaid extraction: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Figure processing import error: {e}",
+        )
+    except Exception as e:
+        logger.exception(f"Failed to extract mermaid for upload {upload_id}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# PDF Figure Routes (with {slug} path parameters)
+# =============================================================================
 
 
 @router.get("/api/figures/{slug}")
@@ -782,86 +1093,3 @@ def api_figure_sam3(
         raise HTTPException(status_code=404, detail="SAM3 results not found")
 
     return sam3_result
-
-
-@router.post("/api/figures/upload")
-async def api_figure_upload(
-    file: UploadFile = File(...),
-    stage: str = Query(default="full", description="Processing stage: 'segment' for SAM3 only, 'full' for complete pipeline"),
-) -> Dict[str, Any]:
-    """Upload and process a standalone image through the vision pipeline.
-
-    Args:
-        file: Image file to upload
-        stage: Processing stage - 'segment' for SAM3 only, 'full' for complete pipeline
-    """
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="No file provided")
-
-    if stage not in ("segment", "full"):
-        raise HTTPException(status_code=400, detail="Invalid stage. Use 'segment' or 'full'.")
-
-    # Validate file type
-    allowed_types = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
-    content_type = file.content_type or mimetypes.guess_type(file.filename)[0]
-    if content_type not in allowed_types:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid file type: {content_type}. Allowed: {', '.join(allowed_types)}",
-        )
-
-    # Save to temp file
-    suffix = Path(file.filename).suffix or ".png"
-    upload_id = str(uuid.uuid4())[:8]
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        content = await file.read()
-        tmp.write(content)
-        tmp_path = Path(tmp.name)
-
-    try:
-        from chunking_pipeline.figure_processor import get_processor
-
-        processor = get_processor()
-
-        # Include base64 of original image for display
-        b64 = base64.b64encode(content).decode("ascii")
-        data_uri = f"data:{content_type};base64,{b64}"
-
-        if stage == "segment":
-            # SAM3 segmentation only
-            result = processor.segment_only(tmp_path, ocr_text="", run_id=f"upload-{upload_id}")
-            return {
-                "status": "ok",
-                "stage": "segmented",
-                "upload_id": upload_id,
-                "filename": file.filename,
-                "original_image_data_uri": data_uri,
-                "result": result,
-            }
-        else:
-            # Full pipeline
-            result = processor.process_figure(tmp_path, ocr_text="", run_id=f"upload-{upload_id}")
-            return {
-                "status": "ok",
-                "stage": "complete",
-                "upload_id": upload_id,
-                "filename": file.filename,
-                "original_image_data_uri": data_uri,
-                "result": result,
-            }
-    except ImportError as e:
-        logger.exception(f"Import error during figure processing: {e}")
-        raise HTTPException(
-            status_code=503,
-            detail=f"Figure processing import error: {e}",
-        )
-    except Exception as e:
-        logger.exception(f"Failed to process uploaded image {file.filename}")
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        # Cleanup temp file
-        try:
-            tmp_path.unlink()
-        except OSError:
-            pass

@@ -3935,6 +3935,86 @@ body.drawer-open #right-metrics {
   margin-top: 12px;
 }
 
+/* Upload Pipeline View */
+.upload-pipeline-view {
+  background: var(--surface-card);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+}
+
+.upload-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.upload-header h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.upload-header .upload-id {
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--muted);
+  background: var(--surface-glass);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.upload-header .btn-icon {
+  margin-left: auto;
+}
+
+.upload-content {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.upload-image-preview {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.upload-image-preview .original-image {
+  max-width: 100%;
+  max-height: 400px;
+  object-fit: contain;
+}
+
+.upload-pipeline-view .pipeline-view {
+  flex: 1;
+}
+
+.upload-pipeline-view .upload-result-description {
+  grid-column: 1 / -1;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.upload-pipeline-view .upload-result-description h5 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .upload-content {
+    grid-template-columns: 1fr;
+  }
+
+  .upload-image-preview .original-image {
+    max-height: 250px;
+  }
+}
+
 .figure-original {
   margin-top: 16px;
 }

@@ -12,6 +12,8 @@ let IMAGES_MODE = 'pdf-figures'; // 'pdf-figures' or 'upload'
 let IMAGES_FIGURE_LIST = [];
 let IMAGES_CURRENT_FIGURE = null;
 let IMAGES_STATS = null;
+let CURRENT_UPLOAD_ID = null;
+let CURRENT_UPLOAD_DATA_URI = null;
 
 /**
  * Initialize the Images tab when it becomes active.
@@ -594,13 +596,13 @@ function wireImageUpload() {
 }
 
 /**
- * Upload and process an image.
+ * Upload an image (just saves it, doesn't process yet).
  */
 async function uploadImage(file) {
   const resultEl = $('imageUploadResult');
   if (!resultEl) return;
 
-  resultEl.innerHTML = '<div class="loading">Processing image...</div>';
+  resultEl.innerHTML = '<div class="loading">Uploading image...</div>';
 
   const formData = new FormData();
   formData.append('file', file);
@@ -617,80 +619,159 @@ async function uploadImage(file) {
     }
 
     const data = await res.json();
-    renderUploadResult(data);
-    showToast('Image processed successfully', 'success');
+    CURRENT_UPLOAD_ID = data.upload_id;
+    CURRENT_UPLOAD_DATA_URI = data.original_image_data_uri;
+
+    showToast('Image uploaded successfully', 'success');
+    renderUploadPipelineView(data);
   } catch (err) {
     console.error('Upload failed:', err);
-    resultEl.innerHTML = `<div class="error">Processing failed: ${escapeHtml(err.message)}</div>`;
-    showToast(`Processing failed: ${err.message}`, 'error');
+    resultEl.innerHTML = `<div class="error">Upload failed: ${escapeHtml(err.message)}</div>`;
+    showToast(`Upload failed: ${err.message}`, 'error');
   }
 }
 
 /**
- * Render the upload processing result.
+ * Fetch and refresh upload details.
  */
-function renderUploadResult(data) {
+async function refreshUploadDetails(uploadId) {
+  try {
+    const res = await fetch(`/api/figures/upload/${encodeURIComponent(uploadId)}`);
+    if (!res.ok) throw new Error('Failed to load upload details');
+
+    const data = await res.json();
+    data.original_image_data_uri = CURRENT_UPLOAD_DATA_URI;
+    renderUploadPipelineView(data);
+  } catch (err) {
+    console.error('Failed to refresh upload:', err);
+  }
+}
+
+/**
+ * Render the pipeline view for an uploaded image.
+ */
+function renderUploadPipelineView(data) {
   const resultEl = $('imageUploadResult');
   if (!resultEl) return;
 
-  const result = data.result || {};
-  const stage = data.stage || 'complete';
-  const figureType = result.figure_type || 'unknown';
-  const confidence = result.confidence != null ? `${Math.round(result.confidence * 100)}%` : '-';
+  const stages = data.stages || { uploaded: true, segmented: false, extracted: false };
+  const sam3 = data.sam3 || {};
+  const processing = data.processing || {};
+  const uploadId = data.upload_id;
 
-  // Build stage indicator
-  const stageLabel = stage === 'segmented' ? 'SAM3 Complete' : 'Fully Processed';
-  const stageClass = stage === 'segmented' ? 'stage-segmented' : 'stage-complete';
+  // Determine figure type and confidence
+  const figureType = processing.figure_type || sam3.figure_type || 'unknown';
+  const confidence = (processing.confidence ?? sam3.confidence) != null
+    ? `${Math.round((processing.confidence ?? sam3.confidence) * 100)}%`
+    : '-';
+
+  // Step states
+  const uploadDone = stages.uploaded !== false;
+  const segmentationDone = stages.segmented;
+  const extractionDone = stages.extracted;
+
+  // Timing info
+  const classificationTime = sam3.classification_duration_ms ? `${sam3.classification_duration_ms}ms` : '-';
+  const sam3Time = sam3.sam3_duration_ms ? `${sam3.sam3_duration_ms}ms` : '-';
 
   resultEl.innerHTML = `
-    <div class="upload-result">
-      <div class="upload-result-header">
-        <h4>Processing Result</h4>
-        <span class="upload-id">ID: ${data.upload_id}</span>
-        <span class="stage-badge ${stageClass}">${stageLabel}</span>
+    <div class="upload-pipeline-view">
+      <div class="upload-header">
+        <h4>Uploaded Image</h4>
+        <span class="upload-id">ID: ${uploadId}</span>
+        <button class="btn btn-icon" onclick="clearUpload()">×</button>
       </div>
 
-      <div class="upload-result-images">
-        <div class="result-image">
-          <h5>Original</h5>
-          <img src="${data.original_image_data_uri}" alt="Uploaded image" />
+      <div class="upload-content">
+        <div class="upload-image-preview">
+          <img src="${data.original_image_data_uri || `/api/figures/upload/${uploadId}/image/original`}"
+               alt="Uploaded image" class="original-image" />
+        </div>
+
+        <div class="pipeline-view">
+          <div class="pipeline-step step-classification ${segmentationDone ? 'step-complete' : 'step-pending'}">
+            <div class="step-header">
+              <span class="step-number">${segmentationDone ? '✓' : '1'}</span>
+              <span class="step-title">Classification</span>
+              <span class="step-time">${classificationTime}</span>
+            </div>
+            <div class="step-content">
+              ${segmentationDone ? `
+                <div class="step-result">
+                  <span class="type-badge type-${figureType}">${figureType}</span>
+                  <span class="confidence-label">Confidence: ${confidence}</span>
+                  ${sam3.direction ? `<span class="direction-label">Direction: ${sam3.direction}</span>` : ''}
+                </div>
+              ` : '<span class="no-data">Run SAM3 to classify</span>'}
+            </div>
+          </div>
+
+          <div class="pipeline-step step-segmentation ${segmentationDone ? 'step-complete' : 'step-pending'}" id="upload-step-segmentation">
+            <div class="step-header">
+              <span class="step-number">${segmentationDone ? '✓' : '2'}</span>
+              <span class="step-title">SAM3 Segmentation</span>
+              <span class="step-time">${sam3Time}</span>
+              ${!segmentationDone ? `
+                <button class="btn btn-sm btn-primary step-action" onclick="runUploadSegmentation('${uploadId}')">Run SAM3</button>
+              ` : `
+                <button class="btn btn-sm btn-secondary step-action" onclick="runUploadSegmentation('${uploadId}')" title="Re-run segmentation">Re-run</button>
+              `}
+            </div>
+            <div class="step-content">
+              ${segmentationDone ? `
+                <div class="step-result">
+                  <span class="shape-count">${sam3.shape_count || 0} shapes detected</span>
+                </div>
+                ${data.has_annotated_image ? `
+                  <img src="/api/figures/upload/${uploadId}/image/annotated"
+                       alt="Annotated figure"
+                       class="annotated-image"
+                       onerror="this.style.display='none'" />
+                ` : ''}
+              ` : '<span class="no-data">Run SAM3 to detect shapes</span>'}
+            </div>
+          </div>
+
+          <div class="pipeline-step step-mermaid ${extractionDone ? 'step-complete' : 'step-pending'}" id="upload-step-mermaid">
+            <div class="step-header">
+              <span class="step-number">${extractionDone ? '✓' : '3'}</span>
+              <span class="step-title">Mermaid Extraction</span>
+              ${segmentationDone && !extractionDone ? `
+                <button class="btn btn-sm btn-primary step-action" onclick="runUploadMermaidExtraction('${uploadId}')">Extract Mermaid</button>
+              ` : extractionDone ? `
+                <button class="btn btn-sm btn-secondary step-action" onclick="runUploadMermaidExtraction('${uploadId}')" title="Re-run extraction">Re-run</button>
+              ` : `
+                <button class="btn btn-sm btn-secondary step-action" disabled title="Run SAM3 first">Extract Mermaid</button>
+              `}
+            </div>
+            <div class="step-content">
+              ${extractionDone && processing.processed_content && figureType === 'flowchart' ? `
+                ${processing.intermediate_nodes ? `
+                  <details>
+                    <summary>Nodes (${(processing.intermediate_nodes || []).length}) / Edges (${(processing.intermediate_edges || []).length})</summary>
+                    <div class="structure-preview">
+                      <pre class="json-view">${JSON.stringify(processing.intermediate_nodes, null, 2)}</pre>
+                      <pre class="json-view">${JSON.stringify(processing.intermediate_edges, null, 2)}</pre>
+                    </div>
+                  </details>
+                ` : ''}
+                <pre class="mermaid-code">${escapeHtml(processing.processed_content)}</pre>
+              ` : extractionDone ? `
+                <span class="no-data">Mermaid diagram not available (figure type: ${figureType})</span>
+              ` : segmentationDone ? `
+                <span class="no-data">Click "Extract Mermaid" to generate diagram</span>
+              ` : `
+                <span class="no-data">Complete SAM3 segmentation first</span>
+              `}
+            </div>
+          </div>
         </div>
       </div>
 
-      <div class="upload-result-classification">
-        <span class="type-badge type-${figureType}">${figureType}</span>
-        <span class="confidence-label">Confidence: ${confidence}</span>
-        ${result.direction ? `<span class="direction-label">Direction: ${result.direction}</span>` : ''}
-      </div>
-
-      ${stage === 'segmented' && result.shape_positions ? `
-      <div class="upload-result-segmentation">
-        <h5>SAM3 Segmentation</h5>
-        <p class="shape-count">${result.shape_positions.length} shapes detected</p>
-        <div class="upload-result-actions">
-          <button class="btn btn-primary" onclick="continueUploadToMermaid()">Continue to Mermaid Extraction</button>
-        </div>
-      </div>
-      ` : ''}
-
-      ${result.description ? `
+      ${processing.description ? `
       <div class="upload-result-description">
         <h5>Description</h5>
-        <p>${escapeHtml(result.description)}</p>
-      </div>
-      ` : ''}
-
-      ${result.processed_content && figureType === 'flowchart' ? `
-      <div class="upload-result-mermaid">
-        <h5>Generated Mermaid</h5>
-        <pre class="mermaid-code">${escapeHtml(result.processed_content)}</pre>
-      </div>
-      ` : ''}
-
-      ${result.processing_notes ? `
-      <div class="upload-result-notes">
-        <h5>Notes</h5>
-        <p>${escapeHtml(result.processing_notes)}</p>
+        <p>${escapeHtml(processing.description)}</p>
       </div>
       ` : ''}
     </div>
@@ -698,11 +779,102 @@ function renderUploadResult(data) {
 }
 
 /**
- * Continue upload from segmentation to mermaid extraction.
- * Note: For uploads, we re-upload with full processing since we don't persist temp files.
+ * Run SAM3 segmentation on uploaded image.
  */
-function continueUploadToMermaid() {
-  showToast('For uploaded images, use "Full Process" mode to get mermaid output', 'info');
+async function runUploadSegmentation(uploadId) {
+  const stepEl = document.getElementById('upload-step-segmentation');
+  if (stepEl) {
+    stepEl.classList.remove('step-complete', 'step-pending');
+    stepEl.classList.add('step-running');
+    const btn = stepEl.querySelector('.step-action');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Running...';
+    }
+  }
+
+  try {
+    const res = await fetch(`/api/figures/upload/${encodeURIComponent(uploadId)}/segment`, {
+      method: 'POST',
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new Error(err.detail || 'Segmentation failed');
+    }
+
+    const data = await res.json();
+    showToast(`SAM3 complete: ${data.shape_count} shapes detected`, 'success');
+    refreshUploadDetails(uploadId);
+  } catch (err) {
+    console.error('Segmentation failed:', err);
+    showToast(`Segmentation failed: ${err.message}`, 'error');
+
+    if (stepEl) {
+      stepEl.classList.remove('step-running');
+      stepEl.classList.add('step-pending');
+      const btn = stepEl.querySelector('.step-action');
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Run SAM3';
+      }
+    }
+  }
+}
+
+/**
+ * Run mermaid extraction on uploaded image.
+ */
+async function runUploadMermaidExtraction(uploadId) {
+  const stepEl = document.getElementById('upload-step-mermaid');
+  if (stepEl) {
+    stepEl.classList.remove('step-complete', 'step-pending');
+    stepEl.classList.add('step-running');
+    const btn = stepEl.querySelector('.step-action');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Extracting...';
+    }
+  }
+
+  try {
+    const res = await fetch(`/api/figures/upload/${encodeURIComponent(uploadId)}/extract-mermaid`, {
+      method: 'POST',
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new Error(err.detail || 'Extraction failed');
+    }
+
+    showToast('Mermaid extraction complete', 'success');
+    refreshUploadDetails(uploadId);
+  } catch (err) {
+    console.error('Mermaid extraction failed:', err);
+    showToast(`Extraction failed: ${err.message}`, 'error');
+
+    if (stepEl) {
+      stepEl.classList.remove('step-running');
+      stepEl.classList.add('step-pending');
+      const btn = stepEl.querySelector('.step-action');
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Extract Mermaid';
+      }
+    }
+  }
+}
+
+/**
+ * Clear the current upload and reset the upload panel.
+ */
+function clearUpload() {
+  CURRENT_UPLOAD_ID = null;
+  CURRENT_UPLOAD_DATA_URI = null;
+  const resultEl = $('imageUploadResult');
+  if (resultEl) {
+    resultEl.innerHTML = '';
+  }
 }
 
 /**
@@ -723,4 +895,6 @@ window.closeFigureDetails = closeFigureDetails;
 window.reprocessFigure = reprocessFigure;
 window.runSegmentation = runSegmentation;
 window.runMermaidExtraction = runMermaidExtraction;
-window.continueUploadToMermaid = continueUploadToMermaid;
+window.runUploadSegmentation = runUploadSegmentation;
+window.runUploadMermaidExtraction = runUploadMermaidExtraction;
+window.clearUpload = clearUpload;
