@@ -8,9 +8,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
+
+if TYPE_CHECKING:
+    from src.figure_processing import FigureProcessor
+    from src.services.figure_processing_service import FigureProcessingService
 
 
 class FigureProcessorWrapper:
@@ -18,9 +22,10 @@ class FigureProcessorWrapper:
 
     def __init__(self) -> None:
         """Initialize the processor lazily to avoid import overhead."""
-        self._processor: Any | None = None
+        self._processor: FigureProcessor | None = None
+        self._service: FigureProcessingService | None = None
 
-    def _get_processor(self) -> Any:
+    def _get_processor(self) -> FigureProcessor:
         """Lazy-load the FigureProcessor from PolicyAsCode."""
         if self._processor is None:
             try:
@@ -35,12 +40,35 @@ class FigureProcessorWrapper:
                 ) from e
         return self._processor
 
+    def _get_service(self) -> FigureProcessingService:
+        """Lazy-load FigureProcessingService for SAM3 annotations.
+
+        The service is used as an adapter - its _prepare_sam3_annotations method
+        doesn't use the database session, so we can pass None.
+        """
+        if self._service is None:
+            try:
+                from src.services.figure_processing_service import (
+                    FigureProcessingService,
+                )
+
+                # Pass None for session - _prepare_sam3_annotations doesn't use it
+                self._service = FigureProcessingService(session=None)  # type: ignore[arg-type]
+                logger.info("FigureProcessingService initialized for SAM3 annotations")
+            except ImportError as e:
+                raise ImportError(
+                    "FigureProcessingService not available. Ensure PolicyAsCode is installed "
+                    "from the feature/figure-vision-pr5c-api-endpoints branch."
+                ) from e
+        return self._service
+
     def process_figure(
         self,
         image_path: str | Path,
         ocr_text: str = "",
         *,
         run_id: str | None = None,
+        text_positions: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Process a single figure image through the vision pipeline.
 
@@ -48,6 +76,7 @@ class FigureProcessorWrapper:
             image_path: Path to the figure image (PNG/JPEG)
             ocr_text: OCR text extracted from the figure (if available)
             run_id: Optional run identifier for tracking
+            text_positions: Text position data for SAM3 annotations
 
         Returns:
             Dict containing:
@@ -60,11 +89,68 @@ class FigureProcessorWrapper:
                 - step1_duration_ms: Classification time
                 - step2_duration_ms: Structure/Mermaid generation time
         """
+        from src.figure_processing import FigureProcessor as PolicyFigureProcessor
+        from src.figure_processing import FigureType
+        from src.figure_processing.classifier import FigureClassification
+
         processor = self._get_processor()
+        service = self._get_service()
+        image_path = Path(image_path)
+
+        # Classify first to determine if SAM3 annotations are needed
+        classification = processor.classify_figure(image_path, ocr_text=ocr_text)
+
+        shape_positions = None
+        processing_image_path = image_path
+
+        if classification.figure_type in PolicyFigureProcessor.FLOWCHART_TYPES:
+            # Detect flow direction for SAM3
+            direction = "LR"
+            try:
+                from src.prompts.figure_direction_prompt import detect_direction
+
+                direction_result = detect_direction(image_path)
+                direction = direction_result.direction.value
+                logger.debug(f"Detected flow direction: {direction}")
+            except Exception as e:
+                logger.warning(f"Direction detection failed, using default LR: {e}")
+
+            # Use service's SAM3 annotation method (doesn't need DB session)
+            try:
+                annotated_path, shape_positions, _ = service._prepare_sam3_annotations(
+                    image_path, text_positions, direction, run_id
+                )
+
+                if annotated_path and shape_positions:
+                    processing_image_path = annotated_path
+                    logger.info(
+                        f"SAM3 annotations prepared: {len(shape_positions)} shapes"
+                    )
+                else:
+                    # SAM3 didn't return positions - fall back to "other" type
+                    logger.warning("SAM3 returned no shape positions, treating as non-flowchart")
+                    classification = FigureClassification(
+                        figure_type=FigureType.OTHER,
+                        confidence=classification.confidence,
+                        reasoning="SAM3 annotation failed, treating as non-flowchart",
+                    )
+            except Exception as e:
+                # SAM3 failed - fall back to "other" type
+                logger.warning(f"SAM3 annotation failed: {e}, treating as non-flowchart")
+                classification = FigureClassification(
+                    figure_type=FigureType.OTHER,
+                    confidence=classification.confidence,
+                    reasoning=f"SAM3 annotation failed: {e}",
+                )
+
+        # Call processor with shape_positions (if flowchart) and force_type
         result = processor.process_figure(
-            image_path=Path(image_path),
+            image_path=processing_image_path,
             ocr_text=ocr_text,
+            shape_positions=shape_positions,
+            text_positions=text_positions,
             run_id=run_id,
+            force_type=classification.figure_type,
         )
         return result.model_dump()
 
@@ -94,6 +180,7 @@ class FigureProcessorWrapper:
         ocr_text: str = "",
         *,
         run_id: str | None = None,
+        text_positions: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Process a figure and save results to output directory.
 
@@ -107,6 +194,7 @@ class FigureProcessorWrapper:
             element_id: Unique identifier for the figure element
             ocr_text: OCR text from the figure
             run_id: Optional run identifier
+            text_positions: Text position data for SAM3 annotations
 
         Returns:
             Processing results dict with added 'output_paths' key
@@ -114,7 +202,9 @@ class FigureProcessorWrapper:
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        result = self.process_figure(image_path, ocr_text, run_id=run_id)
+        result = self.process_figure(
+            image_path, ocr_text, run_id=run_id, text_positions=text_positions
+        )
 
         # Save JSON results
         json_path = output_dir / f"{element_id}.json"
