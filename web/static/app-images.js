@@ -267,19 +267,35 @@ function renderFigurePipelineView(figure) {
   if (!detailsEl) return;
 
   const processing = figure.processing || {};
-  const figureType = processing.figure_type || 'unknown';
-  const confidence = processing.confidence != null ? `${Math.round(processing.confidence * 100)}%` : '-';
+  const stages = figure.stages || { segmented: false, extracted: false };
+  const sam3 = figure.sam3 || {};
   const provider = CURRENT_PROVIDER || 'azure/document_intelligence';
 
-  // Build pipeline steps
-  const step1Duration = processing.step1_duration_ms ? `${processing.step1_duration_ms}ms` : '-';
-  const step2Duration = processing.step2_duration_ms ? `${processing.step2_duration_ms}ms` : '-';
+  // Determine figure type and confidence from best available source
+  const figureType = processing.figure_type || sam3.figure_type || 'unknown';
+  const confidence = (processing.confidence ?? sam3.confidence) != null
+    ? `${Math.round((processing.confidence ?? sam3.confidence) * 100)}%`
+    : '-';
+
+  // Build pipeline steps with states
+  const classificationDone = stages.segmented || !!processing.figure_type;
+  const segmentationDone = stages.segmented;
+  const extractionDone = stages.extracted;
+
+  // Timing info
+  const classificationTime = sam3.classification_duration_ms
+    ? `${sam3.classification_duration_ms}ms`
+    : processing.step1_duration_ms
+      ? `${processing.step1_duration_ms}ms`
+      : '-';
+  const sam3Time = sam3.sam3_duration_ms ? `${sam3.sam3_duration_ms}ms` : '-';
+  const extractionTime = processing.step2_duration_ms ? `${processing.step2_duration_ms}ms` : '-';
 
   detailsEl.innerHTML = `
     <div class="figure-details-header">
       <h3>Figure: ${truncateId(figure.element_id)}</h3>
       <div class="figure-details-actions">
-        <button class="btn btn-secondary" onclick="reprocessFigure('${figure.element_id}')">Reprocess</button>
+        <button class="btn btn-secondary" onclick="reprocessFigure('${figure.element_id}')" title="Run full pipeline">Reprocess</button>
         <a href="/api/figures/${encodeURIComponent(CURRENT_SLUG)}/${encodeURIComponent(figure.element_id)}/viewer?provider=${encodeURIComponent(provider)}"
            target="_blank" class="btn btn-secondary">Open Viewer</a>
         <button class="btn btn-icon" onclick="closeFigureDetails()">×</button>
@@ -287,64 +303,81 @@ function renderFigurePipelineView(figure) {
     </div>
 
     <div class="pipeline-view">
-      <div class="pipeline-step step-classification">
+      <div class="pipeline-step step-classification ${classificationDone ? 'step-complete' : 'step-pending'}">
         <div class="step-header">
-          <span class="step-number">1</span>
+          <span class="step-number">${classificationDone ? '✓' : '1'}</span>
           <span class="step-title">Classification</span>
-          <span class="step-time">${step1Duration}</span>
+          <span class="step-time">${classificationTime}</span>
         </div>
         <div class="step-content">
-          <div class="step-result">
-            <span class="type-badge type-${figureType}">${figureType}</span>
-            <span class="confidence-label">Confidence: ${confidence}</span>
-          </div>
+          ${classificationDone ? `
+            <div class="step-result">
+              <span class="type-badge type-${figureType}">${figureType}</span>
+              <span class="confidence-label">Confidence: ${confidence}</span>
+              ${sam3.direction ? `<span class="direction-label">Direction: ${sam3.direction}</span>` : ''}
+            </div>
+          ` : '<span class="no-data">Not yet classified</span>'}
         </div>
       </div>
 
-      <div class="pipeline-step step-segmentation">
+      <div class="pipeline-step step-segmentation ${segmentationDone ? 'step-complete' : 'step-pending'}" id="step-segmentation">
         <div class="step-header">
-          <span class="step-number">2</span>
-          <span class="step-title">Segmentation (SAM3)</span>
+          <span class="step-number">${segmentationDone ? '✓' : '2'}</span>
+          <span class="step-title">SAM3 Segmentation</span>
+          <span class="step-time">${sam3Time}</span>
+          ${!segmentationDone ? `
+            <button class="btn btn-sm btn-primary step-action" onclick="runSegmentation('${figure.element_id}')">Run SAM3</button>
+          ` : `
+            <button class="btn btn-sm btn-secondary step-action" onclick="runSegmentation('${figure.element_id}')" title="Re-run segmentation">Re-run</button>
+          `}
         </div>
         <div class="step-content">
-          ${figure.annotated_image_path ? `
-            <img src="/api/figures/${encodeURIComponent(CURRENT_SLUG)}/${encodeURIComponent(figure.element_id)}/image/annotated?provider=${encodeURIComponent(provider)}"
-                 alt="Annotated figure"
-                 class="annotated-image"
-                 onerror="this.parentElement.innerHTML='<span class=\\'no-image\\'>Annotated image not available</span>'" />
-          ` : '<span class="no-data">Annotated image not available</span>'}
+          ${segmentationDone ? `
+            <div class="step-result">
+              <span class="shape-count">${sam3.shape_count || 0} shapes detected</span>
+            </div>
+            ${figure.annotated_image_path ? `
+              <img src="/api/figures/${encodeURIComponent(CURRENT_SLUG)}/${encodeURIComponent(figure.element_id)}/image/annotated?provider=${encodeURIComponent(provider)}"
+                   alt="Annotated figure"
+                   class="annotated-image"
+                   onerror="this.parentElement.innerHTML='<span class=\\'no-image\\'>Annotated image not available</span>'" />
+            ` : '<span class="no-data">Annotated image not available</span>'}
+          ` : '<span class="no-data">Run SAM3 to detect shapes</span>'}
         </div>
       </div>
 
-      <div class="pipeline-step step-structure">
+      <div class="pipeline-step step-mermaid ${extractionDone ? 'step-complete' : 'step-pending'}" id="step-mermaid">
         <div class="step-header">
-          <span class="step-number">3</span>
-          <span class="step-title">Structure Extraction</span>
-          <span class="step-time">${step2Duration}</span>
+          <span class="step-number">${extractionDone ? '✓' : '3'}</span>
+          <span class="step-title">Mermaid Extraction</span>
+          <span class="step-time">${extractionTime}</span>
+          ${segmentationDone && !extractionDone ? `
+            <button class="btn btn-sm btn-primary step-action" onclick="runMermaidExtraction('${figure.element_id}')">Extract Mermaid</button>
+          ` : extractionDone ? `
+            <button class="btn btn-sm btn-secondary step-action" onclick="runMermaidExtraction('${figure.element_id}')" title="Re-run extraction">Re-run</button>
+          ` : `
+            <button class="btn btn-sm btn-secondary step-action" disabled title="Run SAM3 first">Extract Mermaid</button>
+          `}
         </div>
         <div class="step-content">
-          ${processing.intermediate_nodes ? `
-            <details>
-              <summary>Nodes (${(processing.intermediate_nodes || []).length})</summary>
-              <pre class="json-view">${JSON.stringify(processing.intermediate_nodes, null, 2)}</pre>
-            </details>
-            <details>
-              <summary>Edges (${(processing.intermediate_edges || []).length})</summary>
-              <pre class="json-view">${JSON.stringify(processing.intermediate_edges, null, 2)}</pre>
-            </details>
-          ` : '<span class="no-data">Structure data not available</span>'}
-        </div>
-      </div>
-
-      <div class="pipeline-step step-mermaid">
-        <div class="step-header">
-          <span class="step-number">4</span>
-          <span class="step-title">Mermaid Generation</span>
-        </div>
-        <div class="step-content">
-          ${processing.processed_content && figureType === 'flowchart' ? `
+          ${extractionDone && processing.processed_content && figureType === 'flowchart' ? `
+            ${processing.intermediate_nodes ? `
+              <details>
+                <summary>Nodes (${(processing.intermediate_nodes || []).length}) / Edges (${(processing.intermediate_edges || []).length})</summary>
+                <div class="structure-preview">
+                  <pre class="json-view">${JSON.stringify(processing.intermediate_nodes, null, 2)}</pre>
+                  <pre class="json-view">${JSON.stringify(processing.intermediate_edges, null, 2)}</pre>
+                </div>
+              </details>
+            ` : ''}
             <pre class="mermaid-code">${escapeHtml(processing.processed_content)}</pre>
-          ` : '<span class="no-data">Mermaid diagram not available (only for flowcharts)</span>'}
+          ` : extractionDone ? `
+            <span class="no-data">Mermaid diagram not available (figure type: ${figureType})</span>
+          ` : segmentationDone ? `
+            <span class="no-data">Click "Extract Mermaid" to generate diagram</span>
+          ` : `
+            <span class="no-data">Complete SAM3 segmentation first</span>
+          `}
         </div>
       </div>
     </div>
@@ -370,6 +403,107 @@ function renderFigurePipelineView(figure) {
     </div>
     ` : ''}
   `;
+}
+
+/**
+ * Run SAM3 segmentation on a figure (stage 1).
+ */
+async function runSegmentation(elementId) {
+  const stepEl = document.getElementById('step-segmentation');
+  if (stepEl) {
+    stepEl.classList.remove('step-complete', 'step-pending');
+    stepEl.classList.add('step-running');
+    // Update button to show loading
+    const btn = stepEl.querySelector('.step-action');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Running...';
+    }
+  }
+
+  try {
+    const provider = CURRENT_PROVIDER || 'azure/document_intelligence';
+    const res = await fetch(
+      `/api/figures/${encodeURIComponent(CURRENT_SLUG)}/${encodeURIComponent(elementId)}/segment?provider=${encodeURIComponent(provider)}`,
+      { method: 'POST' }
+    );
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new Error(err.detail || 'Segmentation failed');
+    }
+
+    const data = await res.json();
+    showToast(`SAM3 complete: ${data.shape_count} shapes detected`, 'success');
+
+    // Refresh the figure details
+    openFigureDetails(elementId);
+    loadFiguresForCurrentRun();
+  } catch (err) {
+    console.error('Segmentation failed:', err);
+    showToast(`Segmentation failed: ${err.message}`, 'error');
+
+    // Reset step state
+    if (stepEl) {
+      stepEl.classList.remove('step-running');
+      stepEl.classList.add('step-pending');
+      const btn = stepEl.querySelector('.step-action');
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Run SAM3';
+      }
+    }
+  }
+}
+
+/**
+ * Run mermaid extraction on a figure (stage 2).
+ */
+async function runMermaidExtraction(elementId) {
+  const stepEl = document.getElementById('step-mermaid');
+  if (stepEl) {
+    stepEl.classList.remove('step-complete', 'step-pending');
+    stepEl.classList.add('step-running');
+    // Update button to show loading
+    const btn = stepEl.querySelector('.step-action');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Extracting...';
+    }
+  }
+
+  try {
+    const provider = CURRENT_PROVIDER || 'azure/document_intelligence';
+    const res = await fetch(
+      `/api/figures/${encodeURIComponent(CURRENT_SLUG)}/${encodeURIComponent(elementId)}/extract-mermaid?provider=${encodeURIComponent(provider)}`,
+      { method: 'POST' }
+    );
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new Error(err.detail || 'Extraction failed');
+    }
+
+    showToast('Mermaid extraction complete', 'success');
+
+    // Refresh the figure details
+    openFigureDetails(elementId);
+    loadFiguresForCurrentRun();
+  } catch (err) {
+    console.error('Mermaid extraction failed:', err);
+    showToast(`Extraction failed: ${err.message}`, 'error');
+
+    // Reset step state
+    if (stepEl) {
+      stepEl.classList.remove('step-running');
+      stepEl.classList.add('step-pending');
+      const btn = stepEl.querySelector('.step-action');
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Extract Mermaid';
+      }
+    }
+  }
 }
 
 /**
@@ -500,14 +634,20 @@ function renderUploadResult(data) {
   if (!resultEl) return;
 
   const result = data.result || {};
+  const stage = data.stage || 'complete';
   const figureType = result.figure_type || 'unknown';
   const confidence = result.confidence != null ? `${Math.round(result.confidence * 100)}%` : '-';
+
+  // Build stage indicator
+  const stageLabel = stage === 'segmented' ? 'SAM3 Complete' : 'Fully Processed';
+  const stageClass = stage === 'segmented' ? 'stage-segmented' : 'stage-complete';
 
   resultEl.innerHTML = `
     <div class="upload-result">
       <div class="upload-result-header">
         <h4>Processing Result</h4>
         <span class="upload-id">ID: ${data.upload_id}</span>
+        <span class="stage-badge ${stageClass}">${stageLabel}</span>
       </div>
 
       <div class="upload-result-images">
@@ -520,7 +660,18 @@ function renderUploadResult(data) {
       <div class="upload-result-classification">
         <span class="type-badge type-${figureType}">${figureType}</span>
         <span class="confidence-label">Confidence: ${confidence}</span>
+        ${result.direction ? `<span class="direction-label">Direction: ${result.direction}</span>` : ''}
       </div>
+
+      ${stage === 'segmented' && result.shape_positions ? `
+      <div class="upload-result-segmentation">
+        <h5>SAM3 Segmentation</h5>
+        <p class="shape-count">${result.shape_positions.length} shapes detected</p>
+        <div class="upload-result-actions">
+          <button class="btn btn-primary" onclick="continueUploadToMermaid()">Continue to Mermaid Extraction</button>
+        </div>
+      </div>
+      ` : ''}
 
       ${result.description ? `
       <div class="upload-result-description">
@@ -547,6 +698,14 @@ function renderUploadResult(data) {
 }
 
 /**
+ * Continue upload from segmentation to mermaid extraction.
+ * Note: For uploads, we re-upload with full processing since we don't persist temp files.
+ */
+function continueUploadToMermaid() {
+  showToast('For uploaded images, use "Full Process" mode to get mermaid output', 'info');
+}
+
+/**
  * Escape HTML special characters.
  */
 function escapeHtml(text) {
@@ -562,3 +721,6 @@ window.onImagesTabActivated = onImagesTabActivated;
 window.loadFiguresForCurrentRun = loadFiguresForCurrentRun;
 window.closeFigureDetails = closeFigureDetails;
 window.reprocessFigure = reprocessFigure;
+window.runSegmentation = runSegmentation;
+window.runMermaidExtraction = runMermaidExtraction;
+window.continueUploadToMermaid = continueUploadToMermaid;
