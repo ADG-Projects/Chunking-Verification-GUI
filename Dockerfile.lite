@@ -17,11 +17,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Minimal system dependencies (only Poppler for PDF rendering)
+# Minimal system dependencies (Poppler for PDF rendering, Node.js for mermaid-cli)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         curl \
         poppler-utils \
+        nodejs \
+        npm \
         && rm -rf /var/lib/apt/lists/*
 
 # Install uv
@@ -33,6 +35,9 @@ RUN uv sync --frozen --no-dev
 
 # Copy the rest of the application
 COPY . .
+
+# Install Node.js dependencies (mermaid-cli for diagram validation)
+RUN npm install --omit=dev
 
 # Ensure a dotenv file is present
 RUN if [ -f .env ]; then \

@@ -20,9 +20,12 @@ Two helper scripts exist today:
 
 ```bash
 uv sync
+npm install
 ```
 
 `uv sync` creates a `.venv` in the project root and installs all required packages, including `unstructured[pdf]` and `azure-ai-documentintelligence`.
+
+`npm install` installs Node.js dependencies (currently `@mermaid-js/mermaid-cli` for Mermaid diagram validation in figure processing).
 
 ### Unstructured Partition (API) credentials (Legacy)
 
@@ -181,6 +184,7 @@ Quickstart:
 
 ```bash
 uv sync
+npm install
 uv run uvicorn main:app --host 127.0.0.1 --port 8765
 # open http://127.0.0.1:8765/
 ```

@@ -23,6 +23,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # Install system dependencies needed for hi_res layout (OpenCV, Tesseract, Poppler, HEIF)
+# Also install Node.js for mermaid-cli (diagram validation)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         build-essential \
@@ -37,6 +38,8 @@ RUN apt-get update && \
         libxext6 \
         libxrender1 \
         libheif1 \
+        nodejs \
+        npm \
         && rm -rf /var/lib/apt/lists/*
 
 # Install uv so all Python commands use the same resolver/runtime
@@ -61,6 +64,9 @@ RUN if [ "$WITH_SAM3_LOCAL" = "1" ]; then \
 
 # Copy the rest of the application after deps to preserve cached layers
 COPY . .
+
+# Install Node.js dependencies (mermaid-cli for diagram validation)
+RUN npm install --omit=dev
 
 # Ensure a dotenv file is present inside the image (use example if none provided)
 RUN if [ -f .env ]; then \
