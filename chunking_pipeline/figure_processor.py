@@ -36,10 +36,20 @@ class FigureProcessorWrapper:
         """Lazy-load the FigureProcessor from PolicyAsCode."""
         if self._processor is None:
             try:
+                from src.config.settings import settings
                 from src.figure_processing import FigureProcessor
+                from src.processors.structured_client import create_client
 
-                self._processor = FigureProcessor()
-                logger.info("FigureProcessor initialized from PolicyAsCode")
+                # Create separate client for mermaid generation (text-only with no reasoning)
+                mermaid_client = create_client(
+                    model=settings.mermaid_model,
+                    context="FigureProcessor_mermaid"
+                )
+
+                self._processor = FigureProcessor(
+                    mermaid_client=mermaid_client
+                )
+                logger.info("FigureProcessor initialized from PolicyAsCode with separate mermaid client")
             except ImportError as e:
                 raise ImportError(
                     "FigureProcessor not available. Ensure PolicyAsCode is installed "
