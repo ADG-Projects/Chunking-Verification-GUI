@@ -347,25 +347,53 @@ function initCytoscapeDiagram(containerId, mermaidCode, shapePositions) {
     shapePositions: shapePositions
   });
 
-  // Calculate a scale factor based on the spread of SAM3 positions
-  // We want positions to be spread out enough that nodes don't overlap
-  // Use a virtual coordinate space that's larger than the container
-  const VIRTUAL_SCALE = 1500;  // Virtual coordinate space size
+  // Calculate aspect ratio from shape positions to preserve original image proportions
+  // SAM3 bbox coordinates are normalized (0-1) so we need to infer aspect ratio
+  const BASE_SCALE = 1000;  // Base scale factor
+  let scaleX = BASE_SCALE;
+  let scaleY = BASE_SCALE;
 
   if (shapePositions && shapePositions.length > 0) {
+    // Calculate bounding box of all shapes to infer aspect ratio
+    let minX = 1, maxX = 0, minY = 1, maxY = 0;
+    for (const shape of shapePositions) {
+      if (shape.bbox && shape.bbox.length === 4) {
+        const [x1, y1, x2, y2] = shape.bbox;
+        minX = Math.min(minX, x1);
+        maxX = Math.max(maxX, x2);
+        minY = Math.min(minY, y1);
+        maxY = Math.max(maxY, y2);
+      }
+    }
+    // Use the spread of positions to determine aspect ratio
+    const spreadX = maxX - minX || 1;
+    const spreadY = maxY - minY || 1;
+    const aspectRatio = spreadX / spreadY;
+
+    // Scale so the larger dimension uses BASE_SCALE
+    if (aspectRatio > 1) {
+      // Wider than tall
+      scaleX = BASE_SCALE;
+      scaleY = BASE_SCALE / aspectRatio;
+    } else {
+      // Taller than wide
+      scaleX = BASE_SCALE * aspectRatio;
+      scaleY = BASE_SCALE;
+    }
+    console.log('Aspect ratio calculation:', { spreadX, spreadY, aspectRatio, scaleX, scaleY });
+
     for (const node of nodes) {
       const shape = shapePositions.find(s => s.id === node.data.id);
       if (shape && shape.bbox && shape.bbox.length === 4) {
         const [x1, y1, x2, y2] = shape.bbox;
-        // Scale normalized bbox (0-1) to virtual coordinate space
-        // This preserves relative positions, then cy.fit() scales to container
+        // Scale normalized bbox preserving aspect ratio
         node.position = {
-          x: ((x1 + x2) / 2) * VIRTUAL_SCALE,
-          y: ((y1 + y2) / 2) * VIRTUAL_SCALE
+          x: ((x1 + x2) / 2) * scaleX,
+          y: ((y1 + y2) / 2) * scaleY
         };
-        // Calculate node dimensions from bbox (also in virtual space)
-        const bboxWidth = (x2 - x1) * VIRTUAL_SCALE;
-        const bboxHeight = (y2 - y1) * VIRTUAL_SCALE;
+        // Calculate node dimensions from bbox (also scaled)
+        const bboxWidth = (x2 - x1) * scaleX;
+        const bboxHeight = (y2 - y1) * scaleY;
         // Store dimensions for per-node sizing (with minimum sizes)
         node.data.nodeWidth = Math.max(bboxWidth * 0.9, 60);
         node.data.nodeHeight = Math.max(bboxHeight * 0.9, 30);
