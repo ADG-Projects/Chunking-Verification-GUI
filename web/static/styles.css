@@ -3900,6 +3900,72 @@ body.drawer-open #right-metrics {
   max-height: 150px;
 }
 
+/* Action Detection Step */
+.edge-count {
+  font-size: 11px;
+  color: var(--text-primary);
+  background: var(--color-purple);
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  font-weight: 500;
+  margin-left: auto;
+}
+
+.edge-details {
+  font-size: 12px;
+}
+
+.edge-details summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-weight: 500;
+  padding: 4px 0;
+}
+
+.edge-details summary:hover {
+  color: var(--text-primary);
+}
+
+.edge-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.edge-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--surface-glass-active);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.edge-from,
+.edge-to {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.edge-arrow {
+  color: var(--color-purple);
+  font-weight: 600;
+}
+
+.edge-label {
+  color: var(--text-secondary);
+  font-style: italic;
+  margin-left: auto;
+  padding: 2px 6px;
+  background: var(--surface-glass);
+  border-radius: var(--radius-sm);
+}
+
 /* Upload stage badges */
 .stage-badge {
   font-size: 10px;

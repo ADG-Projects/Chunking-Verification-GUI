@@ -403,6 +403,8 @@ function renderFigurePipelineView(figure) {
           `}
         </div>
       </div>
+
+      ${renderActionDetectionStep(processing.intermediate_edges, extractionDone)}
     </div>
 
     ${extractionDone && processing.processed_content && figureType === 'flowchart' ? `
@@ -804,6 +806,8 @@ function renderUploadPipelineView(data) {
               `}
             </div>
           </div>
+
+          ${renderActionDetectionStep(processing.intermediate_edges, extractionDone)}
         </div>
       </div>
 
@@ -951,6 +955,46 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+/**
+ * Render the Action Detection pipeline step showing detected edges/arrows.
+ */
+function renderActionDetectionStep(edges, extractionDone) {
+  const edgeList = edges || [];
+  const edgeCount = edgeList.length;
+  const hasEdges = edgeCount > 0;
+
+  return `
+    <div class="pipeline-step step-action-detection ${extractionDone ? 'step-complete' : 'step-pending'}" id="step-action-detection">
+      <div class="step-header">
+        <span class="step-number">${extractionDone ? '✓' : '4'}</span>
+        <span class="step-title">Action Detection</span>
+        ${hasEdges ? `<span class="edge-count">${edgeCount} edge${edgeCount !== 1 ? 's' : ''}</span>` : ''}
+      </div>
+      <div class="step-content">
+        ${extractionDone ? (hasEdges ? `
+          <details class="edge-details">
+            <summary>Detected Edges (${edgeCount})</summary>
+            <ul class="edge-list">
+              ${edgeList.map((edge) => `
+                <li class="edge-item">
+                  <span class="edge-from">${escapeHtml(edge.from)}</span>
+                  <span class="edge-arrow">→</span>
+                  <span class="edge-to">${escapeHtml(edge.to)}</span>
+                  ${edge.label ? `<span class="edge-label">"${escapeHtml(edge.label)}"</span>` : ''}
+                </li>
+              `).join('')}
+            </ul>
+          </details>
+        ` : `
+          <span class="no-data">No edges detected in this figure</span>
+        `) : `
+          <span class="no-data">Run Mermaid extraction to detect edges</span>
+        `}
+      </div>
+    </div>
+  `;
 }
 
 // =============================================================================
