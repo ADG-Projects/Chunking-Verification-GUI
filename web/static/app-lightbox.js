@@ -15,6 +15,7 @@ let lightboxDragStart = { x: 0, y: 0 };
 function openImageLightbox(src, alt) {
   // Create lightbox if it doesn't exist
   let lightbox = document.getElementById('imageLightbox');
+
   if (!lightbox) {
     lightbox = document.createElement('div');
     lightbox.id = 'imageLightbox';
