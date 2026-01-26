@@ -162,6 +162,9 @@ async function runUploadClassification(uploadId) {
     // Store classification result for UI updates
     window.CURRENT_UPLOAD_CLASSIFICATION = data;
 
+    // Refresh UI to show completion immediately
+    refreshUploadDetails(uploadId);
+
     return data;
   } catch (err) {
     console.error('Classification failed:', err);
@@ -200,6 +203,9 @@ async function runUploadDirectionDetection(uploadId) {
 
     // Store direction result for UI updates
     window.CURRENT_UPLOAD_DIRECTION = data;
+
+    // Refresh UI to show completion immediately
+    refreshUploadDetails(uploadId);
 
     return data;
   } catch (err) {
