@@ -318,6 +318,77 @@ async def api_figure_upload(
     }
 
 
+@router.get("/api/uploads")
+def api_uploads_list() -> Dict[str, Any]:
+    """List all uploaded images with their processing status.
+
+    Returns uploads sorted by date (newest first).
+    """
+    uploads = []
+
+    if not UPLOADS_DIR.exists():
+        return {"uploads": [], "total": 0}
+
+    for upload_dir in UPLOADS_DIR.iterdir():
+        if not upload_dir.is_dir():
+            continue
+
+        upload_id = upload_dir.name
+        metadata = _load_upload_metadata(upload_id)
+        if not metadata:
+            continue
+
+        # Load processing results if available
+        sam3_result = None
+        sam3_path = upload_dir / "sam3.json"
+        if sam3_path.exists():
+            try:
+                with sam3_path.open("r", encoding="utf-8") as fh:
+                    sam3_result = json.load(fh)
+            except (json.JSONDecodeError, IOError):
+                pass
+
+        proc_result = None
+        proc_path = upload_dir / "result.json"
+        if proc_path.exists():
+            try:
+                with proc_path.open("r", encoding="utf-8") as fh:
+                    proc_result = json.load(fh)
+            except (json.JSONDecodeError, IOError):
+                pass
+
+        # Determine figure type and confidence
+        figure_type = None
+        confidence = None
+        if proc_result:
+            figure_type = proc_result.get("figure_type")
+            confidence = proc_result.get("confidence")
+        elif sam3_result:
+            figure_type = sam3_result.get("figure_type")
+            confidence = sam3_result.get("confidence")
+
+        # Determine stages
+        stages = {
+            "uploaded": True,
+            "segmented": sam3_result is not None,
+            "extracted": proc_result is not None,
+        }
+
+        uploads.append({
+            "upload_id": upload_id,
+            "filename": metadata.get("filename"),
+            "uploaded_at": metadata.get("uploaded_at"),
+            "figure_type": figure_type,
+            "confidence": confidence,
+            "stages": stages,
+        })
+
+    # Sort by upload date (newest first)
+    uploads.sort(key=lambda x: x.get("uploaded_at") or "", reverse=True)
+
+    return {"uploads": uploads, "total": len(uploads)}
+
+
 @router.get("/api/figures/upload/{upload_id}")
 def api_upload_detail(upload_id: str) -> Dict[str, Any]:
     """Get details for an uploaded image including processing status."""
