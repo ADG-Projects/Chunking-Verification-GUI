@@ -97,6 +97,7 @@ curl http://localhost:8765/healthz
 - Naming: `snake_case` for functions, `UPPER_SNAKE_CASE` for constants, `kebab-case` for output JSON artifacts
 - No "test" in filenames unless they are true pytest modules
 - Favor explicit helper functions over inlined comprehensions when parsing structured payloads
+- **No pre-commit hooks** in this project — do not run or suggest running pre-commit
 
 ## Validation & Testing
 
