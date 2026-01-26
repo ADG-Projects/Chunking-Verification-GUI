@@ -338,6 +338,26 @@ def api_uploads_list() -> Dict[str, Any]:
         if not metadata:
             continue
 
+        # Load classification result if available
+        classification_result = None
+        classification_path = upload_dir / "classification.json"
+        if classification_path.exists():
+            try:
+                with classification_path.open("r", encoding="utf-8") as fh:
+                    classification_result = json.load(fh)
+            except (json.JSONDecodeError, IOError):
+                pass
+
+        # Load direction result if available
+        direction_result = None
+        direction_path = upload_dir / "direction.json"
+        if direction_path.exists():
+            try:
+                with direction_path.open("r", encoding="utf-8") as fh:
+                    direction_result = json.load(fh)
+            except (json.JSONDecodeError, IOError):
+                pass
+
         # Load processing results if available
         sam3_result = None
         sam3_path = upload_dir / "sam3.json"
@@ -357,7 +377,7 @@ def api_uploads_list() -> Dict[str, Any]:
             except (json.JSONDecodeError, IOError):
                 pass
 
-        # Determine figure type and confidence
+        # Determine figure type and confidence (prefer latest result)
         figure_type = None
         confidence = None
         if proc_result:
@@ -366,10 +386,22 @@ def api_uploads_list() -> Dict[str, Any]:
         elif sam3_result:
             figure_type = sam3_result.get("figure_type")
             confidence = sam3_result.get("confidence")
+        elif classification_result:
+            figure_type = classification_result.get("figure_type")
+            confidence = classification_result.get("confidence")
+
+        # Get direction
+        direction = None
+        if direction_result:
+            direction = direction_result.get("direction")
+        elif sam3_result:
+            direction = sam3_result.get("direction")
 
         # Determine stages
         stages = {
             "uploaded": True,
+            "classified": classification_result is not None,
+            "direction_detected": direction_result is not None,
             "segmented": sam3_result is not None,
             "extracted": proc_result is not None,
         }
@@ -380,6 +412,7 @@ def api_uploads_list() -> Dict[str, Any]:
             "uploaded_at": metadata.get("uploaded_at"),
             "figure_type": figure_type,
             "confidence": confidence,
+            "direction": direction,
             "stages": stages,
         })
 
@@ -398,6 +431,26 @@ def api_upload_detail(upload_id: str) -> Dict[str, Any]:
 
     upload_dir = _get_upload_dir(upload_id)
 
+    # Load classification result if available
+    classification_result = None
+    classification_path = upload_dir / "classification.json"
+    if classification_path.exists():
+        try:
+            with classification_path.open("r", encoding="utf-8") as fh:
+                classification_result = json.load(fh)
+        except (json.JSONDecodeError, IOError):
+            pass
+
+    # Load direction result if available
+    direction_result = None
+    direction_path = upload_dir / "direction.json"
+    if direction_path.exists():
+        try:
+            with direction_path.open("r", encoding="utf-8") as fh:
+                direction_result = json.load(fh)
+        except (json.JSONDecodeError, IOError):
+            pass
+
     # Check processing stages
     sam3_result = None
     sam3_path = upload_dir / "sam3.json"
@@ -414,6 +467,8 @@ def api_upload_detail(upload_id: str) -> Dict[str, Any]:
     # Determine stages
     stages = {
         "uploaded": True,
+        "classified": classification_result is not None,
+        "direction_detected": direction_result is not None,
         "segmented": sam3_result is not None,
         "extracted": proc_result is not None,
     }
@@ -424,6 +479,20 @@ def api_upload_detail(upload_id: str) -> Dict[str, Any]:
         "filename": metadata.get("filename"),
         "stages": stages,
     }
+
+    if classification_result:
+        result["classification"] = {
+            "figure_type": classification_result.get("figure_type"),
+            "confidence": classification_result.get("confidence"),
+            "reasoning": classification_result.get("reasoning"),
+            "classification_duration_ms": classification_result.get("classification_duration_ms"),
+        }
+
+    if direction_result:
+        result["direction"] = {
+            "direction": direction_result.get("direction"),
+            "direction_duration_ms": direction_result.get("direction_duration_ms"),
+        }
 
     if sam3_result:
         result["sam3"] = {
@@ -478,6 +547,111 @@ def api_upload_image_annotated(upload_id: str) -> FileResponse:
         raise HTTPException(status_code=404, detail="Annotated image not available")
 
     return FileResponse(annotated_path, media_type="image/png")
+
+
+@router.post("/api/figures/upload/{upload_id}/classify")
+def api_upload_classify(upload_id: str) -> Dict[str, Any]:
+    """Run classification only on an uploaded image (fast, automatic step).
+
+    This is called automatically after upload to quickly determine the figure type
+    without running the expensive SAM3 segmentation.
+    """
+    metadata = _load_upload_metadata(upload_id)
+    if not metadata:
+        raise HTTPException(status_code=404, detail=f"Upload {upload_id} not found")
+
+    image_path = Path(metadata["image_path"])
+    if not image_path.exists():
+        raise HTTPException(status_code=404, detail="Image file not found")
+
+    upload_dir = _get_upload_dir(upload_id)
+
+    try:
+        from chunking_pipeline.figure_processor import get_processor
+
+        processor = get_processor()
+        result = processor.classify_only(image_path, ocr_text="", run_id=f"upload-{upload_id}")
+
+        # Save classification results
+        classification_data = {
+            "figure_type": result.get("figure_type"),
+            "confidence": result.get("confidence"),
+            "reasoning": result.get("reasoning"),
+            "classification_duration_ms": result.get("classification_duration_ms"),
+            "classified_at": datetime.now(timezone.utc).isoformat(),
+        }
+        classification_path = upload_dir / "classification.json"
+        with classification_path.open("w", encoding="utf-8") as fh:
+            json.dump(classification_data, fh, ensure_ascii=False, indent=2)
+
+        return {
+            "status": "ok",
+            "stage": "classified",
+            "upload_id": upload_id,
+            "figure_type": result.get("figure_type"),
+            "confidence": result.get("confidence"),
+            "reasoning": result.get("reasoning"),
+            "classification_duration_ms": result.get("classification_duration_ms"),
+        }
+    except ImportError as e:
+        logger.exception(f"Import error during classification: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Figure processing import error: {e}",
+        )
+    except Exception as e:
+        logger.exception(f"Failed to classify upload {upload_id}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/figures/upload/{upload_id}/detect-direction")
+def api_upload_detect_direction(upload_id: str) -> Dict[str, Any]:
+    """Detect flow direction for flowcharts (auto step after classification).
+
+    This is called automatically after classification if the figure is a flowchart.
+    """
+    metadata = _load_upload_metadata(upload_id)
+    if not metadata:
+        raise HTTPException(status_code=404, detail=f"Upload {upload_id} not found")
+
+    image_path = Path(metadata["image_path"])
+    if not image_path.exists():
+        raise HTTPException(status_code=404, detail="Image file not found")
+
+    upload_dir = _get_upload_dir(upload_id)
+
+    try:
+        from chunking_pipeline.figure_processor import get_processor
+
+        processor = get_processor()
+        result = processor.detect_direction_only(image_path, run_id=f"upload-{upload_id}")
+
+        # Save direction results
+        direction_data = {
+            "direction": result.get("direction"),
+            "direction_duration_ms": result.get("direction_duration_ms"),
+            "detected_at": datetime.now(timezone.utc).isoformat(),
+        }
+        direction_path = upload_dir / "direction.json"
+        with direction_path.open("w", encoding="utf-8") as fh:
+            json.dump(direction_data, fh, ensure_ascii=False, indent=2)
+
+        return {
+            "status": "ok",
+            "stage": "direction_detected",
+            "upload_id": upload_id,
+            "direction": result.get("direction"),
+            "direction_duration_ms": result.get("direction_duration_ms"),
+        }
+    except ImportError as e:
+        logger.exception(f"Import error during direction detection: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Figure processing import error: {e}",
+        )
+    except Exception as e:
+        logger.exception(f"Failed to detect direction for upload {upload_id}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/api/figures/upload/{upload_id}/segment")

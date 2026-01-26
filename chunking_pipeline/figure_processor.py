@@ -179,6 +179,86 @@ class FigureProcessorWrapper:
         result = processor.classify_figure(Path(image_path), ocr_text=ocr_text)
         return result.model_dump()
 
+    def classify_only(
+        self,
+        image_path: str | Path,
+        ocr_text: str = "",
+        *,
+        run_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Run classification only (fast, automatic step).
+
+        This is designed to be called immediately after upload for quick
+        classification without running the expensive SAM3 segmentation.
+
+        Args:
+            image_path: Path to the figure image
+            ocr_text: OCR text for additional context
+            run_id: Optional run identifier for tracking
+
+        Returns:
+            Dict containing:
+                - figure_type: Classification result (flowchart, other, etc.)
+                - confidence: Classification confidence score (0-1)
+                - reasoning: Model's reasoning for classification
+                - classification_duration_ms: Time taken for classification
+                - model_config: Configuration used for classification
+        """
+        processor = self._get_processor()
+        image_path = Path(image_path)
+
+        classification_start = time.perf_counter()
+        classification = processor.classify_figure(image_path, ocr_text=ocr_text)
+        classification_duration = int((time.perf_counter() - classification_start) * 1000)
+
+        return {
+            "figure_type": classification.figure_type.value,
+            "confidence": classification.confidence,
+            "reasoning": classification.reasoning,
+            "classification_duration_ms": classification_duration,
+        }
+
+    def detect_direction_only(
+        self,
+        image_path: str | Path,
+        *,
+        run_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Detect flow direction for flowcharts (auto step after classification).
+
+        This detects the primary flow direction (LR/TB/RL/BT) in a diagram.
+        Should only be called for flowchart-type figures.
+
+        Args:
+            image_path: Path to the figure image
+            run_id: Optional run identifier for tracking
+
+        Returns:
+            Dict containing:
+                - direction: Detected direction (LR, TB, RL, BT)
+                - direction_duration_ms: Time taken for detection
+                - model_config: Configuration used for detection
+        """
+        image_path = Path(image_path)
+        direction = "LR"  # Default fallback
+
+        direction_start = time.perf_counter()
+        try:
+            from src.prompts.figure_direction_prompt import detect_direction
+
+            direction_result = detect_direction(image_path)
+            direction = direction_result.direction.value
+            logger.debug(f"Detected flow direction: {direction}")
+        except Exception as e:
+            logger.warning(f"Direction detection failed, using default LR: {e}")
+
+        direction_duration = int((time.perf_counter() - direction_start) * 1000)
+
+        return {
+            "direction": direction,
+            "direction_duration_ms": direction_duration,
+        }
+
     def segment_only(
         self,
         image_path: str | Path,
