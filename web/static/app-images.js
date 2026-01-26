@@ -22,6 +22,7 @@ function initImagesTab() {
   wireImagesModeTabs();
   wireImageUpload();
   wireFigureListEvents();
+  wireUploadHistoryRefresh();
 }
 
 /**
@@ -56,9 +57,11 @@ function switchImagesMode(mode) {
   if (pdfPanel) pdfPanel.classList.toggle('hidden', mode !== 'pdf-figures');
   if (uploadPanel) uploadPanel.classList.toggle('hidden', mode !== 'upload');
 
-  // Load data if switching to pdf-figures
+  // Load data based on mode
   if (mode === 'pdf-figures' && CURRENT_SLUG) {
     loadFiguresForCurrentRun();
+  } else if (mode === 'upload') {
+    loadUploadHistory();
   }
 }
 
@@ -947,6 +950,153 @@ function clearUpload() {
   }
 }
 
+// =============================================================================
+// Upload History
+// =============================================================================
+
+/**
+ * Load upload history from the server.
+ */
+async function loadUploadHistory() {
+  const historyEl = $('uploadHistoryList');
+  if (!historyEl) return;
+
+  historyEl.innerHTML = '<div class="loading">Loading history...</div>';
+
+  try {
+    const res = await fetch('/api/uploads');
+    if (!res.ok) throw new Error('Failed to load upload history');
+
+    const data = await res.json();
+    renderUploadHistory(data.uploads || []);
+  } catch (err) {
+    console.error('Failed to load upload history:', err);
+    historyEl.innerHTML = '<div class="empty-state">Failed to load history</div>';
+  }
+}
+
+/**
+ * Render upload history cards.
+ */
+function renderUploadHistory(uploads) {
+  const historyEl = $('uploadHistoryList');
+  if (!historyEl) return;
+
+  if (!uploads || uploads.length === 0) {
+    historyEl.innerHTML = '<div class="empty-state">No previous uploads</div>';
+    return;
+  }
+
+  historyEl.innerHTML = uploads
+    .map((upload) => {
+      const isActive = upload.upload_id === CURRENT_UPLOAD_ID;
+      const stageBadge = upload.stages?.extracted
+        ? 'complete'
+        : upload.stages?.segmented
+          ? 'segmented'
+          : 'uploaded';
+      const stageLabel = stageBadge === 'complete' ? 'Complete' : stageBadge === 'segmented' ? 'Segmented' : 'Uploaded';
+      const typeLabel = upload.figure_type || 'unknown';
+      const confidence = upload.confidence != null ? `${Math.round(upload.confidence * 100)}%` : '';
+      const uploadDate = upload.uploaded_at
+        ? new Date(upload.uploaded_at).toLocaleDateString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        : '';
+
+      return `
+        <div class="upload-history-card ${isActive ? 'active' : ''}" data-upload-id="${upload.upload_id}">
+          <div class="upload-history-thumbnail">
+            <img src="/api/figures/upload/${encodeURIComponent(upload.upload_id)}/image/original"
+                 alt="${upload.filename || 'Upload'}"
+                 loading="lazy"
+                 onerror="this.parentElement.innerHTML='<span class=\\'no-image\\'>?</span>'" />
+          </div>
+          <div class="upload-history-info">
+            <div class="upload-history-filename" title="${upload.filename || upload.upload_id}">
+              ${truncateFilename(upload.filename || upload.upload_id)}
+            </div>
+            <div class="upload-history-meta">
+              <span class="upload-history-stage stage-${stageBadge}">${stageLabel}</span>
+              ${upload.figure_type ? `<span class="upload-history-type type-${typeLabel}">${typeLabel}</span>` : ''}
+              ${confidence ? `<span class="upload-history-confidence">${confidence}</span>` : ''}
+            </div>
+            <div class="upload-history-date">${uploadDate}</div>
+          </div>
+        </div>
+      `;
+    })
+    .join('');
+
+  // Wire click handlers
+  historyEl.querySelectorAll('.upload-history-card').forEach((card) => {
+    card.addEventListener('click', () => {
+      const uploadId = card.dataset.uploadId;
+      if (uploadId) {
+        loadUploadById(uploadId);
+      }
+    });
+  });
+}
+
+/**
+ * Truncate filename for display.
+ */
+function truncateFilename(filename) {
+  if (!filename) return '';
+  if (filename.length <= 18) return filename;
+  const ext = filename.lastIndexOf('.');
+  if (ext > 0 && filename.length - ext <= 5) {
+    return filename.slice(0, 12) + '…' + filename.slice(ext);
+  }
+  return filename.slice(0, 15) + '…';
+}
+
+/**
+ * Load a previous upload by ID.
+ */
+async function loadUploadById(uploadId) {
+  const resultEl = $('imageUploadResult');
+  if (!resultEl) return;
+
+  resultEl.innerHTML = '<div class="loading">Loading upload...</div>';
+
+  try {
+    const res = await fetch(`/api/figures/upload/${encodeURIComponent(uploadId)}`);
+    if (!res.ok) throw new Error('Failed to load upload');
+
+    const data = await res.json();
+    CURRENT_UPLOAD_ID = uploadId;
+    CURRENT_UPLOAD_DATA_URI = null; // Will fetch from server
+
+    renderUploadPipelineView(data);
+
+    // Update history selection
+    document.querySelectorAll('.upload-history-card').forEach((card) => {
+      card.classList.toggle('active', card.dataset.uploadId === uploadId);
+    });
+
+    showToast('Upload loaded', 'success');
+  } catch (err) {
+    console.error('Failed to load upload:', err);
+    resultEl.innerHTML = `<div class="error">Failed to load upload: ${escapeHtml(err.message)}</div>`;
+    showToast(`Failed to load upload: ${err.message}`, 'error');
+  }
+}
+
+/**
+ * Wire the refresh history button.
+ */
+function wireUploadHistoryRefresh() {
+  const btn = $('refreshHistoryBtn');
+  if (btn) {
+    btn.addEventListener('click', loadUploadHistory);
+  }
+}
+
 /**
  * Escape HTML special characters.
  */
@@ -1545,6 +1695,8 @@ window.runMermaidExtraction = runMermaidExtraction;
 window.runUploadSegmentation = runUploadSegmentation;
 window.runUploadMermaidExtraction = runUploadMermaidExtraction;
 window.clearUpload = clearUpload;
+window.loadUploadHistory = loadUploadHistory;
+window.loadUploadById = loadUploadById;
 window.openImageLightbox = openImageLightbox;
 window.closeImageLightbox = closeImageLightbox;
 window.lightboxZoomIn = lightboxZoomIn;

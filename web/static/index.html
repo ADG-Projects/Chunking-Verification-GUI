@@ -340,22 +340,44 @@
 
       <!-- Upload Panel -->
       <div id="imagesUploadPanel" class="images-panel hidden">
-        <div class="upload-container card">
-          <form id="imageUploadForm" class="upload-form">
-            <div id="imageUploadZone" class="upload-zone">
-              <div class="upload-icon">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="17,8 12,3 7,8"/>
-                  <line x1="12" y1="3" x2="12" y2="15"/>
+        <div class="upload-panel-layout">
+          <!-- History Sidebar -->
+          <aside class="upload-history-sidebar">
+            <div class="upload-history-header">
+              <h4>History</h4>
+              <button id="refreshHistoryBtn" class="btn btn-icon" title="Refresh history">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="23,4 23,10 17,10"/>
+                  <polyline points="1,20 1,14 7,14"/>
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
                 </svg>
-              </div>
-              <p class="upload-text">Drop an image here or click to browse</p>
-              <p class="upload-hint">Supports PNG, JPEG, WebP</p>
-              <input type="file" id="imageUploadInput" accept="image/png,image/jpeg,image/webp" hidden />
+              </button>
             </div>
-          </form>
-          <div id="imageUploadResult" class="upload-result-container"></div>
+            <div id="uploadHistoryList" class="upload-history-list">
+              <div class="empty-state">No previous uploads</div>
+            </div>
+          </aside>
+
+          <!-- Main Upload Area -->
+          <div class="upload-main-area">
+            <div class="upload-container card">
+              <form id="imageUploadForm" class="upload-form">
+                <div id="imageUploadZone" class="upload-zone">
+                  <div class="upload-icon">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="17,8 12,3 7,8"/>
+                      <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                  </div>
+                  <p class="upload-text">Drop an image here or click to browse</p>
+                  <p class="upload-hint">Supports PNG, JPEG, WebP</p>
+                  <input type="file" id="imageUploadInput" accept="image/png,image/jpeg,image/webp" hidden />
+                </div>
+              </form>
+              <div id="imageUploadResult" class="upload-result-container"></div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
