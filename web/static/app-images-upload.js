@@ -87,6 +87,13 @@ async function uploadImage(file) {
 
     // Auto-run full pipeline: Classification → Direction → SAM3 → Mermaid
     runUploadFullPipeline(data.upload_id);
+
+    // Reset file input to allow re-uploading the same file
+    const input = $('imageUploadInput');
+    if (input) input.value = '';
+
+    // Refresh history to show new upload
+    if (typeof loadUploadHistory === 'function') loadUploadHistory();
   } catch (err) {
     console.error('Upload failed:', err);
     resultEl.innerHTML = `<div class="error">Upload failed: ${escapeHtml(err.message)}</div>`;
@@ -425,6 +432,9 @@ function clearUpload() {
   if (resultEl) {
     resultEl.innerHTML = '';
   }
+  // Reset file input to allow re-uploading the same file
+  const input = $('imageUploadInput');
+  if (input) input.value = '';
 }
 
 // Window exports
