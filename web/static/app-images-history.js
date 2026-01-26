@@ -60,11 +60,18 @@ function renderUploadHistory(uploads) {
 
       return `
         <div class="upload-history-card ${isActive ? 'active' : ''}" data-upload-id="${upload.upload_id}">
-          <div class="upload-history-thumbnail">
-            <img src="/api/figures/upload/${encodeURIComponent(upload.upload_id)}/image/original"
-                 alt="${upload.filename || 'Upload'}"
-                 loading="lazy"
-                 onerror="this.parentElement.innerHTML='<span class=\\'no-image\\'>?</span>'" />
+          <div class="upload-history-thumbnail-wrapper">
+            <div class="upload-history-thumbnail">
+              <img src="/api/figures/upload/${encodeURIComponent(upload.upload_id)}/image/original"
+                   alt="${upload.filename || 'Upload'}"
+                   loading="lazy"
+                   onerror="this.parentElement.innerHTML='<span class=\\'no-image\\'>?</span>'" />
+            </div>
+            <button class="delete-btn"
+                    onclick="event.stopPropagation(); deleteUpload('${upload.upload_id}')"
+                    title="Delete upload">
+              ×
+            </button>
           </div>
           <div class="upload-history-info">
             <div class="upload-history-filename" title="${upload.filename || upload.upload_id}">
@@ -139,6 +146,51 @@ async function loadUploadById(uploadId) {
 }
 
 /**
+ * Delete an upload and all associated files.
+ */
+async function deleteUpload(uploadId) {
+  // Find upload for confirmation message
+  const uploads = await fetch('/api/uploads').then(r => r.json());
+  const upload = uploads.uploads?.find(u => u.upload_id === uploadId);
+  const filename = upload?.filename || uploadId;
+
+  // Confirm deletion
+  const ok = confirm(
+    `Delete upload: ${filename}?\nThis will permanently remove the upload and all processing results.`
+  );
+  if (!ok) return;
+
+  try {
+    // Show progress
+    showToast('Deleting upload...', 'ok', 1000);
+
+    // DELETE request
+    const res = await fetch(`/api/figures/upload/${encodeURIComponent(uploadId)}`, {
+      method: 'DELETE'
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new Error(err.detail || 'Deletion failed');
+    }
+
+    // Clear pipeline view if we deleted the active upload
+    if (window.CURRENT_UPLOAD_ID === uploadId) {
+      clearUpload();
+    }
+
+    // Refresh history list
+    await loadUploadHistory();
+
+    showToast('Upload deleted successfully', 'ok', 2000);
+
+  } catch (err) {
+    console.error('Delete failed:', err);
+    showToast(`Failed to delete upload: ${err.message}`, 'err', 4000);
+  }
+}
+
+/**
  * Wire the refresh history button.
  */
 function wireUploadHistoryRefresh() {
@@ -153,4 +205,5 @@ window.loadUploadHistory = loadUploadHistory;
 window.renderUploadHistory = renderUploadHistory;
 window.truncateFilename = truncateFilename;
 window.loadUploadById = loadUploadById;
+window.deleteUpload = deleteUpload;
 window.wireUploadHistoryRefresh = wireUploadHistoryRefresh;

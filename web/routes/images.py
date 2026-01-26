@@ -422,6 +422,37 @@ def api_uploads_list() -> Dict[str, Any]:
     return {"uploads": uploads, "total": len(uploads)}
 
 
+@router.delete("/api/figures/upload/{upload_id}")
+def api_delete_upload(upload_id: str) -> Dict[str, Any]:
+    """Delete an upload and all associated files."""
+    upload_dir = _get_upload_dir(upload_id)
+
+    if not upload_dir.exists():
+        raise HTTPException(status_code=404, detail=f"Upload {upload_id} not found")
+
+    try:
+        removed_files = []
+        for file_path in upload_dir.rglob("*"):
+            if file_path.is_file():
+                # Use relative path from root for cleaner output
+                try:
+                    rel_path = file_path.relative_to(ROOT)
+                    removed_files.append(str(rel_path))
+                except ValueError:
+                    removed_files.append(str(file_path))
+
+        shutil.rmtree(upload_dir)
+
+        return {
+            "status": "ok",
+            "upload_id": upload_id,
+            "removed": removed_files,
+        }
+    except Exception as e:
+        logger.error(f"Failed to delete upload {upload_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete upload files")
+
+
 @router.get("/api/figures/upload/{upload_id}")
 def api_upload_detail(upload_id: str) -> Dict[str, Any]:
     """Get details for an uploaded image including processing status."""
