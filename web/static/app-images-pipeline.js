@@ -105,6 +105,96 @@ async function runMermaidExtraction(elementId) {
 }
 
 /**
+ * Run classification only on uploaded image (auto step after upload).
+ */
+async function runUploadClassification(uploadId) {
+  const stepEl = document.getElementById('upload-step-classification');
+  if (stepEl) {
+    stepEl.classList.remove('step-complete', 'step-pending', 'step-skipped');
+    stepEl.classList.add('step-running');
+  }
+
+  try {
+    const res = await fetch(`/api/figures/upload/${encodeURIComponent(uploadId)}/classify`, {
+      method: 'POST',
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new Error(err.detail || 'Classification failed');
+    }
+
+    const data = await res.json();
+    showToast(`Classified as ${data.figure_type} (${Math.round((data.confidence || 0) * 100)}%)`, 'success');
+
+    // Store classification result for UI updates
+    window.CURRENT_UPLOAD_CLASSIFICATION = data;
+
+    // If flowchart, auto-run direction detection
+    if (data.figure_type === 'flowchart') {
+      await runUploadDirectionDetection(uploadId);
+    } else {
+      // Not a flowchart, mark direction as skipped and refresh
+      window.CURRENT_UPLOAD_DIRECTION = { skipped: true };
+      refreshUploadDetails(uploadId);
+    }
+
+    return data;
+  } catch (err) {
+    console.error('Classification failed:', err);
+    showToast(`Classification failed: ${err.message}`, 'error');
+
+    if (stepEl) {
+      stepEl.classList.remove('step-running');
+      stepEl.classList.add('step-pending');
+    }
+    throw err;
+  }
+}
+
+/**
+ * Run direction detection on uploaded image (auto step for flowcharts).
+ */
+async function runUploadDirectionDetection(uploadId) {
+  const stepEl = document.getElementById('upload-step-direction');
+  if (stepEl) {
+    stepEl.classList.remove('step-complete', 'step-pending', 'step-skipped');
+    stepEl.classList.add('step-running');
+  }
+
+  try {
+    const res = await fetch(`/api/figures/upload/${encodeURIComponent(uploadId)}/detect-direction`, {
+      method: 'POST',
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new Error(err.detail || 'Direction detection failed');
+    }
+
+    const data = await res.json();
+    showToast(`Detected direction: ${data.direction}`, 'success');
+
+    // Store direction result for UI updates
+    window.CURRENT_UPLOAD_DIRECTION = data;
+
+    // Refresh the view
+    refreshUploadDetails(uploadId);
+
+    return data;
+  } catch (err) {
+    console.error('Direction detection failed:', err);
+    showToast(`Direction detection failed: ${err.message}`, 'error');
+
+    if (stepEl) {
+      stepEl.classList.remove('step-running');
+      stepEl.classList.add('step-pending');
+    }
+    throw err;
+  }
+}
+
+/**
  * Run SAM3 segmentation on uploaded image.
  */
 async function runUploadSegmentation(uploadId) {
@@ -234,6 +324,8 @@ function renderActionDetectionStep(edges, extractionDone) {
 // Window exports
 window.runSegmentation = runSegmentation;
 window.runMermaidExtraction = runMermaidExtraction;
+window.runUploadClassification = runUploadClassification;
+window.runUploadDirectionDetection = runUploadDirectionDetection;
 window.runUploadSegmentation = runUploadSegmentation;
 window.runUploadMermaidExtraction = runUploadMermaidExtraction;
 window.renderActionDetectionStep = renderActionDetectionStep;
