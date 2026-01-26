@@ -358,6 +358,16 @@ def api_uploads_list() -> Dict[str, Any]:
             except (json.JSONDecodeError, IOError):
                 pass
 
+        # Load description result if available
+        description_result = None
+        description_path = upload_dir / "description.json"
+        if description_path.exists():
+            try:
+                with description_path.open("r", encoding="utf-8") as fh:
+                    description_result = json.load(fh)
+            except (json.JSONDecodeError, IOError):
+                pass
+
         # Load processing results if available
         sam3_result = None
         sam3_path = upload_dir / "sam3.json"
@@ -401,6 +411,7 @@ def api_uploads_list() -> Dict[str, Any]:
         stages = {
             "uploaded": True,
             "classified": classification_result is not None,
+            "described": description_result is not None,
             "direction_detected": direction_result is not None,
             "segmented": sam3_result is not None,
             "extracted": proc_result is not None,
@@ -482,6 +493,16 @@ def api_upload_detail(upload_id: str) -> Dict[str, Any]:
         except (json.JSONDecodeError, IOError):
             pass
 
+    # Load description result if available (for OTHER type images)
+    description_result = None
+    description_path = upload_dir / "description.json"
+    if description_path.exists():
+        try:
+            with description_path.open("r", encoding="utf-8") as fh:
+                description_result = json.load(fh)
+        except (json.JSONDecodeError, IOError):
+            pass
+
     # Check processing stages
     sam3_result = None
     sam3_path = upload_dir / "sam3.json"
@@ -499,6 +520,7 @@ def api_upload_detail(upload_id: str) -> Dict[str, Any]:
     stages = {
         "uploaded": True,
         "classified": classification_result is not None,
+        "described": description_result is not None,
         "direction_detected": direction_result is not None,
         "segmented": sam3_result is not None,
         "extracted": proc_result is not None,
@@ -523,6 +545,13 @@ def api_upload_detail(upload_id: str) -> Dict[str, Any]:
         result["direction"] = {
             "direction": direction_result.get("direction"),
             "direction_duration_ms": direction_result.get("direction_duration_ms"),
+        }
+
+    if description_result:
+        result["description"] = {
+            "description": description_result.get("description"),
+            "processed_content": description_result.get("processed_content"),
+            "description_duration_ms": description_result.get("description_duration_ms"),
         }
 
     if sam3_result:
@@ -632,6 +661,61 @@ def api_upload_classify(upload_id: str) -> Dict[str, Any]:
         )
     except Exception as e:
         logger.exception(f"Failed to classify upload {upload_id}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/figures/upload/{upload_id}/describe")
+def api_upload_describe(upload_id: str) -> Dict[str, Any]:
+    """Generate LLM description for non-flowchart images (auto step for OTHER type).
+
+    This is called automatically after classification if the figure is classified
+    as OTHER. It generates a description directly without SAM3/Mermaid processing.
+    """
+    metadata = _load_upload_metadata(upload_id)
+    if not metadata:
+        raise HTTPException(status_code=404, detail=f"Upload {upload_id} not found")
+
+    image_path = Path(metadata["image_path"])
+    if not image_path.exists():
+        raise HTTPException(status_code=404, detail="Image file not found")
+
+    upload_dir = _get_upload_dir(upload_id)
+
+    try:
+        from chunking_pipeline.figure_processor import get_processor
+
+        processor = get_processor()
+        result = processor.describe_only(image_path, ocr_text="", run_id=f"upload-{upload_id}")
+
+        # Save description results
+        description_data = {
+            "figure_type": result.get("figure_type"),
+            "description": result.get("description"),
+            "processed_content": result.get("processed_content"),
+            "description_duration_ms": result.get("description_duration_ms"),
+            "described_at": datetime.now(timezone.utc).isoformat(),
+        }
+        description_path = upload_dir / "description.json"
+        with description_path.open("w", encoding="utf-8") as fh:
+            json.dump(description_data, fh, ensure_ascii=False, indent=2)
+
+        return {
+            "status": "ok",
+            "stage": "described",
+            "upload_id": upload_id,
+            "figure_type": result.get("figure_type"),
+            "description": result.get("description"),
+            "processed_content": result.get("processed_content"),
+            "description_duration_ms": result.get("description_duration_ms"),
+        }
+    except ImportError as e:
+        logger.exception(f"Import error during description generation: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Figure processing import error: {e}",
+        )
+    except Exception as e:
+        logger.exception(f"Failed to describe upload {upload_id}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -228,6 +228,56 @@ class FigureProcessorWrapper:
             "classification_duration_ms": classification_duration,
         }
 
+    def describe_only(
+        self,
+        image_path: str | Path,
+        ocr_text: str = "",
+        *,
+        run_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Generate a description for non-flowchart images (fast path for OTHER type).
+
+        This is designed for images classified as OTHER, where SAM3 segmentation
+        and Mermaid extraction are not needed. It directly generates an LLM
+        description of the image content.
+
+        Args:
+            image_path: Path to the figure image
+            ocr_text: OCR text for additional context
+            run_id: Optional run identifier for tracking
+
+        Returns:
+            Dict containing:
+                - figure_type: Always "other"
+                - description: LLM-generated description of the image
+                - description_duration_ms: Time taken for description generation
+        """
+        from src.figure_processing import FigureType
+
+        processor = self._get_processor()
+        image_path = Path(image_path)
+
+        description_start = time.perf_counter()
+
+        # Process the figure with force_type=OTHER to skip SAM3 and get description
+        result = processor.process_figure(
+            image_path=image_path,
+            ocr_text=ocr_text,
+            shape_positions=None,
+            text_positions=None,
+            run_id=run_id,
+            force_type=FigureType.OTHER,
+        )
+
+        description_duration = int((time.perf_counter() - description_start) * 1000)
+
+        return {
+            "figure_type": "other",
+            "description": result.description,
+            "processed_content": result.processed_content,
+            "description_duration_ms": description_duration,
+        }
+
     def detect_direction_only(
         self,
         image_path: str | Path,

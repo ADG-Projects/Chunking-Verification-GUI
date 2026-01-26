@@ -517,6 +517,23 @@
   border-radius: var(--radius-sm);
 }
 
+/* Description step result (for OTHER images) */
+.description-result {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.description-result .description-text {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--surface-glass-active);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--accent);
+}
+
 .step-action {
   margin-left: auto;
 }

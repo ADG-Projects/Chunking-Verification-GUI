@@ -5,8 +5,8 @@
 
 /* global $, showToast, escapeHtml, initCytoscapeDiagram, openImageLightbox, renderActionDetectionStep,
           runUploadFullPipeline, runUploadClassification, runUploadDirectionDetection,
-          runUploadSegmentation, runUploadMermaidExtraction, refreshUploadDetails,
-          CURRENT_UPLOAD_ID, CURRENT_UPLOAD_DATA_URI */
+          runUploadDescriptionGeneration, runUploadSegmentation, runUploadMermaidExtraction,
+          refreshUploadDetails, CURRENT_UPLOAD_ID, CURRENT_UPLOAD_DATA_URI */
 
 /**
  * Wire up the image upload form.
@@ -113,7 +113,7 @@ async function refreshUploadDetails(uploadId) {
 /**
  * Render the pipeline view for an uploaded image.
  * @param {Object} data - Upload data from API
- * @param {Object} options - Render options (classificationRunning, directionRunning)
+ * @param {Object} options - Render options (classificationRunning, directionRunning, descriptionRunning)
  */
 function renderUploadPipelineView(data, options = {}) {
   const resultEl = $('imageUploadResult');
@@ -122,12 +122,14 @@ function renderUploadPipelineView(data, options = {}) {
   const stages = data.stages || {
     uploaded: true,
     classified: false,
+    described: false,
     direction_detected: false,
     segmented: false,
     extracted: false,
   };
   const classification = data.classification || {};
   const direction = data.direction || {};
+  const descriptionData = data.description || {};
   const sam3 = data.sam3 || {};
   const processing = data.processing || {};
   const uploadId = data.upload_id;
@@ -141,9 +143,11 @@ function renderUploadPipelineView(data, options = {}) {
   // Get direction from best available source
   const directionValue = direction.direction || sam3.direction || null;
   const isFlowchart = figureType === 'flowchart';
+  const isOther = figureType === 'other';
 
   // Step states
   const classificationDone = stages.classified;
+  const descriptionDone = stages.described;
   const directionDone = stages.direction_detected;
   const segmentationDone = stages.segmented;
   const extractionDone = stages.extracted;
@@ -151,6 +155,7 @@ function renderUploadPipelineView(data, options = {}) {
   // Running states from options (for initial render)
   const classificationRunning = options.classificationRunning || false;
   const directionRunning = options.directionRunning || false;
+  const descriptionRunning = options.descriptionRunning || false;
 
   // Timing info
   const classificationTime = classification.classification_duration_ms
@@ -159,9 +164,13 @@ function renderUploadPipelineView(data, options = {}) {
       ? `${sam3.classification_duration_ms}ms`
       : '-';
   const directionTime = direction.direction_duration_ms ? `${direction.direction_duration_ms}ms` : '-';
+  const descriptionTime = descriptionData.description_duration_ms ? `${descriptionData.description_duration_ms}ms` : '-';
   const sam3Time = sam3.sam3_duration_ms ? `${sam3.sam3_duration_ms}ms` : '-';
 
-  // Direction step state
+  // Get description text (prefer descriptionData, fall back to processing)
+  const descriptionText = descriptionData.description || processing.description || null;
+
+  // Direction step state (skipped for non-flowcharts)
   const directionSkipped = classificationDone && !isFlowchart;
   const directionStepClass = directionDone
     ? 'step-complete'
@@ -170,6 +179,171 @@ function renderUploadPipelineView(data, options = {}) {
       : directionSkipped
         ? 'step-skipped'
         : 'step-pending';
+
+  // For OTHER images, flowchart steps are skipped
+  const flowchartStepsSkipped = classificationDone && isOther;
+
+  // Build pipeline steps HTML based on figure type
+  let pipelineStepsHtml = '';
+
+  // Step 1: Classification (always shown)
+  pipelineStepsHtml += `
+    <div class="pipeline-step step-classification ${classificationDone ? 'step-complete' : classificationRunning ? 'step-running' : 'step-pending'}" id="upload-step-classification">
+      <div class="step-header">
+        <span class="step-number">${classificationDone ? '✓' : '1'}</span>
+        <span class="step-title">Classification</span>
+        <span class="step-badge step-badge-auto">auto</span>
+        ${classificationTime !== '-' ? `<span class="step-time">${classificationTime}</span>` : ''}
+      </div>
+      <div class="step-content">
+        ${classificationDone ? `
+          <div class="step-result">
+            <span class="type-badge type-${figureType}">${figureType}</span>
+            <span class="confidence-label">Confidence: ${confidence}</span>
+          </div>
+          ${classification.reasoning ? `
+            <details class="step-reasoning">
+              <summary>Reasoning</summary>
+              <p>${escapeHtml(classification.reasoning)}</p>
+            </details>
+          ` : ''}
+        ` : classificationRunning ? `
+          <span class="no-data">Classifying image...</span>
+        ` : `
+          <span class="no-data">Waiting for classification</span>
+        `}
+      </div>
+    </div>
+  `;
+
+  // For OTHER images: show Description step instead of flowchart steps
+  if (isOther || (classificationDone && !isFlowchart)) {
+    const descStepClass = descriptionDone
+      ? 'step-complete'
+      : descriptionRunning
+        ? 'step-running'
+        : 'step-pending';
+
+    pipelineStepsHtml += `
+      <div class="pipeline-step step-description ${descStepClass}" id="upload-step-description">
+        <div class="step-header">
+          <span class="step-number">${descriptionDone ? '✓' : '2'}</span>
+          <span class="step-title">Description</span>
+          <span class="step-badge step-badge-auto">auto</span>
+          ${descriptionTime !== '-' ? `<span class="step-time">${descriptionTime}</span>` : ''}
+        </div>
+        <div class="step-content">
+          ${descriptionDone && descriptionText ? `
+            <div class="step-result description-result">
+              <p class="description-text">${escapeHtml(descriptionText)}</p>
+            </div>
+          ` : descriptionRunning ? `
+            <span class="no-data">Generating description...</span>
+          ` : `
+            <span class="no-data">Waiting...</span>
+          `}
+        </div>
+      </div>
+    `;
+  } else {
+    // For flowcharts: show the full pipeline
+
+    // Step 2: Direction Detection
+    pipelineStepsHtml += `
+      <div class="pipeline-step step-direction ${directionStepClass}" id="upload-step-direction">
+        <div class="step-header">
+          <span class="step-number">${directionDone ? '✓' : directionSkipped ? '—' : '2'}</span>
+          <span class="step-title">Direction Detection</span>
+          ${isFlowchart || !classificationDone ? '<span class="step-badge step-badge-auto">auto</span>' : '<span class="step-badge step-badge-skipped">skipped</span>'}
+          ${directionDone ? `<span class="step-time">${directionTime}</span>` : ''}
+        </div>
+        <div class="step-content">
+          ${directionDone ? `
+            <div class="step-result">
+              <span class="direction-badge direction-${directionValue}">${directionValue}</span>
+              <span class="direction-description">${getDirectionDescription(directionValue)}</span>
+            </div>
+          ` : directionRunning ? `
+            <span class="no-data">Detecting flow direction...</span>
+          ` : directionSkipped ? `
+            <span class="no-data">Skipped (not a flowchart)</span>
+          ` : `
+            <span class="no-data">Waiting for classification</span>
+          `}
+        </div>
+      </div>
+    `;
+
+    // Step 3: SAM3 Segmentation
+    pipelineStepsHtml += `
+      <div class="pipeline-step step-segmentation ${segmentationDone ? 'step-complete' : flowchartStepsSkipped ? 'step-skipped' : 'step-pending'}" id="upload-step-segmentation">
+        <div class="step-header">
+          <span class="step-number">${segmentationDone ? '✓' : flowchartStepsSkipped ? '—' : '3'}</span>
+          <span class="step-title">SAM3 Segmentation</span>
+          ${flowchartStepsSkipped ? '<span class="step-badge step-badge-skipped">skipped</span>' : '<span class="step-badge step-badge-auto">auto</span>'}
+          ${sam3Time !== '-' ? `<span class="step-time">${sam3Time}</span>` : ''}
+          ${segmentationDone ? `
+            <button class="btn btn-sm btn-secondary step-action" onclick="runUploadSegmentation('${uploadId}')" title="Re-run segmentation">Re-run</button>
+          ` : ''}
+        </div>
+        <div class="step-content">
+          ${segmentationDone ? `
+            <div class="step-result">
+              <span class="shape-count">${sam3.shape_count || 0} shapes detected</span>
+            </div>
+            ${data.has_annotated_image ? `
+              <img src="/api/figures/upload/${uploadId}/image/annotated"
+                   alt="SAM3 Annotated"
+                   class="annotated-image zoomable-image"
+                   data-lightbox-title="SAM3 Annotated Image"
+                   onerror="this.style.display='none'" />
+            ` : ''}
+          ` : flowchartStepsSkipped ? `
+            <span class="no-data">Skipped (not a flowchart)</span>
+          ` : `
+            <span class="no-data">Waiting...</span>
+          `}
+        </div>
+      </div>
+    `;
+
+    // Step 4: Mermaid Extraction
+    pipelineStepsHtml += `
+      <div class="pipeline-step step-mermaid ${extractionDone ? 'step-complete' : flowchartStepsSkipped ? 'step-skipped' : 'step-pending'}" id="upload-step-mermaid">
+        <div class="step-header">
+          <span class="step-number">${extractionDone ? '✓' : flowchartStepsSkipped ? '—' : '4'}</span>
+          <span class="step-title">Mermaid Extraction</span>
+          ${flowchartStepsSkipped ? '<span class="step-badge step-badge-skipped">skipped</span>' : '<span class="step-badge step-badge-auto">auto</span>'}
+          ${extractionDone ? `
+            <button class="btn btn-sm btn-secondary step-action" onclick="runUploadMermaidExtraction('${uploadId}')" title="Re-run extraction">Re-run</button>
+          ` : ''}
+        </div>
+        <div class="step-content">
+          ${extractionDone && processing.processed_content && figureType === 'flowchart' ? `
+            ${processing.intermediate_nodes ? `
+              <details>
+                <summary>Nodes (${(processing.intermediate_nodes || []).length}) / Edges (${(processing.intermediate_edges || []).length})</summary>
+                <div class="structure-preview">
+                  <pre class="json-view">${JSON.stringify(processing.intermediate_nodes, null, 2)}</pre>
+                  <pre class="json-view">${JSON.stringify(processing.intermediate_edges, null, 2)}</pre>
+                </div>
+              </details>
+            ` : ''}
+            <pre class="mermaid-code">${escapeHtml(processing.processed_content)}</pre>
+          ` : extractionDone ? `
+            <span class="no-data">Mermaid diagram not available (figure type: ${figureType})</span>
+          ` : flowchartStepsSkipped ? `
+            <span class="no-data">Skipped (not a flowchart)</span>
+          ` : `
+            <span class="no-data">Waiting...</span>
+          `}
+        </div>
+      </div>
+    `;
+
+    // Step 5: Action Detection (only for flowcharts)
+    pipelineStepsHtml += renderActionDetectionStep(processing.intermediate_edges, extractionDone);
+  }
 
   resultEl.innerHTML = `
     <div class="upload-pipeline-view">
@@ -187,118 +361,7 @@ function renderUploadPipelineView(data, options = {}) {
         </div>
 
         <div class="pipeline-view">
-          <!-- Step 1: Classification (auto after upload) -->
-          <div class="pipeline-step step-classification ${classificationDone ? 'step-complete' : classificationRunning ? 'step-running' : 'step-pending'}" id="upload-step-classification">
-            <div class="step-header">
-              <span class="step-number">${classificationDone ? '✓' : '1'}</span>
-              <span class="step-title">Classification</span>
-              <span class="step-badge step-badge-auto">auto</span>
-              ${classificationTime !== '-' ? `<span class="step-time">${classificationTime}</span>` : ''}
-            </div>
-            <div class="step-content">
-              ${classificationDone ? `
-                <div class="step-result">
-                  <span class="type-badge type-${figureType}">${figureType}</span>
-                  <span class="confidence-label">Confidence: ${confidence}</span>
-                </div>
-                ${classification.reasoning ? `
-                  <details class="step-reasoning">
-                    <summary>Reasoning</summary>
-                    <p>${escapeHtml(classification.reasoning)}</p>
-                  </details>
-                ` : ''}
-              ` : classificationRunning ? `
-                <span class="no-data">Classifying image...</span>
-              ` : `
-                <span class="no-data">Waiting for classification</span>
-              `}
-            </div>
-          </div>
-
-          <!-- Step 2: Direction Detection (auto if flowchart) -->
-          <div class="pipeline-step step-direction ${directionStepClass}" id="upload-step-direction">
-            <div class="step-header">
-              <span class="step-number">${directionDone ? '✓' : directionSkipped ? '—' : '2'}</span>
-              <span class="step-title">Direction Detection</span>
-              ${isFlowchart || !classificationDone ? '<span class="step-badge step-badge-auto">auto</span>' : '<span class="step-badge step-badge-skipped">skipped</span>'}
-              ${directionDone ? `<span class="step-time">${directionTime}</span>` : ''}
-            </div>
-            <div class="step-content">
-              ${directionDone ? `
-                <div class="step-result">
-                  <span class="direction-badge direction-${directionValue}">${directionValue}</span>
-                  <span class="direction-description">${getDirectionDescription(directionValue)}</span>
-                </div>
-              ` : directionRunning ? `
-                <span class="no-data">Detecting flow direction...</span>
-              ` : directionSkipped ? `
-                <span class="no-data">Skipped (not a flowchart)</span>
-              ` : `
-                <span class="no-data">Waiting for classification</span>
-              `}
-            </div>
-          </div>
-
-          <!-- Step 3: SAM3 Segmentation (auto) -->
-          <div class="pipeline-step step-segmentation ${segmentationDone ? 'step-complete' : 'step-pending'}" id="upload-step-segmentation">
-            <div class="step-header">
-              <span class="step-number">${segmentationDone ? '✓' : '3'}</span>
-              <span class="step-title">SAM3 Segmentation</span>
-              <span class="step-badge step-badge-auto">auto</span>
-              ${sam3Time !== '-' ? `<span class="step-time">${sam3Time}</span>` : ''}
-              ${segmentationDone ? `
-                <button class="btn btn-sm btn-secondary step-action" onclick="runUploadSegmentation('${uploadId}')" title="Re-run segmentation">Re-run</button>
-              ` : ''}
-            </div>
-            <div class="step-content">
-              ${segmentationDone ? `
-                <div class="step-result">
-                  <span class="shape-count">${sam3.shape_count || 0} shapes detected</span>
-                </div>
-                ${data.has_annotated_image ? `
-                  <img src="/api/figures/upload/${uploadId}/image/annotated"
-                       alt="SAM3 Annotated"
-                       class="annotated-image zoomable-image"
-                       data-lightbox-title="SAM3 Annotated Image"
-                       onerror="this.style.display='none'" />
-                ` : ''}
-              ` : `
-                <span class="no-data">Waiting...</span>
-              `}
-            </div>
-          </div>
-
-          <!-- Step 4: Mermaid Extraction (auto) -->
-          <div class="pipeline-step step-mermaid ${extractionDone ? 'step-complete' : 'step-pending'}" id="upload-step-mermaid">
-            <div class="step-header">
-              <span class="step-number">${extractionDone ? '✓' : '4'}</span>
-              <span class="step-title">Mermaid Extraction</span>
-              <span class="step-badge step-badge-auto">auto</span>
-              ${extractionDone ? `
-                <button class="btn btn-sm btn-secondary step-action" onclick="runUploadMermaidExtraction('${uploadId}')" title="Re-run extraction">Re-run</button>
-              ` : ''}
-            </div>
-            <div class="step-content">
-              ${extractionDone && processing.processed_content && figureType === 'flowchart' ? `
-                ${processing.intermediate_nodes ? `
-                  <details>
-                    <summary>Nodes (${(processing.intermediate_nodes || []).length}) / Edges (${(processing.intermediate_edges || []).length})</summary>
-                    <div class="structure-preview">
-                      <pre class="json-view">${JSON.stringify(processing.intermediate_nodes, null, 2)}</pre>
-                      <pre class="json-view">${JSON.stringify(processing.intermediate_edges, null, 2)}</pre>
-                    </div>
-                  </details>
-                ` : ''}
-                <pre class="mermaid-code">${escapeHtml(processing.processed_content)}</pre>
-              ` : extractionDone ? `
-                <span class="no-data">Mermaid diagram not available (figure type: ${figureType})</span>
-              ` : `
-                <span class="no-data">Waiting...</span>
-              `}
-            </div>
-          </div>
-
-          ${renderActionDetectionStep(processing.intermediate_edges, extractionDone)}
+          ${pipelineStepsHtml}
         </div>
       </div>
 
@@ -317,7 +380,7 @@ function renderUploadPipelineView(data, options = {}) {
       </div>
       ` : ''}
 
-      ${processing.description ? `
+      ${!isOther && processing.description ? `
       <div class="upload-result-description">
         <h5>Description</h5>
         <p>${escapeHtml(processing.description)}</p>

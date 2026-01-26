@@ -106,25 +106,26 @@ async function runMermaidExtraction(elementId) {
 
 /**
  * Run the full pipeline automatically on uploaded image.
- * Steps: Classification → Direction Detection (if flowchart) → SAM3 → Mermaid Extraction
+ * Steps:
+ * - For flowcharts: Classification → Direction Detection → SAM3 → Mermaid Extraction
+ * - For OTHER images: Classification → Description (skips SAM3/Mermaid)
  */
 async function runUploadFullPipeline(uploadId) {
   try {
     // Step 1: Classification
     const classResult = await runUploadClassification(uploadId);
 
-    // Step 2: Direction detection (auto for flowcharts)
+    // Branch based on figure type
     if (classResult.figure_type === 'flowchart') {
+      // Flowchart pipeline: Direction → SAM3 → Mermaid
       await runUploadDirectionDetection(uploadId);
+      await runUploadSegmentation(uploadId);
+      await runUploadMermaidExtraction(uploadId);
     } else {
+      // OTHER pipeline: Just generate description (no SAM3/Mermaid needed)
       window.CURRENT_UPLOAD_DIRECTION = { skipped: true };
+      await runUploadDescriptionGeneration(uploadId);
     }
-
-    // Step 3: SAM3 Segmentation
-    await runUploadSegmentation(uploadId);
-
-    // Step 4: Mermaid Extraction
-    await runUploadMermaidExtraction(uploadId);
 
     // Pipeline complete - final refresh
     refreshUploadDetails(uploadId);
@@ -204,6 +205,46 @@ async function runUploadDirectionDetection(uploadId) {
   } catch (err) {
     console.error('Direction detection failed:', err);
     showToast(`Direction detection failed: ${err.message}`, 'error');
+
+    if (stepEl) {
+      stepEl.classList.remove('step-running');
+      stepEl.classList.add('step-pending');
+    }
+    throw err;
+  }
+}
+
+/**
+ * Generate LLM description for non-flowchart uploaded images.
+ */
+async function runUploadDescriptionGeneration(uploadId) {
+  const stepEl = document.getElementById('upload-step-description');
+  if (stepEl) {
+    stepEl.classList.remove('step-complete', 'step-pending', 'step-skipped');
+    stepEl.classList.add('step-running');
+  }
+
+  try {
+    const res = await fetch(`/api/figures/upload/${encodeURIComponent(uploadId)}/describe`, {
+      method: 'POST',
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new Error(err.detail || 'Description generation failed');
+    }
+
+    const data = await res.json();
+    showToast('Description generated', 'success');
+
+    // Store description result for UI updates
+    window.CURRENT_UPLOAD_DESCRIPTION = data;
+
+    refreshUploadDetails(uploadId);
+    return data;
+  } catch (err) {
+    console.error('Description generation failed:', err);
+    showToast(`Description failed: ${err.message}`, 'error');
 
     if (stepEl) {
       stepEl.classList.remove('step-running');
@@ -347,6 +388,7 @@ window.runMermaidExtraction = runMermaidExtraction;
 window.runUploadFullPipeline = runUploadFullPipeline;
 window.runUploadClassification = runUploadClassification;
 window.runUploadDirectionDetection = runUploadDirectionDetection;
+window.runUploadDescriptionGeneration = runUploadDescriptionGeneration;
 window.runUploadSegmentation = runUploadSegmentation;
 window.runUploadMermaidExtraction = runUploadMermaidExtraction;
 window.renderActionDetectionStep = renderActionDetectionStep;
