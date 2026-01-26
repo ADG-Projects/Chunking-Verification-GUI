@@ -193,7 +193,7 @@ function renderUploadPipelineView(data, options = {}) {
               <span class="step-number">${classificationDone ? '✓' : '1'}</span>
               <span class="step-title">Classification</span>
               <span class="step-badge step-badge-auto">auto</span>
-              <span class="step-time">${classificationTime}</span>
+              ${classificationTime !== '-' ? `<span class="step-time">${classificationTime}</span>` : ''}
             </div>
             <div class="step-content">
               ${classificationDone ? `
@@ -245,7 +245,7 @@ function renderUploadPipelineView(data, options = {}) {
               <span class="step-number">${segmentationDone ? '✓' : '3'}</span>
               <span class="step-title">SAM3 Segmentation</span>
               <span class="step-badge step-badge-auto">auto</span>
-              <span class="step-time">${sam3Time}</span>
+              ${sam3Time !== '-' ? `<span class="step-time">${sam3Time}</span>` : ''}
               ${segmentationDone ? `
                 <button class="btn btn-sm btn-secondary step-action" onclick="runUploadSegmentation('${uploadId}')" title="Re-run segmentation">Re-run</button>
               ` : ''}
