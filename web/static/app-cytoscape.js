@@ -313,8 +313,12 @@ const CYTOSCAPE_STYLE = [
 
 /**
  * Initialize Cytoscape diagram from Mermaid code with SAM3 positions.
+ * @param {string} containerId - DOM element ID for the container
+ * @param {string} mermaidCode - Mermaid flowchart code
+ * @param {Array} shapePositions - SAM3 shape position data
+ * @param {Object} imageDimensions - Original image dimensions {width, height}
  */
-function initCytoscapeDiagram(containerId, mermaidCode, shapePositions) {
+function initCytoscapeDiagram(containerId, mermaidCode, shapePositions, imageDimensions) {
   const container = document.getElementById(containerId);
   if (!container || !mermaidCode) return;
 
@@ -347,14 +351,18 @@ function initCytoscapeDiagram(containerId, mermaidCode, shapePositions) {
     shapePositions: shapePositions
   });
 
-  // Calculate aspect ratio from shape positions to preserve original image proportions
-  // SAM3 bbox coordinates are normalized (0-1) so we need to infer aspect ratio
-  const BASE_SCALE = 1000;  // Base scale factor
-  let scaleX = BASE_SCALE;
-  let scaleY = BASE_SCALE;
+  // Use actual image dimensions if available, otherwise fall back to inferred aspect ratio
+  // SAM3 bbox coordinates are normalized (0-1) based on original image dimensions
+  let scaleX, scaleY;
 
-  if (shapePositions && shapePositions.length > 0) {
-    // Calculate bounding box of all shapes to infer aspect ratio
+  if (imageDimensions && imageDimensions.width && imageDimensions.height) {
+    // Use actual image dimensions - this preserves exact proportions
+    scaleX = imageDimensions.width;
+    scaleY = imageDimensions.height;
+    console.log('Using actual image dimensions:', { width: scaleX, height: scaleY });
+  } else if (shapePositions && shapePositions.length > 0) {
+    // Fall back to inferring aspect ratio from shape spread
+    const BASE_SCALE = 1000;
     let minX = 1, maxX = 0, minY = 1, maxY = 0;
     for (const shape of shapePositions) {
       if (shape.bbox && shape.bbox.length === 4) {
@@ -365,22 +373,25 @@ function initCytoscapeDiagram(containerId, mermaidCode, shapePositions) {
         maxY = Math.max(maxY, y2);
       }
     }
-    // Use the spread of positions to determine aspect ratio
     const spreadX = maxX - minX || 1;
     const spreadY = maxY - minY || 1;
     const aspectRatio = spreadX / spreadY;
 
-    // Scale so the larger dimension uses BASE_SCALE
     if (aspectRatio > 1) {
-      // Wider than tall
       scaleX = BASE_SCALE;
       scaleY = BASE_SCALE / aspectRatio;
     } else {
-      // Taller than wide
       scaleX = BASE_SCALE * aspectRatio;
       scaleY = BASE_SCALE;
     }
-    console.log('Aspect ratio calculation:', { spreadX, spreadY, aspectRatio, scaleX, scaleY });
+    console.log('Inferred aspect ratio:', { spreadX, spreadY, aspectRatio, scaleX, scaleY });
+  } else {
+    // Default to square
+    scaleX = 1000;
+    scaleY = 1000;
+  }
+
+  if (shapePositions && shapePositions.length > 0) {
 
     for (const node of nodes) {
       const shape = shapePositions.find(s => s.id === node.data.id);
@@ -466,7 +477,9 @@ function cytoscapeReset() {
 }
 
 function cytoscapeFullscreen() {
-  const container = document.querySelector('.cytoscape-container');
+  // Use the current Cytoscape instance's container
+  if (!currentCyInstance) return;
+  const container = currentCyInstance.container();
   if (!container) return;
 
   // Toggle maximized state
@@ -478,7 +491,9 @@ function cytoscapeFullscreen() {
 }
 
 function cytoscapeMaximize() {
-  const container = document.querySelector('.cytoscape-container');
+  // Use the current Cytoscape instance's container
+  if (!currentCyInstance) return;
+  const container = currentCyInstance.container();
   if (!container) return;
 
   // Create overlay
@@ -493,20 +508,28 @@ function cytoscapeMaximize() {
   // Maximize container
   container.classList.add('maximized');
 
-  // Resize cytoscape instance after animation
+  // Resize cytoscape instance after CSS transition completes
+  // Use multiple resize calls to ensure proper rendering
   setTimeout(() => {
     if (currentCyInstance) {
       currentCyInstance.resize();
       currentCyInstance.fit();
+      // Second resize to handle any layout recalculation
+      setTimeout(() => {
+        currentCyInstance.resize();
+        currentCyInstance.fit();
+      }, 100);
     }
-  }, 100);
+  }, 300);
 
   // Handle Escape key
   document.addEventListener('keydown', cytoscapeEscapeHandler);
 }
 
 function cytoscapeMinimize() {
-  const container = document.querySelector('.cytoscape-container');
+  // Use the current Cytoscape instance's container
+  if (!currentCyInstance) return;
+  const container = currentCyInstance.container();
   if (!container) return;
 
   // Hide overlay
@@ -517,13 +540,13 @@ function cytoscapeMinimize() {
   // Remove maximized state
   container.classList.remove('maximized');
 
-  // Resize cytoscape instance after animation
+  // Resize cytoscape instance after transition
   setTimeout(() => {
     if (currentCyInstance) {
       currentCyInstance.resize();
       currentCyInstance.fit();
     }
-  }, 100);
+  }, 300);
 
   // Remove Escape key handler
   document.removeEventListener('keydown', cytoscapeEscapeHandler);

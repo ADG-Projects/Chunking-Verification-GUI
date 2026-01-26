@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Optional
 import fitz  # PyMuPDF
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, Response
+from PIL import Image
 
 from ..config import DEFAULT_PROVIDER, ROOT, get_out_dir
 from ..file_utils import resolve_slug_file
@@ -293,12 +294,21 @@ async def api_figure_upload(
     content = await file.read()
     image_path.write_bytes(content)
 
+    # Extract image dimensions
+    try:
+        with Image.open(io.BytesIO(content)) as img:
+            image_width, image_height = img.size
+    except Exception:
+        image_width, image_height = None, None
+
     # Save metadata
     metadata = {
         "upload_id": upload_id,
         "filename": file.filename,
         "content_type": content_type,
         "image_path": str(image_path),
+        "image_width": image_width,
+        "image_height": image_height,
         "uploaded_at": datetime.now(timezone.utc).isoformat(),
     }
     meta_path = upload_dir / "metadata.json"
@@ -530,6 +540,8 @@ def api_upload_detail(upload_id: str) -> Dict[str, Any]:
     result: Dict[str, Any] = {
         "upload_id": upload_id,
         "filename": metadata.get("filename"),
+        "image_width": metadata.get("image_width"),
+        "image_height": metadata.get("image_height"),
         "stages": stages,
     }
 
@@ -1068,12 +1080,22 @@ def api_figure_detail(
         "coordinates": md.get("coordinates", {}),
     }
 
-    # Add image paths
+    # Add image paths and dimensions
     if figure_image:
         original_path = figures_dir.parent / figure_image
         if not original_path.exists():
             original_path = figures_dir / figure_image
         result["original_image_path"] = str(original_path) if original_path.exists() else None
+
+        # Get image dimensions
+        if original_path.exists():
+            try:
+                with Image.open(original_path) as img:
+                    result["image_width"], result["image_height"] = img.size
+            except Exception:
+                result["image_width"], result["image_height"] = None, None
+        else:
+            result["image_width"], result["image_height"] = None, None
 
         annotated_path = figures_dir / f"{element_id}.annotated.png"
         result["annotated_image_path"] = str(annotated_path) if annotated_path.exists() else None

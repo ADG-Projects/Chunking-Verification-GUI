@@ -564,12 +564,26 @@
 
 .structure-preview {
   display: flex;
+  flex-direction: column;
   gap: 8px;
 }
 
 .structure-preview .json-view {
-  flex: 1;
   max-height: 150px;
+}
+
+.structure-preview .json-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.structure-preview .json-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 /* Cytoscape Graph Container */
@@ -598,12 +612,13 @@
 
 .cytoscape-container {
   width: 100%;
-  aspect-ratio: 4/3;  /* Match SAM3 image proportions */
+  aspect-ratio: 4/3;  /* Default aspect ratio */
   max-width: 100%;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--surface-glass);
   min-height: 250px;
+  transition: all 0.2s ease-out;
 }
 
 /* Maximized state for Cytoscape viewer */

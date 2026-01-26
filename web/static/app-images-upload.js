@@ -324,8 +324,14 @@ function renderUploadPipelineView(data, options = {}) {
                 <details>
                   <summary>Nodes (${(processing.intermediate_nodes || []).length}) / Edges (${(processing.intermediate_edges || []).length})</summary>
                   <div class="structure-preview">
-                    <pre class="json-view">${JSON.stringify(processing.intermediate_nodes, null, 2)}</pre>
-                    <pre class="json-view">${JSON.stringify(processing.intermediate_edges, null, 2)}</pre>
+                    <div class="json-box">
+                      <span class="json-label">Nodes</span>
+                      <pre class="json-view">${JSON.stringify(processing.intermediate_nodes, null, 2)}</pre>
+                    </div>
+                    <div class="json-box">
+                      <span class="json-label">Edges</span>
+                      <pre class="json-view">${JSON.stringify(processing.intermediate_edges, null, 2)}</pre>
+                    </div>
                   </div>
                 </details>
               ` : ''}
@@ -396,11 +402,16 @@ function renderUploadPipelineView(data, options = {}) {
   // Initialize Cytoscape if extraction is done and it's a flowchart
   if (extractionDone && processing.processed_content && figureType === 'flowchart') {
     const shapePositions = sam3.shape_positions || [];
+    const imageDimensions = {
+      width: data.image_width,
+      height: data.image_height
+    };
     setTimeout(() => {
       initCytoscapeDiagram(
         `cytoscape-upload-${uploadId}`,
         processing.processed_content,
-        shapePositions
+        shapePositions,
+        imageDimensions
       );
     }, 100);
   }

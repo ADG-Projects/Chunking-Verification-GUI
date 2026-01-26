@@ -176,13 +176,18 @@ async function openFigureDetails(elementId) {
     if (stages.extracted && processing.processed_content && figureType === 'flowchart') {
       // Get shape positions from SAM3 data
       const shapePositions = sam3.shape_positions || [];
+      const imageDimensions = {
+        width: figure.image_width,
+        height: figure.image_height
+      };
 
       // Initialize Cytoscape after DOM update
       setTimeout(() => {
         initCytoscapeDiagram(
           `cytoscape-${figure.element_id}`,
           processing.processed_content,
-          shapePositions
+          shapePositions,
+          imageDimensions
         );
       }, 100);
     }
@@ -299,8 +304,14 @@ function renderFigurePipelineView(figure) {
               <details>
                 <summary>Nodes (${(processing.intermediate_nodes || []).length}) / Edges (${(processing.intermediate_edges || []).length})</summary>
                 <div class="structure-preview">
-                  <pre class="json-view">${JSON.stringify(processing.intermediate_nodes, null, 2)}</pre>
-                  <pre class="json-view">${JSON.stringify(processing.intermediate_edges, null, 2)}</pre>
+                  <div class="json-box">
+                    <span class="json-label">Nodes</span>
+                    <pre class="json-view">${JSON.stringify(processing.intermediate_nodes, null, 2)}</pre>
+                  </div>
+                  <div class="json-box">
+                    <span class="json-label">Edges</span>
+                    <pre class="json-view">${JSON.stringify(processing.intermediate_edges, null, 2)}</pre>
+                  </div>
                 </div>
               </details>
             ` : ''}
