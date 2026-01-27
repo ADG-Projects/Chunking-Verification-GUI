@@ -6,6 +6,19 @@
 let currentCyInstance = null;
 let cytoscapeOverlay = null;
 let originalParent = null;  // Store original parent for minimize
+let elkRegistered = false;
+
+/**
+ * Register ELK layout extension with Cytoscape.
+ */
+function registerElk() {
+  if (elkRegistered) return;
+  if (typeof cytoscape !== 'undefined' && typeof cytoscapeElk !== 'undefined' && typeof ELK !== 'undefined') {
+    cytoscape.use(cytoscapeElk);
+    elkRegistered = true;
+    console.log('ELK layout registered with Cytoscape');
+  }
+}
 
 /**
  * Convert SAM3 color names to hex codes.
@@ -159,14 +172,14 @@ const CYTOSCAPE_STYLE = [
       'border-width': 2,
       'label': 'data(label)',
       'text-wrap': 'wrap',
-      'text-max-width': '110px',
-      'font-size': '12px',
+      'text-max-width': '70px',
+      'font-size': '10px',
       'font-family': 'Segoe UI, Tahoma, sans-serif',
       'text-valign': 'center',
       'text-halign': 'center',
-      'width': 120,
-      'height': 40,
-      'padding': '8px',
+      'width': 80,
+      'height': 32,
+      'padding': '4px',
       'shape': 'round-rectangle',
       'color': '#1a1a1a'
     }
@@ -195,9 +208,9 @@ const CYTOSCAPE_STYLE = [
       'border-color': '#f9a825',
       'border-width': 3,
       'shape': 'diamond',
-      'width': 100,
-      'height': 70,
-      'text-max-width': '70px',
+      'width': 70,
+      'height': 50,
+      'text-max-width': '55px',
       'font-size': '8px'
     }
   },
@@ -216,9 +229,9 @@ const CYTOSCAPE_STYLE = [
       'border-color': '#388e3c',
       'border-width': 3,
       'shape': 'ellipse',
-      'width': 70,
-      'height': 45,
-      'text-max-width': '60px',
+      'width': 55,
+      'height': 35,
+      'text-max-width': '45px',
       'font-size': '8px',
       'font-weight': 'bold'
     }
@@ -250,13 +263,13 @@ const CYTOSCAPE_STYLE = [
   {
     selector: 'edge',
     style: {
-      'width': 2.5,
+      'width': 2,
       'line-color': '#72808a',
       'target-arrow-color': '#72808a',
       'target-arrow-shape': 'triangle',
       'curve-style': 'bezier',
       'label': 'data(label)',
-      'font-size': '10px',
+      'font-size': '9px',
       'text-background-color': '#fff',
       'text-background-opacity': 1,
       'text-background-padding': '2px'
@@ -407,8 +420,8 @@ function initCytoscapeDiagram(containerId, mermaidCode, shapePositions, imageDim
         const bboxWidth = (x2 - x1) * scaleX;
         const bboxHeight = (y2 - y1) * scaleY;
         // Store dimensions for per-node sizing (with minimum sizes)
-        node.data.nodeWidth = Math.max(bboxWidth * 0.9, 60);
-        node.data.nodeHeight = Math.max(bboxHeight * 0.9, 30);
+        node.data.nodeWidth = Math.max(bboxWidth * 0.9, 50);
+        node.data.nodeHeight = Math.max(bboxHeight * 0.9, 24);
         if (shape.color) {
           node.data.shapeColor = sam3ColorToHex(shape.color);
         }
@@ -423,30 +436,49 @@ function initCytoscapeDiagram(containerId, mermaidCode, shapePositions, imageDim
   console.log(`SAM3 position matching: ${matchedCount}/${nodes.length} nodes matched`);
   const usePresetLayout = matchedCount >= nodes.length * 0.8;
 
+  // Register ELK extension
+  registerElk();
+
   // Destroy existing instance
   if (currentCyInstance) {
     currentCyInstance.destroy();
   }
 
-  currentCyInstance = cytoscape({
-    container,
-    elements: { nodes, edges },
-    style: CYTOSCAPE_STYLE,
-    pixelRatio: 'auto',  // Handle high-DPI displays and browser zoom
-    layout: usePresetLayout ? {
+  // Determine layout - use preset if SAM3 positions available, otherwise ELK (or COSE fallback)
+  let layoutConfig;
+  if (usePresetLayout) {
+    layoutConfig = {
       name: 'preset',
       fit: true,
-      padding: 30
-    } : {
-      name: 'cose',
-      idealEdgeLength: 180,
-      nodeOverlap: 8,
-      refresh: 20,
+      padding: 40
+    };
+  } else if (elkRegistered) {
+    // Use ELK layered layout for proper hierarchical diagrams
+    layoutConfig = {
+      name: 'elk',
       fit: true,
       padding: 50,
+      elk: {
+        algorithm: 'layered',
+        'elk.direction': 'DOWN',
+        'elk.spacing.nodeNode': 50,
+        'elk.layered.spacing.nodeNodeBetweenLayers': 80,
+        'elk.edgeRouting': 'ORTHOGONAL',
+        'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP'
+      }
+    };
+  } else {
+    // Fallback to COSE if ELK not loaded
+    layoutConfig = {
+      name: 'cose',
+      idealEdgeLength: 220,
+      nodeOverlap: 20,
+      refresh: 20,
+      fit: true,
+      padding: 60,
       randomize: false,
-      componentSpacing: 150,
-      nodeRepulsion: 20000,
+      componentSpacing: 200,
+      nodeRepulsion: 40000,
       edgeElasticity: 100,
       nestingFactor: 5,
       gravity: 50,
@@ -454,7 +486,15 @@ function initCytoscapeDiagram(containerId, mermaidCode, shapePositions, imageDim
       initialTemp: 220,
       coolingFactor: 0.92,
       minTemp: 0.8
-    }
+    };
+  }
+
+  currentCyInstance = cytoscape({
+    container,
+    elements: { nodes, edges },
+    style: CYTOSCAPE_STYLE,
+    pixelRatio: 'auto',
+    layout: layoutConfig
   });
 
   currentCyInstance.userPanningEnabled(true);
@@ -510,19 +550,32 @@ function cytoscapeMaximize() {
   originalParent = container.parentNode;
   document.body.appendChild(container);
 
-  // Maximize container
+  // Maximize container - CSS handles the sizing
   container.classList.add('maximized');
 
-  // Resize cytoscape instance after container is in DOM and sized
-  // Use requestAnimationFrame to ensure layout is complete
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      if (currentCyInstance) {
-        currentCyInstance.resize();
-        currentCyInstance.fit(undefined, 50);  // 50px padding
-      }
+  // Wait for CSS to apply, then recreate instance with new dimensions
+  setTimeout(() => {
+    if (!currentCyInstance) return;
+
+    // Force layout recalculation
+    container.offsetHeight;
+
+    // Destroy and recreate to force proper canvas sizing
+    // (Cytoscape's resize() doesn't properly update canvas dimensions)
+    const elements = currentCyInstance.elements().jsons();
+    currentCyInstance.destroy();
+
+    currentCyInstance = cytoscape({
+      container,
+      elements,
+      style: CYTOSCAPE_STYLE,
+      layout: { name: 'preset' },
+      pixelRatio: 'auto'
     });
-  });
+
+    // Fit to show all elements with padding
+    currentCyInstance.fit(undefined, 50);
+  }, 200);
 
   // Handle Escape key
   document.addEventListener('keydown', cytoscapeEscapeHandler);
@@ -548,13 +601,23 @@ function cytoscapeMinimize() {
     originalParent = null;
   }
 
-  // Resize cytoscape instance after transition
+  // Recreate Cytoscape instance with new container size
   setTimeout(() => {
-    if (currentCyInstance) {
-      currentCyInstance.resize();
-      currentCyInstance.fit();
-    }
-  }, 50);
+    if (!currentCyInstance) return;
+
+    const elements = currentCyInstance.elements().jsons();
+    currentCyInstance.destroy();
+
+    currentCyInstance = cytoscape({
+      container,
+      elements,
+      style: CYTOSCAPE_STYLE,
+      layout: { name: 'preset' },
+      pixelRatio: 'auto'
+    });
+
+    currentCyInstance.fit(undefined, 30);
+  }, 100);
 
   // Remove Escape key handler
   document.removeEventListener('keydown', cytoscapeEscapeHandler);
