@@ -4,8 +4,6 @@ ARG PYTHON_VERSION=3.11
 
 FROM public.ecr.aws/docker/library/python:${PYTHON_VERSION}-slim AS runtime
 
-ARG WITH_HIRES=1
-ARG DISABLE_HI_RES=0
 # Set to 1 to include SAM3 local server dependencies (torch, transformers)
 # This adds ~3GB to the image - only needed if running SAM3 locally
 ARG WITH_SAM3_LOCAL=0
@@ -20,7 +18,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Install system dependencies needed for hi_res layout (OpenCV, Tesseract, Poppler, HEIF)
+# Install system dependencies for document processing (OpenCV, Tesseract, Poppler, HEIF)
 # Also install Node.js for mermaid-cli (diagram validation) and git for uv
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -62,10 +60,7 @@ RUN if [ "$WITH_SAM3_LOCAL" = "1" ]; then \
         uv sync --frozen --no-dev; \
     fi && \
     uv pip uninstall opencv-python || true && \
-    uv pip install --no-deps opencv-python-headless==4.11.0.86 && \
-    if [ "$WITH_HIRES" = "0" ]; then \
-        uv pip uninstall unstructured-inference || true; \
-    fi
+    uv pip install --no-deps opencv-python-headless==4.11.0.86
 
 # Copy the rest of the application
 COPY . .
