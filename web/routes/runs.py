@@ -290,12 +290,19 @@ def _process_figures_after_extraction(
         if vision_available and processor:
             try:
                 ocr_text = el.get("content", "") or el.get("text", "")
+                # Extract text positions from image using Azure DI (same as upload flow)
+                text_positions = processor.extract_text_positions_from_image(image_path)
+                if text_positions:
+                    logger.debug(
+                        f"Extracted {len(text_positions)} text positions for {element_id}"
+                    )
                 result = processor.process_and_save(
                     image_path=image_path,
                     output_dir=figures_dir,
                     element_id=element_id,
                     ocr_text=ocr_text,
                     run_id=run_id,
+                    text_positions=text_positions if text_positions else None,
                 )
                 el["figure_processing"] = {
                     "figure_type": result.get("figure_type"),

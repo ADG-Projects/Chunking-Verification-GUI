@@ -1360,12 +1360,19 @@ def api_figure_reprocess(
 
         processor = get_processor()
         ocr_text = target.get("content", "") or target.get("text", "")
+        # Extract text positions from image using Azure DI (same as upload flow)
+        text_positions = processor.extract_text_positions_from_image(image_path)
+        if text_positions:
+            logger.info(
+                f"Extracted {len(text_positions)} text positions for reprocessing {element_id}"
+            )
         result = processor.process_and_save(
             image_path=image_path,
             output_dir=figures_dir,
             element_id=element_id,
             ocr_text=ocr_text,
             run_id=slug,
+            text_positions=text_positions if text_positions else None,
         )
         return {"status": "ok", "result": result}
     except ImportError as e:
@@ -1421,41 +1428,21 @@ def api_figure_segment(
     if not image_path:
         raise HTTPException(status_code=404, detail="Image file not found")
 
-    # Extract text_positions from elements that overlap with the figure
-    fig_coords = md.get("coordinates", {})
-    fig_page = target.get("page_number") or md.get("page_number")
-    text_positions: List[Dict[str, Any]] = []
-
-    if fig_coords.get("points") and fig_page:
-        all_elements = _load_all_elements(elements_path)
-        text_types = {"text", "narrativetext", "title", "listitem", "paragraph"}
-        for el in all_elements:
-            el_type = el.get("type", "").lower()
-            if el_type not in text_types:
-                continue
-            el_md = el.get("metadata", {})
-            el_page = el.get("page_number") or el_md.get("page_number")
-            if el_page != fig_page:
-                continue
-            el_coords = el_md.get("coordinates", {})
-            if _boxes_overlap(fig_coords, el_coords, margin=20.0):
-                el_bbox = _get_bbox_from_coordinates(el_coords)
-                if el_bbox:
-                    text_positions.append({
-                        "bbox": list(el_bbox),
-                        "text": el.get("text", ""),
-                    })
-        if text_positions:
-            logger.info(
-                f"Found {len(text_positions)} text elements overlapping figure {element_id}"
-            )
-
     # Run segmentation
     try:
         from chunking_pipeline.figure_processor import get_processor
 
         processor = get_processor()
         ocr_text = target.get("content", "") or target.get("text", "")
+
+        # Extract text positions from figure image using Azure DI (same as upload flow)
+        # This replaces the overlapping-element approach which had wrong coordinate format
+        text_positions = processor.extract_text_positions_from_image(image_path)
+        if text_positions:
+            logger.info(
+                f"Extracted {len(text_positions)} text positions from figure image {element_id}"
+            )
+
         result = processor.segment_and_save(
             image_path=image_path,
             output_dir=figures_dir,
@@ -1534,41 +1521,27 @@ def api_figure_extract_mermaid(
     if not image_path:
         raise HTTPException(status_code=404, detail="Image file not found")
 
-    # Extract text_positions from elements that overlap with the figure
-    fig_coords = md.get("coordinates", {})
-    fig_page = target.get("page_number") or md.get("page_number")
-    text_positions: List[Dict[str, Any]] = []
-
-    if fig_coords.get("points") and fig_page:
-        all_elements = _load_all_elements(elements_path)
-        text_types = {"text", "narrativetext", "title", "listitem", "paragraph"}
-        for el in all_elements:
-            el_type = el.get("type", "").lower()
-            if el_type not in text_types:
-                continue
-            el_md = el.get("metadata", {})
-            el_page = el.get("page_number") or el_md.get("page_number")
-            if el_page != fig_page:
-                continue
-            el_coords = el_md.get("coordinates", {})
-            if _boxes_overlap(fig_coords, el_coords, margin=20.0):
-                el_bbox = _get_bbox_from_coordinates(el_coords)
-                if el_bbox:
-                    text_positions.append({
-                        "bbox": list(el_bbox),
-                        "text": el.get("text", ""),
-                    })
-        if text_positions:
-            logger.info(
-                f"Found {len(text_positions)} text elements overlapping figure {element_id}"
-            )
-
     # Run mermaid extraction
     try:
         from chunking_pipeline.figure_processor import get_processor
 
         processor = get_processor()
         ocr_text = target.get("content", "") or target.get("text", "")
+
+        # Try to get text_positions from SAM3 result (from prior segment call)
+        text_positions = sam3_result.get("text_positions")
+        if text_positions:
+            logger.info(
+                f"Using {len(text_positions)} text positions from SAM3 result for {element_id}"
+            )
+        else:
+            # Fall back to Azure DI extraction (same as upload flow)
+            text_positions = processor.extract_text_positions_from_image(image_path)
+            if text_positions:
+                logger.info(
+                    f"Extracted {len(text_positions)} text positions from figure image {element_id}"
+                )
+
         result = processor.extract_mermaid_and_save(
             image_path=image_path,
             output_dir=figures_dir,
