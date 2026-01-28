@@ -32,6 +32,26 @@ Install dependencies:
 uv sync
 ```
 
+### Updating PolicyAsCode Dependency
+
+ChunkingTests depends on PolicyAsCode (PaC) via git reference. When PaC is updated with new features needed by this project:
+
+```bash
+# Update PaC to latest commit on its branch
+uv lock -P brd-to-opa-pipeline
+
+# Then sync to install
+uv sync
+```
+
+**Important:** `uv lock` alone will NOT update git dependencies - it honors the existing lock file. You must use `-P <package>` (or `--upgrade-package`) to force an update.
+
+To verify the correct commit is locked:
+```bash
+grep "source.*PolicyAsCode" uv.lock
+# Should show the expected commit hash
+```
+
 Run the visualizer locally:
 
 ```bash

@@ -96,6 +96,7 @@
         <label class="run-picker">
           <span class="lab">Run</span>
           <select id="runSelect"></select>
+          <span id="mainFormatBadge" class="format-badge" style="display:none;"></span>
         </label>
         <button id="reviewSummaryChip" class="review-chip disabled" type="button" title="Click Elements or Chunks to focus reviews"></button>
         <button id="openRunModal" class="btn">New Run Provider</button>
@@ -396,6 +397,7 @@
         <div class="run-modal-body">
           <div class="run-preview" id="runPreviewPane">
             <div class="run-preview-controls">
+              <span id="runFormatBadge" class="format-badge" style="display:none;"></span>
               <button id="runPrev" class="btn">◀</button>
               <span>Page <span id="runPageNum">-</span> / <span id="runPageCount">-</span></span>
               <button id="runNext" class="btn">▶</button>
@@ -407,6 +409,7 @@
             </div>
             <div class="run-canvas-wrap">
               <canvas id="runPdfCanvas"></canvas>
+              <div id="runPreviewMessage" class="preview-message" style="display:none;"></div>
             </div>
           </div>
           <div class="run-grid" id="runFormGrid">
@@ -437,7 +440,7 @@
             <div class="upload-row">
               <label>
                 <div class="lab">Upload PDF <span class="info" tabindex="0">i</span><div class="tip">Choose a file and it uploads immediately to the server's <code>PDF_DIR</code> (Fly volume mount) so future runs can reuse it.</div></div>
-                <input id="pdfUploadInput" type="file" accept=".pdf" />
+                <input id="pdfUploadInput" type="file" accept=".pdf,.docx,.xlsx,.pptx,.jpg,.jpeg,.png,.bmp,.tiff,.tif,.heif" />
               </label>
               <button id="pdfUploadBtn" class="btn" type="button" style="display:none;">Upload</button>
               <span id="pdfUploadStatus" class="muted"></span>

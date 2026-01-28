@@ -147,6 +147,7 @@
 }
 
 .run-canvas-wrap {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -166,6 +167,19 @@
   max-width: 100%;
   height: auto;
 }
+
+.preview-message {
+  position: absolute;
+  padding: 16px 24px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  background: var(--surface-glass);
+  border-radius: 6px;
+  max-width: 280px;
+}
+
 
 /* Adjust adv grid for narrower column */
 .adv-grid {

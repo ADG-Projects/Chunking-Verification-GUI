@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from src.extractors.azure_di import (
     AzureDIConfig,
+    AzureDIExtractOptions,
     AzureDIExtractor,
     parse_pages,
     resolve_pages_in_document,
@@ -25,6 +26,7 @@ from ..config import (
     relative_to_root,
     safe_pages_tag,
 )
+from ..file_utils import get_file_type
 from ..run_jobs import RUN_JOB_MANAGER
 from .elements import clear_index_cache
 from .reviews import review_file_path
@@ -315,24 +317,15 @@ def _run_extraction(metadata: Dict[str, Any]) -> None:
     """Worker function for Azure DI extraction.
 
     Called by the job manager with metadata containing all extraction parameters.
-    Performs PDF slicing, extraction, and writes outputs.
+    Handles PDFs (with page slicing), Office documents (converted to PDF via Gotenberg),
+    and images (processed directly).
     """
-    input_pdf = Path(metadata["input_pdf"])
+    input_file = Path(metadata["input_pdf"])  # Can be PDF, Office doc, or image
     trimmed_path = Path(metadata["trimmed_path"])
     elements_path = Path(metadata["elements_path"])
     meta_path = Path(metadata["meta_path"])
     pages_str = metadata["pages"]
-
-    # Parse and validate pages
-    page_list = parse_pages(pages_str)
-    valid_pages, dropped_pages, max_page = resolve_pages_in_document(str(input_pdf), page_list)
-    if not valid_pages:
-        raise ValueError(f"No valid pages requested; {input_pdf} has {max_page} pages.")
-    if dropped_pages:
-        logger.warning(f"Dropping out-of-range pages {dropped_pages}; document has {max_page} pages.")
-
-    # Slice PDF to requested pages (creates the trimmed PDF artifact)
-    slice_pdf(str(input_pdf), valid_pages, str(trimmed_path), warn_on_drop=False)
+    file_type = metadata.get("file_type") or get_file_type(input_file.name)
 
     # Determine if figures should be downloaded
     outputs = metadata.get("outputs") or []
@@ -353,10 +346,49 @@ def _run_extraction(metadata: Dict[str, Any]) -> None:
 
     # Run extraction using PolicyAsCode's AzureDIExtractor
     extractor = AzureDIExtractor(config)
-    result = extractor.extract(
-        str(trimmed_path),
-        figures_output_dir=figures_output_dir,
-    )
+
+    # Handle different file types
+    if file_type == "pdf":
+        # PDFs: Parse pages, slice to requested range, then extract
+        page_list = parse_pages(pages_str)
+        valid_pages, dropped_pages, max_page = resolve_pages_in_document(str(input_file), page_list)
+        if not valid_pages:
+            raise ValueError(f"No valid pages requested; {input_file} has {max_page} pages.")
+        if dropped_pages:
+            logger.warning(f"Dropping out-of-range pages {dropped_pages}; document has {max_page} pages.")
+
+        # Slice PDF to requested pages (creates the trimmed PDF artifact)
+        slice_pdf(str(input_file), valid_pages, str(trimmed_path), warn_on_drop=False)
+
+        # Extract from the sliced PDF
+        extract_options = AzureDIExtractOptions(figures_output_dir=figures_output_dir)
+        result = extractor.extract(str(trimmed_path), options=extract_options)
+        pages_for_config = ",".join(str(p) for p in valid_pages)
+
+    elif file_type == "office":
+        # Office documents (DOCX, XLSX, PPTX): Gotenberg converts to PDF, then extract
+        # PaC handles conversion internally; we save the converted PDF for UI display
+        logger.info(f"Processing Office document: {input_file.name}")
+        extract_options = AzureDIExtractOptions(
+            figures_output_dir=figures_output_dir,
+            save_converted_pdf=trimmed_path,  # Save converted PDF for UI viewing
+        )
+        result = extractor.extract(str(input_file), options=extract_options)
+        # Office docs process all pages (no page selection)
+        pages_for_config = "all"
+
+    elif file_type == "image":
+        # Images: Process directly, no PDF conversion
+        logger.info(f"Processing image: {input_file.name}")
+        extract_options = AzureDIExtractOptions(figures_output_dir=figures_output_dir)
+        result = extractor.extract(str(input_file), options=extract_options)
+        # Images are single-page
+        pages_for_config = "1"
+        # No PDF artifact for images
+        trimmed_path = None
+
+    else:
+        raise ValueError(f"Unsupported file type: {file_type} for {input_file}")
 
     # Convert elements to dict format for JSONL
     elems = [el.to_dict() for el in result.elements]
@@ -364,8 +396,9 @@ def _run_extraction(metadata: Dict[str, Any]) -> None:
     # Build run configuration metadata
     run_config: Dict[str, Any] = {
         "provider": "azure/document_intelligence",
-        "input": str(input_pdf),
-        "pages": ",".join(str(p) for p in valid_pages),
+        "input": str(input_file),
+        "file_type": file_type,
+        "pages": pages_for_config,
         "model_id": config.model_id,
         "api_version": config.api_version,
         "features": config.features or [],
@@ -394,11 +427,13 @@ def _run_extraction(metadata: Dict[str, Any]) -> None:
             run_config[key] = val
 
     # Process figures: extract images from PDF and run vision pipeline if available
-    figures_dir = elements_path.parent / f"{elements_path.stem.replace('.elements', '')}.figures"
-    slug_with_pages = metadata.get("slug_with_pages")
-    elems = _process_figures_after_extraction(
-        elems, trimmed_path, figures_dir, run_id=slug_with_pages
-    )
+    # Only process if we have a PDF (trimmed_path exists)
+    if trimmed_path and trimmed_path.exists():
+        figures_dir = elements_path.parent / f"{elements_path.stem.replace('.elements', '')}.figures"
+        slug_with_pages = metadata.get("slug_with_pages")
+        elems = _process_figures_after_extraction(
+            elems, trimmed_path, figures_dir, run_id=slug_with_pages
+        )
 
     # Write outputs
     _write_elements_jsonl(elements_path, elems)
@@ -420,10 +455,16 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
         )
     out_dir = get_out_dir(provider)
 
-    pdf_name = str(payload.get("pdf") or payload.get("pdf_name") or "").strip()
+    # Accept 'pdf' field for backwards compatibility (now supports all document types)
+    doc_name = str(payload.get("pdf") or payload.get("pdf_name") or "").strip()
     pages = str(payload.get("pages") or "").strip()
-    if not pdf_name:
+    if not doc_name:
         raise HTTPException(status_code=400, detail="Field 'pdf' is required")
+
+    # Detect file type early
+    file_type = get_file_type(doc_name)
+    if not file_type:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {doc_name}")
 
     # All providers now output elements only; chunking is done via separate custom chunker
     ocr_languages = str(payload.get("ocr_languages") or "eng+ara").strip() or None
@@ -496,25 +537,34 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
         seen_outputs.add(key)
         normalized_outputs.append(out)
 
-    input_pdf = RES_DIR / pdf_name
-    if not input_pdf.exists():
-        raise HTTPException(status_code=404, detail=f"PDF not found: {pdf_name}")
+    input_file = RES_DIR / doc_name
+    if not input_file.exists():
+        raise HTTPException(status_code=404, detail=f"Document not found: {doc_name}")
 
-    if not pages:
-        try:
-            from pypdf import PdfReader  # type: ignore
+    # Handle pages based on file type
+    if file_type == "pdf":
+        # PDFs: infer page range if not specified
+        if not pages:
+            try:
+                from pypdf import PdfReader  # type: ignore
 
-            reader = PdfReader(str(input_pdf))
-            total = len(reader.pages)
-            if total <= 0:
-                raise ValueError("empty PDF")
-            pages = f"1-{total}"
-        except Exception as e:  # pragma: no cover - defensive fallback
-            raise HTTPException(status_code=400, detail=f"Could not infer page range: {e}")
+                reader = PdfReader(str(input_file))
+                total = len(reader.pages)
+                if total <= 0:
+                    raise ValueError("empty PDF")
+                pages = f"1-{total}"
+            except Exception as e:  # pragma: no cover - defensive fallback
+                raise HTTPException(status_code=400, detail=f"Could not infer page range: {e}")
+    elif file_type == "office":
+        # Office documents: process all pages (Gotenberg converts entire doc)
+        pages = "all"
+    elif file_type == "image":
+        # Images: single page
+        pages = "1"
 
-    logger.info("Received run request provider=%s pdf=%s pages=%s", provider, pdf_name, pages)
+    logger.info("Received run request provider=%s doc=%s type=%s pages=%s", provider, doc_name, file_type, pages)
 
-    slug = input_pdf.stem
+    slug = input_file.stem
     raw_tag = str(payload.get("tag") or "").strip()
     safe_tag = None
     if raw_tag:
@@ -524,7 +574,8 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     form_snapshot: Dict[str, Any] = {
-        "pdf": pdf_name,
+        "pdf": doc_name,  # Keep 'pdf' key for backwards compatibility
+        "file_type": file_type,
         "pages": pages,
         "tag": raw_tag or None,
         "ocr_languages": ocr_languages,
@@ -573,14 +624,15 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
         # Job tracking fields
         "slug_with_pages": f"{run_slug}.{pages_tag}",
         "pages_tag": pages_tag,
-        "pdf_name": pdf_name,
+        "doc_name": doc_name,
+        "file_type": file_type,
         "pages": pages,
         "safe_tag": safe_tag,
         "raw_tag": raw_tag,
         "form_snapshot": payload.get("form_snapshot") or {},
         "provider": provider,
-        # Output paths
-        "input_pdf": str(input_pdf),
+        # Output paths (input_pdf key kept for backwards compatibility in _run_extraction)
+        "input_pdf": str(input_file),
         "trimmed_path": str(trimmed_out),
         "elements_path": str(elements_out),
         "meta_path": str(meta_out),
@@ -604,6 +656,7 @@ def api_run(payload: Dict[str, Any]) -> Dict[str, Any]:
     run_stub = {
         "slug": job_metadata["slug_with_pages"],
         "provider": provider,
+        "file_type": file_type,
         "page_tag": pages_tag,
         "pdf_file": relative_to_root(trimmed_out) if trimmed_out.exists() else None,
         "elements_file": relative_to_root(elements_out) if elements_out.exists() else None,

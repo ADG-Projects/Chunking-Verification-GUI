@@ -14,6 +14,100 @@ async function ensurePdfjsReady(maxMs = 5000) {
 async function loadRunPreviewForSelectedPdf() {
   const name = $('pdfSelect')?.value;
   if (!name) return;
+
+  const canvas = $('runPdfCanvas');
+  const previewMsg = $('runPreviewMessage');
+  const formatBadge = $('runFormatBadge');
+
+  // Check if this is a non-PDF file (Office doc or image)
+  const ext = name.toLowerCase().substring(name.lastIndexOf('.'));
+  const isPdf = ext === '.pdf';
+  const isImage = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.heif'].includes(ext);
+  const isOffice = ['.docx', '.xlsx', '.pptx'].includes(ext);
+
+  // Update format badge
+  if (formatBadge) {
+    const extDisplay = ext.replace('.', '').toUpperCase();
+    formatBadge.textContent = extDisplay;
+    formatBadge.className = 'format-badge';
+    if (isPdf) formatBadge.classList.add('format-pdf');
+    else if (isOffice) formatBadge.classList.add('format-office');
+    else if (isImage) formatBadge.classList.add('format-image');
+    formatBadge.style.display = 'inline-block';
+  }
+
+  // Show/hide preview message
+  if (previewMsg) {
+    if (isOffice) {
+      previewMsg.textContent = 'Preview available after extraction (Office documents are converted to PDF)';
+      previewMsg.style.display = 'block';
+    } else if (isImage) {
+      previewMsg.textContent = '';
+      previewMsg.style.display = 'none';
+    } else {
+      previewMsg.textContent = '';
+      previewMsg.style.display = 'none';
+    }
+  }
+
+  // For images, show the image directly
+  if (isImage) {
+    RUN_PREVIEW_DOC = null;
+    RUN_PREVIEW_COUNT = 1;
+    RUN_PREVIEW_PAGE = 1;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      img.onload = () => {
+        const maxW = 400, maxH = 500;
+        const scale = Math.min(maxW / img.width, maxH / img.height, 1);
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      };
+      img.src = `/res_pdf/${encodeURIComponent(name)}`;
+    }
+    $('runPageNum').textContent = '1';
+    $('runPageCount').textContent = '1';
+    return;
+  }
+
+  // For Office docs, check if a converted PDF exists from a previous run
+  if (isOffice) {
+    try {
+      // Try to load converted PDF from previous extraction
+      const checkResp = await fetch(`/api/converted-pdf/${encodeURIComponent(name)}`, { method: 'HEAD' });
+      if (checkResp.ok) {
+        // Converted PDF exists - load it with PDF.js
+        if (previewMsg) previewMsg.style.display = 'none';
+        await ensurePdfjsReady();
+        const url = `/api/converted-pdf/${encodeURIComponent(name)}`;
+        const task = window['pdfjsLib'].getDocument(url);
+        RUN_PREVIEW_DOC = await task.promise;
+        RUN_PREVIEW_COUNT = RUN_PREVIEW_DOC.numPages;
+        RUN_PREVIEW_PAGE = 1;
+        $('runPageCount').textContent = RUN_PREVIEW_COUNT;
+        await renderRunPreviewPage();
+        return;
+      }
+    } catch (e) {
+      // No converted PDF available, show placeholder
+    }
+
+    // No converted PDF - show placeholder message
+    RUN_PREVIEW_DOC = null;
+    RUN_PREVIEW_COUNT = 0;
+    RUN_PREVIEW_PAGE = 1;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    $('runPageNum').textContent = '-';
+    $('runPageCount').textContent = '-';
+    return;
+  }
+
+  // For PDFs, use PDF.js
   try {
     await ensurePdfjsReady();
     const url = `/res_pdf/${encodeURIComponent(name)}`;
@@ -27,7 +121,6 @@ async function loadRunPreviewForSelectedPdf() {
     RUN_PREVIEW_DOC = null;
     RUN_PREVIEW_COUNT = 0;
     RUN_PREVIEW_PAGE = 1;
-    const canvas = $('runPdfCanvas');
     if (canvas) { const ctx = canvas.getContext('2d'); ctx && ctx.clearRect(0,0,canvas.width,canvas.height); }
     const numEl = $('runPageNum'); const cntEl = $('runPageCount');
     if (numEl) numEl.textContent = '-'; if (cntEl) cntEl.textContent = '-';

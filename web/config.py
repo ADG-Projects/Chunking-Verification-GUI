@@ -123,17 +123,48 @@ def safe_pages_tag(pages: str) -> str:
     return "pages" + re.sub(r"[^0-9\-]+", "_", pages)
 
 
-def sanitize_pdf_filename(filename: str) -> str:
+def sanitize_document_filename(filename: str, allowed_extensions: frozenset[str] | None = None) -> str:
+    """Sanitize a document filename, preserving its extension.
+
+    Args:
+        filename: The original filename.
+        allowed_extensions: Set of allowed extensions (lowercase, with dot).
+            If None, fetches supported extensions from PaC API via file_utils.
+
+    Returns:
+        Sanitized filename with safe characters and original extension,
+        or empty string if the extension is not allowed.
+    """
     base = Path(filename or "").name
     if not base:
         return ""
-    if not base.lower().endswith(".pdf"):
+
+    # Import here to avoid circular import
+    if allowed_extensions is None:
+        from .file_utils import get_supported_formats
+
+        formats = get_supported_formats()
+        allowed_extensions = frozenset(formats.get("extensions", []))
+
+    ext = ""
+    dot_idx = base.rfind(".")
+    if dot_idx != -1:
+        ext = base[dot_idx:].lower()
+
+    if ext not in allowed_extensions:
         return ""
-    stem = Path(base).stem
+
+    stem = base[:dot_idx] if dot_idx != -1 else base
     safe_stem = re.sub(r"[^A-Za-z0-9_\\-]+", "-", stem).strip("-_")
     if not safe_stem:
         safe_stem = "upload"
-    return f"{safe_stem}.pdf"
+    return f"{safe_stem}{ext}"
+
+
+# Backwards-compatible alias for PDF-only usage
+def sanitize_pdf_filename(filename: str) -> str:
+    """Sanitize a PDF filename (backwards-compatible alias)."""
+    return sanitize_document_filename(filename, frozenset({".pdf"}))
 
 
 def ensure_pdfjs_assets() -> None:

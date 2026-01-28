@@ -1449,3 +1449,33 @@ body.resizing-drawer {
   display: block;
 }
 
+/* =============================================================================
+   FORMAT BADGES - Color-coded file type indicators
+   ============================================================================= */
+
+.format-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  border-radius: 4px;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+.format-badge.format-pdf {
+  background: #dc2626;
+  color: #fff;
+}
+
+.format-badge.format-office {
+  background: #2563eb;
+  color: #fff;
+}
+
+.format-badge.format-image {
+  background: #16a34a;
+  color: #fff;
+}
+

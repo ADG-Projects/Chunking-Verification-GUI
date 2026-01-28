@@ -36,6 +36,43 @@ function providerSupportsChunks(provider) {
   return true;
 }
 
+function updateMainFormatBadge() {
+  const badge = $('mainFormatBadge');
+  if (!badge) return;
+
+  // Get file type and name from run config (check multiple possible locations)
+  const fileType = CURRENT_RUN_CONFIG?.file_type;
+  // Try form_snapshot.pdf first, then extract from input path
+  let pdfName = CURRENT_RUN_CONFIG?.form_snapshot?.pdf || '';
+  if (!pdfName && CURRENT_RUN_CONFIG?.input) {
+    // Extract filename from full path
+    const input = CURRENT_RUN_CONFIG.input;
+    pdfName = input.substring(input.lastIndexOf('/') + 1);
+  }
+
+  if (!pdfName) {
+    badge.style.display = 'none';
+    return;
+  }
+
+  // Extract extension from filename
+  const ext = pdfName.toLowerCase().substring(pdfName.lastIndexOf('.'));
+  const extDisplay = ext.replace('.', '').toUpperCase();
+
+  badge.textContent = extDisplay;
+  badge.className = 'format-badge';
+
+  if (fileType === 'pdf' || ext === '.pdf') {
+    badge.classList.add('format-pdf');
+  } else if (fileType === 'office' || ['.docx', '.xlsx', '.pptx'].includes(ext)) {
+    badge.classList.add('format-office');
+  } else if (fileType === 'image' || ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.heif'].includes(ext)) {
+    badge.classList.add('format-image');
+  }
+
+  badge.style.display = 'inline-block';
+}
+
 async function loadRun(slug, provider = CURRENT_PROVIDER) {
   const providerKey = (provider || CURRENT_PROVIDER || 'unstructured/local').trim() || 'unstructured/local';
   CURRENT_SLUG = slug;
@@ -69,6 +106,7 @@ async function loadRun(slug, provider = CURRENT_PROVIDER) {
   CURRENT_RUN_CONFIG = CURRENT_RUN?.run_config || null;
   CURRENT_CHUNK_SUMMARY = CURRENT_RUN?.chunk_summary || null;
   updateRunConfigCard();
+  updateMainFormatBadge();
   if (CURRENT_RUN_HAS_CHUNKS) {
     await loadChunksForRun(slug, CURRENT_PROVIDER);
     redrawOverlaysForCurrentContext(); // ensure overlays update once chunks are available

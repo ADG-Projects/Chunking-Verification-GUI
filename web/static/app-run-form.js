@@ -3,7 +3,65 @@
  * Extracted from app-runs.js for modularity
  */
 
+// Cached supported formats from API
+let SUPPORTED_FORMATS = null;
+
+/**
+ * Fetch supported formats from the API and cache them.
+ * Updates the file input accept attribute dynamically.
+ */
+async function fetchSupportedFormats() {
+  if (SUPPORTED_FORMATS) return SUPPORTED_FORMATS;
+  try {
+    const resp = await fetch('/api/supported-formats');
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    SUPPORTED_FORMATS = await resp.json();
+    // Update file input accept attribute
+    const input = $('pdfUploadInput');
+    if (input && SUPPORTED_FORMATS.extensions) {
+      input.accept = SUPPORTED_FORMATS.extensions.join(',');
+    }
+    return SUPPORTED_FORMATS;
+  } catch (e) {
+    console.error('Failed to fetch supported formats:', e);
+    // Fallback to hardcoded values
+    SUPPORTED_FORMATS = {
+      extensions: ['.pdf', '.docx', '.xlsx', '.pptx', '.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.heif'],
+      categories: {
+        pdf: ['.pdf'],
+        image: ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.heif'],
+        office: ['.docx', '.xlsx', '.pptx']
+      }
+    };
+    return SUPPORTED_FORMATS;
+  }
+}
+
+/**
+ * Check if a filename has a supported extension.
+ */
+function isSupportedFile(filename) {
+  if (!filename || !SUPPORTED_FORMATS) return false;
+  const ext = filename.toLowerCase().substring(filename.lastIndexOf('.'));
+  return SUPPORTED_FORMATS.extensions.includes(ext);
+}
+
+/**
+ * Get the file type category for a filename.
+ */
+function getFileType(filename) {
+  if (!filename || !SUPPORTED_FORMATS) return null;
+  const ext = filename.toLowerCase().substring(filename.lastIndexOf('.'));
+  for (const [cat, exts] of Object.entries(SUPPORTED_FORMATS.categories || {})) {
+    if (exts.includes(ext)) return cat;
+  }
+  return null;
+}
+
 function wireRunForm() {
+  // Fetch supported formats from API (non-blocking)
+  fetchSupportedFormats().catch(e => console.warn('Could not fetch supported formats:', e));
+
   const providerSel = $('providerSelect');
   const unstructuredBlocks = document.querySelectorAll('.unstructured-only');
   const azureHideables = document.querySelectorAll('.azure-hidden');
@@ -64,8 +122,9 @@ function wireRunForm() {
       if (uploading) return;
       if (!uploadInput.files || !uploadInput.files.length) return;
       const file = uploadInput.files[0];
-      if (!file || !file.name || !file.name.toLowerCase().endsWith('.pdf')) {
-        setStatus('File must be a .pdf');
+      if (!file || !file.name || !isSupportedFile(file.name)) {
+        const exts = SUPPORTED_FORMATS?.extensions?.join(', ') || '.pdf';
+        setStatus(`Unsupported file type. Accepted: ${exts}`);
         uploadInput.value = '';
         return;
       }
@@ -273,3 +332,6 @@ function wireRunForm() {
 
 // Window exports
 window.wireRunForm = wireRunForm;
+window.fetchSupportedFormats = fetchSupportedFormats;
+window.isSupportedFile = isSupportedFile;
+window.getFileType = getFileType;
