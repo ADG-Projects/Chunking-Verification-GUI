@@ -17,7 +17,7 @@ async function loadExtractionPreviewForSelectedPdf() {
 
   const canvas = $('extractionPdfCanvas');
   const previewMsg = $('extractionPreviewMessage');
-  const formatBadge = $('extractionFormatBadge');
+  const formatBadge = $('pdfSelectFormatBadge');
 
   // Check if this is a non-PDF file (Office doc or image)
   const ext = name.toLowerCase().substring(name.lastIndexOf('.'));

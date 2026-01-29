@@ -35,6 +35,22 @@ router = APIRouter()
 logger = logging.getLogger("chunking.routes.extractions")
 
 
+def _report_progress(
+    metadata: Dict[str, Any],
+    *,
+    current: Optional[int] = None,
+    total: Optional[int] = None,
+    message: Optional[str] = None,
+    stage: Optional[str] = None,
+) -> None:
+    """Report progress for the current extraction job."""
+    job_id = metadata.get("_job_id")
+    if job_id:
+        EXTRACTION_JOB_MANAGER.update_progress(
+            job_id, current=current, total=total, message=message, stage=stage
+        )
+
+
 def _parse_slug_from_extraction_file(path: Path, suffix: str) -> Tuple[str, Optional[str]]:
     """Parse slug and page range from an elements or chunks file path."""
     stem = path.name[: -len(suffix)] if path.name.endswith(suffix) else path.stem
@@ -282,6 +298,7 @@ def _process_figures_after_extraction(
     pdf_path: Path,
     figures_dir: Path,
     run_id: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """Process figures through vision pipeline after extraction.
 
@@ -293,16 +310,21 @@ def _process_figures_after_extraction(
         pdf_path: Path to the trimmed PDF
         figures_dir: Directory to save extracted figure images
         run_id: Optional run identifier
+        metadata: Job metadata for progress reporting
 
     Returns:
         Updated elements list with figure_processing added to figure elements
     """
+    metadata = metadata or {}
+
     # Check for figures (case-insensitive)
     figures = [el for el in elements if el.get("type", "").lower() == "figure"]
     if not figures:
         return elements
 
-    logger.info(f"Found {len(figures)} figures to process")
+    total_figures = len(figures)
+    logger.info(f"Found {total_figures} figures to process")
+    _report_progress(metadata, stage="figures", total=total_figures, message=f"Processing {total_figures} figure{'s' if total_figures > 1 else ''}...")
 
     # Try to import the vision processor
     try:
@@ -310,17 +332,29 @@ def _process_figures_after_extraction(
         processor = get_processor()
         vision_available = True
         logger.info("Vision pipeline available for figure processing")
+        _report_progress(metadata, stage="figures", total=total_figures, message=f"Vision pipeline ready, processing {total_figures} figure{'s' if total_figures > 1 else ''}...")
     except ImportError:
         processor = None
         vision_available = False
         logger.info("Vision pipeline not available - extracting images only")
+        _report_progress(metadata, stage="figures", total=total_figures, message=f"Extracting {total_figures} figure image{'s' if total_figures > 1 else ''} (no vision pipeline)...")
 
     # Ensure figures directory exists
     figures_dir.mkdir(parents=True, exist_ok=True)
 
+    figure_index = 0
     for el in elements:
         if el.get("type", "").lower() != "figure":
             continue
+
+        figure_index += 1
+        _report_progress(
+            metadata,
+            current=figure_index,
+            total=total_figures,
+            message="Extracting from PDF...",
+            stage="figures",
+        )
 
         element_id = el.get("element_id", "")
         md = el.get("metadata", {})
@@ -352,6 +386,13 @@ def _process_figures_after_extraction(
             try:
                 ocr_text = el.get("content", "") or el.get("text", "")
                 # Extract text positions from image using Azure DI (same as upload flow)
+                _report_progress(
+                    metadata,
+                    current=figure_index,
+                    total=total_figures,
+                    message="Extracting text positions...",
+                    stage="figures",
+                )
                 text_positions = processor.extract_text_positions_from_image(image_path)
                 if text_positions:
                     logger.debug(
@@ -359,6 +400,13 @@ def _process_figures_after_extraction(
                     )
 
                 # Step 1: SAM3 segmentation (creates .sam3.json + .annotated.png)
+                _report_progress(
+                    metadata,
+                    current=figure_index,
+                    total=total_figures,
+                    message="Running SAM3 segmentation...",
+                    stage="figures",
+                )
                 sam3_result = processor.segment_and_save(
                     image_path=image_path,
                     output_dir=figures_dir,
@@ -369,6 +417,13 @@ def _process_figures_after_extraction(
                 )
 
                 # Step 2: Mermaid extraction (creates .json)
+                _report_progress(
+                    metadata,
+                    current=figure_index,
+                    total=total_figures,
+                    message="Analyzing figure type...",
+                    stage="figures",
+                )
                 result = processor.extract_mermaid_and_save(
                     image_path=image_path,
                     output_dir=figures_dir,
@@ -377,6 +432,16 @@ def _process_figures_after_extraction(
                     run_id=run_id,
                     text_positions=text_positions if text_positions else None,
                 )
+
+                # Get the figure type for display
+                figure_type_raw = result.get("figure_type")
+                # Handle both enum and string values
+                if hasattr(figure_type_raw, "value"):
+                    figure_type = figure_type_raw.value.lower()
+                elif figure_type_raw:
+                    figure_type = str(figure_type_raw).replace("FigureType.", "").lower()
+                else:
+                    figure_type = "unknown"
 
                 el["figure_processing"] = {
                     "figure_type": result.get("figure_type"),
@@ -392,6 +457,15 @@ def _process_figures_after_extraction(
                 if formatted_text:
                     el["text"] = formatted_text
                     el["content"] = formatted_text
+
+                # Report completion with figure type (just the type, counter shown separately)
+                _report_progress(
+                    metadata,
+                    current=figure_index,
+                    total=total_figures,
+                    message=figure_type,
+                    stage="figures",
+                )
                 logger.info(f"Processed figure {element_id}: {result.get('figure_type')}")
             except Exception as e:
                 logger.error(f"Vision processing failed for {element_id}: {e}")
@@ -437,6 +511,7 @@ def _execute_extraction(metadata: Dict[str, Any]) -> None:
     # Handle different file types
     if file_type == "pdf":
         # PDFs: Parse pages, slice to requested range, then extract
+        _report_progress(metadata, stage="prepare", message="Preparing PDF pages...")
         page_list = parse_pages(pages_str)
         valid_pages, dropped_pages, max_page = resolve_pages_in_document(str(input_file), page_list)
         if not valid_pages:
@@ -446,6 +521,7 @@ def _execute_extraction(metadata: Dict[str, Any]) -> None:
 
         # Slice PDF to requested pages (creates the trimmed PDF artifact)
         slice_pdf(str(input_file), valid_pages, str(trimmed_path), warn_on_drop=False)
+        _report_progress(metadata, stage="azure", message="Sending to Azure Document Intelligence...")
 
         # Extract from the sliced PDF
         extract_options = AzureDIExtractOptions(figures_output_dir=figures_output_dir)
@@ -455,7 +531,9 @@ def _execute_extraction(metadata: Dict[str, Any]) -> None:
     elif file_type == "office":
         # Office documents (DOCX, XLSX, PPTX): Gotenberg converts to PDF, then extract
         # PaC handles conversion internally; we save the converted PDF for UI display
+        _report_progress(metadata, stage="convert", message="Converting Office document...")
         logger.info(f"Processing Office document: {input_file.name}")
+        _report_progress(metadata, stage="azure", message="Sending to Azure Document Intelligence...")
         extract_options = AzureDIExtractOptions(
             figures_output_dir=figures_output_dir,
             save_converted_pdf=trimmed_path,  # Save converted PDF for UI viewing
@@ -466,12 +544,14 @@ def _execute_extraction(metadata: Dict[str, Any]) -> None:
 
     elif file_type == "image":
         # Images: Process directly, then convert to PDF for UI viewing
+        _report_progress(metadata, stage="azure", message="Sending image to Azure Document Intelligence...")
         logger.info(f"Processing image: {input_file.name}")
         extract_options = AzureDIExtractOptions(figures_output_dir=figures_output_dir)
         result = extractor.extract(str(input_file), options=extract_options)
         # Images are single-page
         pages_for_config = "1"
         # Convert image to PDF for UI viewing
+        _report_progress(metadata, stage="convert", message="Converting image to PDF...")
         slug_with_pages = metadata.get("slug_with_pages", "image")
         out_dir = elements_path.parent
         trimmed_path = _convert_image_to_pdf(input_file, out_dir, slug_with_pages)
@@ -481,6 +561,25 @@ def _execute_extraction(metadata: Dict[str, Any]) -> None:
 
     # Convert elements to dict format for JSONL
     elems = [el.to_dict() for el in result.elements]
+
+    # Count element types for progress reporting
+    type_counts: Dict[str, int] = {}
+    for el in elems:
+        el_type = el.get("type", "unknown").lower()
+        type_counts[el_type] = type_counts.get(el_type, 0) + 1
+
+    # Build summary of what was found
+    summary_parts = []
+    if type_counts.get("paragraph", 0) + type_counts.get("text", 0) > 0:
+        text_count = type_counts.get("paragraph", 0) + type_counts.get("text", 0)
+        summary_parts.append(f"{text_count} text")
+    if type_counts.get("table", 0) > 0:
+        summary_parts.append(f"{type_counts['table']} table{'s' if type_counts['table'] > 1 else ''}")
+    if type_counts.get("figure", 0) > 0:
+        summary_parts.append(f"{type_counts['figure']} figure{'s' if type_counts['figure'] > 1 else ''}")
+
+    summary = ", ".join(summary_parts) if summary_parts else "elements"
+    _report_progress(metadata, stage="elements", message=f"Found {len(elems)} elements ({summary})")
 
     # Build extraction configuration metadata
     extraction_config: Dict[str, Any] = {
@@ -521,10 +620,11 @@ def _execute_extraction(metadata: Dict[str, Any]) -> None:
         figures_dir = elements_path.parent / f"{elements_path.stem.replace('.elements', '')}.figures"
         slug_with_pages = metadata.get("slug_with_pages")
         elems = _process_figures_after_extraction(
-            elems, trimmed_path, figures_dir, run_id=slug_with_pages
+            elems, trimmed_path, figures_dir, run_id=slug_with_pages, metadata=metadata
         )
 
     # Write outputs
+    _report_progress(metadata, stage="writing", message="Writing extraction results...")
     _write_elements_jsonl(elements_path, elems)
     _write_extraction_metadata(meta_path, extraction_config)
 

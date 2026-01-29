@@ -160,6 +160,17 @@
   max-height: none;
 }
 
+/* Format badge overlay on preview */
+.preview-overlay-badge {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 10;
+  padding: 4px 10px;
+  font-size: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
 #runPdfCanvas {
   display: block;
   background: #fff;
@@ -240,6 +251,171 @@
   line-height: 1.35;
   overflow: auto;
   color: var(--muted);
+}
+
+/* Detailed progress display */
+.extraction-progress-bar-wrap {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  margin-top: 0;
+  padding: 24px 20px;
+  width: 100%;
+  max-width: 500px;
+}
+
+.extraction-progress-detail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+}
+
+/* Pipeline visualization */
+.progress-pipeline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  width: 100%;
+  padding: 0 8px;
+}
+
+.pipeline-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.pipeline-stage .stage-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--surface-glass);
+  border: 2px solid var(--border-default);
+  transition: all 0.3s var(--ease-out);
+}
+
+.pipeline-stage .stage-label {
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text-tertiary);
+  transition: color 0.3s var(--ease-out);
+  white-space: nowrap;
+}
+
+.pipeline-connector {
+  flex: 1;
+  height: 2px;
+  min-width: 16px;
+  max-width: 40px;
+  background: var(--border-default);
+  margin: 0 4px;
+  margin-bottom: 22px;
+  transition: background 0.3s var(--ease-out);
+}
+
+/* Completed stage */
+.pipeline-stage.completed .stage-dot {
+  background: var(--color-success);
+  border-color: var(--color-success);
+  box-shadow: 0 0 8px rgba(48, 209, 88, 0.4);
+}
+
+.pipeline-stage.completed .stage-label {
+  color: var(--color-success);
+}
+
+.pipeline-stage.completed + .pipeline-connector {
+  background: var(--color-success);
+}
+
+/* Active stage */
+.pipeline-stage.active .stage-dot {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 12px rgba(10, 132, 255, 0.5);
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+.pipeline-stage.active .stage-label {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.8; }
+}
+
+/* Detail row with counter and type badge */
+.progress-detail-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 28px;
+}
+
+/* Counter for figure progress */
+.progress-counter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 12px;
+  background: var(--surface-glass);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+/* Message text */
+.progress-message {
+  color: var(--text-secondary);
+  text-align: center;
+  font-size: var(--text-sm);
+  min-height: 20px;
+}
+
+/* Type badge in progress - reuse images.css styles */
+.extraction-progress-bar-wrap .type-badge {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: var(--surface-glass);
+  color: var(--text-secondary);
+}
+
+.extraction-progress-bar-wrap .type-badge.type-flowchart {
+  background: linear-gradient(135deg, #34c759 0%, #30d158 100%);
+  color: white;
+}
+
+.extraction-progress-bar-wrap .type-badge.type-diagram {
+  background: linear-gradient(135deg, #0a84ff 0%, #409cff 100%);
+  color: white;
+}
+
+.extraction-progress-bar-wrap .type-badge.type-chart {
+  background: linear-gradient(135deg, #ff9f0a 0%, #ffb340 100%);
+  color: white;
+}
+
+.extraction-progress-bar-wrap .type-badge.type-other,
+.extraction-progress-bar-wrap .type-badge.type-unknown {
+  background: var(--surface-glass-active);
+  color: var(--text-secondary);
 }
 
 .modal.extracting #extractionFormGrid,

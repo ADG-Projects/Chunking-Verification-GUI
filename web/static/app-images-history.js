@@ -83,6 +83,17 @@ function renderUploadHistory(uploads) {
           })
         : '';
 
+      // Extract file extension and determine format class for badge
+      const ext = (upload.filename || '').toLowerCase().split('.').pop();
+      const formatClass = ['pdf'].includes(ext)
+        ? 'format-pdf'
+        : ['docx', 'xlsx', 'pptx'].includes(ext)
+          ? 'format-office'
+          : ['jpg', 'jpeg', 'png', 'bmp', 'tiff', 'tif', 'heif'].includes(ext)
+            ? 'format-image'
+            : '';
+      const formatLabel = ext ? ext.toUpperCase() : '';
+
       return `
         <div class="upload-history-card ${isActive ? 'active' : ''}" data-upload-id="${upload.upload_id}">
           <div class="upload-history-thumbnail-wrapper">
@@ -103,6 +114,7 @@ function renderUploadHistory(uploads) {
               ${truncateFilename(upload.filename || upload.upload_id)}
             </div>
             <div class="upload-history-meta">
+              ${formatLabel ? `<span class="format-badge ${formatClass}">${formatLabel}</span>` : ''}
               <span class="upload-history-stage stage-${stageBadge}">${stageLabel}</span>
               ${upload.figure_type ? `<span class="upload-history-type type-${typeLabel}">${typeLabel}</span>` : ''}
               ${confidence ? `<span class="upload-history-confidence">${confidence}</span>` : ''}

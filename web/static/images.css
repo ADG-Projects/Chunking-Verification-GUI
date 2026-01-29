@@ -974,6 +974,12 @@
   border-radius: var(--radius-sm);
 }
 
+/* Format badge sizing for upload history cards */
+.upload-history-meta .format-badge {
+  padding: 2px 5px;
+  font-size: 9px;
+}
+
 .upload-history-stage.stage-complete {
   background: var(--color-success);
   color: white;

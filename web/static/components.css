@@ -1506,3 +1506,11 @@ body.resizing-drawer {
   color: #fff;
 }
 
+/* Format badge inside label text */
+.lab .format-badge {
+  margin-left: 6px;
+  margin-right: 0;
+  padding: 1px 6px;
+  font-size: 10px;
+}
+

@@ -94,9 +94,8 @@
       </div>
       <div class="controls">
         <label class="extraction-picker">
-          <span class="lab">Extraction</span>
+          <span class="lab">Extraction <span id="mainFormatBadge" class="format-badge" style="display:none;"></span></span>
           <select id="extractionSelect"></select>
-          <span id="mainFormatBadge" class="format-badge" style="display:none;"></span>
         </label>
         <button id="reviewSummaryChip" class="review-chip disabled" type="button" title="Click Elements or Chunks to focus reviews"></button>
         <button id="openExtractionModal" class="btn">New Extraction</button>
@@ -421,6 +420,7 @@
             </div>
             <div class="extraction-canvas-wrap">
               <canvas id="extractionPdfCanvas"></canvas>
+              <span id="pdfSelectFormatBadge" class="format-badge preview-overlay-badge" style="display:none;"></span>
               <div id="extractionPreviewMessage" class="preview-message" style="display:none;"></div>
             </div>
           </div>
@@ -545,10 +545,13 @@
         </div>
         <div class="extraction-progress" id="extractionProgressPane">
           <div class="extraction-progress-inner">
-            <div class="extraction-spinner" aria-hidden="true"></div>
+            <div class="extraction-spinner" id="extractionSpinner" aria-hidden="true"></div>
             <div class="extraction-progress-text" id="extractionProgressTitle">Extracting…</div>
             <div class="extraction-progress-status muted" id="extractionProgressStatus"></div>
             <div class="extraction-progress-subtitle muted" id="extractionProgressHint"></div>
+            <div class="extraction-progress-bar-wrap" id="extractionProgressBarWrap" style="display:none;">
+              <div class="extraction-progress-detail" id="extractionProgressDetail"></div>
+            </div>
             <pre id="extractionProgressLogs" class="extraction-progress-logs"></pre>
           </div>
         </div>

@@ -3,7 +3,7 @@
  * Extracted from app-extractions.js for modularity
  */
 
-const EXTRACTION_JOB_POLL_INTERVAL_MS = 10000;
+const EXTRACTION_JOB_POLL_INTERVAL_MS = 2000;  // Poll every 2 seconds for responsive progress updates
 
 function describeJobStatus(detail, providerName = 'provider') {
   const status = detail?.status || 'queued';
@@ -27,30 +27,135 @@ function describeJobStatus(detail, providerName = 'provider') {
   return 'Preparing extraction…';
 }
 
+// Ordered pipeline stages
+const EXTRACTION_PIPELINE = [
+  { id: 'prepare', label: 'Prepare', aliases: ['convert'] },
+  { id: 'azure', label: 'Azure DI', aliases: [] },
+  { id: 'elements', label: 'Elements', aliases: [] },
+  { id: 'figures', label: 'Figures', aliases: [] },
+  { id: 'writing', label: 'Save', aliases: [] },
+];
+
+// Track completed stages across polling updates
+let completedStages = new Set();
+
+function getStageIndex(stageId) {
+  // Check direct match or alias
+  for (let i = 0; i < EXTRACTION_PIPELINE.length; i++) {
+    const s = EXTRACTION_PIPELINE[i];
+    if (s.id === stageId || s.aliases.includes(stageId)) return i;
+  }
+  return -1;
+}
+
+function renderStagePipeline(currentStage) {
+  const currentIdx = getStageIndex(currentStage);
+
+  // Mark current and all previous stages as completed
+  if (currentIdx >= 0) {
+    for (let i = 0; i <= currentIdx; i++) {
+      completedStages.add(EXTRACTION_PIPELINE[i].id);
+    }
+  }
+
+  return EXTRACTION_PIPELINE.map((stage, idx) => {
+    const isCompleted = completedStages.has(stage.id) && idx < currentIdx;
+    const isCurrent = idx === currentIdx;
+    const isPending = idx > currentIdx;
+
+    let stateClass = 'pending';
+    if (isCompleted) stateClass = 'completed';
+    else if (isCurrent) stateClass = 'active';
+
+    return `<div class="pipeline-stage ${stateClass}" data-stage="${stage.id}">
+      <div class="stage-dot"></div>
+      <span class="stage-label">${stage.label}</span>
+    </div>`;
+  }).join('<div class="pipeline-connector"></div>');
+}
+
+function resetStagePipeline() {
+  completedStages = new Set();
+}
+
 function updateExtractionJobProgress(detail) {
   CURRENT_EXTRACTION_JOB_STATUS = detail;
   const status = detail?.status || 'queued';
   const pdfName = detail?.pdf || '';
-  const pages = detail?.pages || '';
   const providerName = (detail?.provider || detail?.result?.provider || CURRENT_PROVIDER || 'provider').trim() || 'provider';
   const titleEl = $('extractionProgressTitle');
-  const hint = $('extractionProgressHint');
   const statusEl = $('extractionProgressStatus');
+  const hintEl = $('extractionProgressHint');
+  const spinnerEl = $('extractionSpinner');
   const logsEl = $('extractionProgressLogs');
-  if (titleEl) {
-    if (status === 'running') titleEl.textContent = `${providerName} is extracting…`;
-    else if (status === 'queued') titleEl.textContent = 'Queued…';
-    else if (status === 'failed') titleEl.textContent = 'Extraction failed';
-    else if (status === 'succeeded') titleEl.textContent = 'Extraction completed';
-    else titleEl.textContent = 'Working…';
+  const progressBarWrap = $('extractionProgressBarWrap');
+  const progressDetail = $('extractionProgressDetail');
+
+  // Handle detailed progress display
+  const hasProgress = detail?.progress_message || detail?.progress_stage;
+  const stage = detail?.progress_stage;
+
+  if (status === 'running' && hasProgress) {
+    // Hide spinner and old status elements when we have detailed progress
+    if (spinnerEl) spinnerEl.style.display = 'none';
+    if (titleEl) titleEl.style.display = 'none';
+    if (statusEl) statusEl.style.display = 'none';
+    if (hintEl) hintEl.style.display = 'none';
+
+    if (progressBarWrap && progressDetail) {
+      progressBarWrap.style.display = 'flex';
+
+      let message = detail?.progress_message || '';
+
+      // Check if message IS a figure type (shown as badge instead of text)
+      let figureTypeBadge = '';
+      const figureTypes = ['flowchart', 'diagram', 'chart', 'other', 'unknown', 'table', 'infographic', 'screenshot'];
+      const messageLower = message.toLowerCase().trim();
+      if (figureTypes.includes(messageLower)) {
+        figureTypeBadge = `<span class="type-badge type-${messageLower}">${messageLower.toUpperCase()}</span>`;
+        message = '';  // Badge replaces the message
+      }
+
+      // Build counter for figures
+      let counterHtml = '';
+      if (detail?.progress_current != null && detail?.progress_total != null && detail.progress_total > 0) {
+        counterHtml = `<span class="progress-counter">${detail.progress_current} / ${detail.progress_total}</span>`;
+      }
+
+      // Build the stage pipeline visualization
+      const pipelineHtml = renderStagePipeline(stage);
+
+      progressDetail.innerHTML = `
+        <div class="progress-pipeline">${pipelineHtml}</div>
+        <div class="progress-detail-row">
+          ${counterHtml}
+          ${figureTypeBadge}
+        </div>
+        <div class="progress-message">${message}</div>
+      `;
+    }
+  } else {
+    // Show spinner and standard status info when no detailed progress
+    if (spinnerEl) spinnerEl.style.display = '';
+    if (titleEl) {
+      titleEl.style.display = '';
+      if (status === 'running') titleEl.textContent = `${providerName} is extracting…`;
+      else if (status === 'queued') titleEl.textContent = 'Queued…';
+      else if (status === 'failed') titleEl.textContent = 'Extraction failed';
+      else if (status === 'succeeded') titleEl.textContent = 'Extraction completed';
+      else titleEl.textContent = 'Working…';
+    }
+    if (statusEl) {
+      statusEl.style.display = '';
+      statusEl.textContent = describeJobStatus(detail, providerName);
+    }
+    if (hintEl) {
+      hintEl.style.display = '';
+      hintEl.textContent = pdfName ? `Processing ${pdfName}` : '';
+    }
+    if (progressBarWrap) progressBarWrap.style.display = 'none';
   }
-  if (hint) {
-    const suffix = pages ? `pages ${pages}` : 'all pages';
-    hint.textContent = pdfName ? `Processing ${pdfName} (${suffix}) via ${providerName}` : `Processing PDF via ${providerName}`;
-  }
-  if (statusEl) {
-    statusEl.textContent = describeJobStatus(detail, providerName);
-  }
+
   if (logsEl) {
     const logText = detail?.stderr_tail || detail?.stdout_tail || '';
     if (logText) {
@@ -138,6 +243,8 @@ function setExtractionInProgress(isRunning, context = {}) {
   const progressTitle = $('extractionProgressTitle');
   const progressStatus = $('extractionProgressStatus');
   const logs = $('extractionProgressLogs');
+  const progressBarWrap = $('extractionProgressBarWrap');
+  const progressDetail = $('extractionProgressDetail');
   if (!modal || !extractionBtn || !status) return;
 
   const providerName = (context.provider || $('providerSelect')?.value || CURRENT_PROVIDER || '').trim() || 'provider';
@@ -160,9 +267,23 @@ function setExtractionInProgress(isRunning, context = {}) {
         ? `Processing ${pdfName} via ${providerName}. This window will close when extraction finishes.`
         : `Processing PDF via ${providerName}. This window will close when extraction finishes.`;
     }
-    if (progressTitle) progressTitle.textContent = 'Queued…';
-    if (progressStatus) progressStatus.textContent = 'Waiting for worker…';
+    // Hide old UI elements immediately - pipeline will show when progress arrives
+    const spinner = $('extractionSpinner');
+    if (spinner) spinner.style.display = 'none';
+    if (progressTitle) { progressTitle.textContent = ''; progressTitle.style.display = 'none'; }
+    if (progressStatus) { progressStatus.textContent = ''; progressStatus.style.display = 'none'; }
+    if (hint) hint.style.display = 'none';
     if (logs) { logs.textContent = ''; logs.style.display = 'none'; }
+    // Show pipeline immediately with no active stage
+    resetStagePipeline();
+    if (progressBarWrap && progressDetail) {
+      progressBarWrap.style.display = 'flex';
+      progressDetail.innerHTML = `
+        <div class="progress-pipeline">${renderStagePipeline(null)}</div>
+        <div class="progress-detail-row"></div>
+        <div class="progress-message">Starting extraction...</div>
+      `;
+    }
     status.textContent = '';
   } else {
     modal.classList.remove('extracting');
@@ -176,10 +297,17 @@ function setExtractionInProgress(isRunning, context = {}) {
       openBtn.disabled = false;
       openBtn.textContent = 'New Extraction';
     }
-    if (progressTitle) progressTitle.textContent = 'Extraction ready';
-    if (progressStatus) progressStatus.textContent = '';
+    // Restore visibility of spinner/title/status/hint
+    const spinner = $('extractionSpinner');
+    if (spinner) spinner.style.display = '';
+    if (progressTitle) { progressTitle.textContent = 'Extraction ready'; progressTitle.style.display = ''; }
+    if (progressStatus) { progressStatus.textContent = ''; progressStatus.style.display = ''; }
     if (logs) { logs.textContent = ''; logs.style.display = 'none'; }
-    if (hint) hint.textContent = '';
+    if (hint) { hint.textContent = ''; hint.style.display = ''; }
+    // Reset progress state
+    if (progressBarWrap) progressBarWrap.style.display = 'none';
+    if (progressDetail) progressDetail.innerHTML = '';
+    resetStagePipeline();
     CURRENT_EXTRACTION_JOB_ID = null;
     CURRENT_EXTRACTION_JOB_STATUS = null;
   }
@@ -187,6 +315,8 @@ function setExtractionInProgress(isRunning, context = {}) {
 
 // Window exports
 window.describeJobStatus = describeJobStatus;
+window.renderStagePipeline = renderStagePipeline;
+window.resetStagePipeline = resetStagePipeline;
 window.updateExtractionJobProgress = updateExtractionJobProgress;
 window.pollExtractionJob = pollExtractionJob;
 window.setExtractionInProgress = setExtractionInProgress;

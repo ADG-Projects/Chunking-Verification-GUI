@@ -41,13 +41,30 @@ function updateMainFormatBadge() {
   if (!badge) return;
 
   // Get file type and name from run config (check multiple possible locations)
-  const fileType = CURRENT_EXTRACTION_CONFIG?.file_type;
-  // Try form_snapshot.pdf first, then extract from input path
-  let pdfName = CURRENT_EXTRACTION_CONFIG?.form_snapshot?.pdf || '';
+  const fileType = CURRENT_EXTRACTION_CONFIG?.file_type || CURRENT_EXTRACTION_CONFIG?.form_snapshot?.file_type;
+  // Try form_snapshot.pdf first, then pdf field, then extract from input path
+  let pdfName = CURRENT_EXTRACTION_CONFIG?.form_snapshot?.pdf || CURRENT_EXTRACTION_CONFIG?.pdf || '';
   if (!pdfName && CURRENT_EXTRACTION_CONFIG?.input) {
     // Extract filename from full path
     const input = CURRENT_EXTRACTION_CONFIG.input;
     pdfName = input.substring(input.lastIndexOf('/') + 1);
+  }
+  // Fallback: try to get from CURRENT_EXTRACTION's source_file or derive from slug
+  if (!pdfName && CURRENT_EXTRACTION?.source_file) {
+    pdfName = CURRENT_EXTRACTION.source_file;
+  }
+  if (!pdfName && CURRENT_EXTRACTION?.original_filename) {
+    pdfName = CURRENT_EXTRACTION.original_filename;
+  }
+  // Last resort: if we have file_type from config, show that
+  if (!pdfName && fileType) {
+    badge.textContent = fileType.toUpperCase();
+    badge.className = 'format-badge';
+    if (fileType === 'pdf') badge.classList.add('format-pdf');
+    else if (fileType === 'office') badge.classList.add('format-office');
+    else if (fileType === 'image') badge.classList.add('format-image');
+    badge.style.display = 'inline-block';
+    return;
   }
 
   if (!pdfName) {
@@ -103,7 +120,7 @@ async function loadExtraction(slug, provider = CURRENT_PROVIDER) {
   $('pageCount').textContent = PAGE_COUNT;
   await renderPage(CURRENT_PAGE);
 
-  CURRENT_EXTRACTION_CONFIG = CURRENT_EXTRACTION?.run_config || null;
+  CURRENT_EXTRACTION_CONFIG = CURRENT_EXTRACTION?.extraction_config || CURRENT_EXTRACTION?.run_config || null;
   CURRENT_CHUNK_SUMMARY = CURRENT_EXTRACTION?.chunk_summary || null;
   updateMainFormatBadge();
   if (CURRENT_EXTRACTION_HAS_CHUNKS) {
@@ -370,7 +387,7 @@ function setupInspectTabs() {
       try { await refreshExtractions(); } catch (_) {}
       const stem = name.replace(/\.pdf$/i, '');
       const runs = (EXTRACTIONS_CACHE || []).filter(r => {
-        const cfg = r.run_config || {};
+        const cfg = r.extraction_config || r.run_config || {};
         const pdfFromCfg = cfg.pdf || (cfg.form_snapshot && cfg.form_snapshot.pdf) || null;
         if (pdfFromCfg && pdfFromCfg === name) return true;
         let base = r.slug || '';

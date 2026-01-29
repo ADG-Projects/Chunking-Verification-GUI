@@ -48,6 +48,11 @@ class ExtractionJob:
     stderr_tail: Optional[str] = None
     error: Optional[str] = None
     result: Optional[Dict[str, Any]] = None
+    # Progress tracking fields for detailed status updates
+    progress_current: Optional[int] = None
+    progress_total: Optional[int] = None
+    progress_message: Optional[str] = None
+    progress_stage: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -65,6 +70,11 @@ class ExtractionJob:
             "stdout_tail": self.stdout_tail,
             "stderr_tail": self.stderr_tail,
             "result": self.result,
+            # Progress tracking
+            "progress_current": self.progress_current,
+            "progress_total": self.progress_total,
+            "progress_message": self.progress_message,
+            "progress_stage": self.progress_stage,
         }
 
 
@@ -187,6 +197,9 @@ class ExtractionJobManager:
         old_stdout, old_stderr = sys.stdout, sys.stderr
         captured_stdout = io.StringIO()
         captured_stderr = io.StringIO()
+
+        # Inject job_id into metadata so callable can report progress
+        job.metadata["_job_id"] = job.id
 
         try:
             sys.stdout = captured_stdout
@@ -315,6 +328,48 @@ class ExtractionJobManager:
         with self.lock:
             job = self.jobs.get(job_id)
             return job.to_dict() if job else None
+
+    def update_progress(
+        self,
+        job_id: str,
+        *,
+        current: Optional[int] = None,
+        total: Optional[int] = None,
+        message: Optional[str] = None,
+        stage: Optional[str] = None,
+    ) -> None:
+        """Update progress for an in-flight job.
+
+        Args:
+            job_id: The job ID to update
+            current: Current item number (e.g., 3 of 5)
+            total: Total items to process
+            message: Human-readable progress message
+            stage: Current processing stage name
+        """
+        with self.lock:
+            job = self.jobs.get(job_id)
+            if not job:
+                return
+            if current is not None:
+                job.progress_current = current
+            if total is not None:
+                job.progress_total = total
+            if message is not None:
+                job.progress_message = message
+            if stage is not None:
+                job.progress_stage = stage
+
+    def clear_progress(self, job_id: str) -> None:
+        """Clear progress fields for a job (typically on completion)."""
+        with self.lock:
+            job = self.jobs.get(job_id)
+            if not job:
+                return
+            job.progress_current = None
+            job.progress_total = None
+            job.progress_message = None
+            job.progress_stage = None
 
 
 EXTRACTION_JOB_MANAGER = ExtractionJobManager()
