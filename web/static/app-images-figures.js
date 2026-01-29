@@ -234,8 +234,6 @@ function renderFigurePipelineView(figure) {
       <h3>Figure: ${truncateId(figure.element_id)}</h3>
       <div class="figure-details-actions">
         <button class="btn btn-secondary" onclick="reprocessFigure('${figure.element_id}')" title="Run full pipeline">Reprocess</button>
-        <a href="/api/figures/${encodeURIComponent(CURRENT_SLUG)}/${encodeURIComponent(figure.element_id)}/viewer?provider=${encodeURIComponent(provider)}"
-           target="_blank" class="btn btn-secondary">Open Viewer</a>
         <button class="btn btn-icon" onclick="closeFigureDetails()">×</button>
       </div>
     </div>

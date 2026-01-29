@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional
 
 import fitz  # PyMuPDF
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.responses import FileResponse, Response
 from PIL import Image
 
 from ..config import DEFAULT_PROVIDER, ROOT, get_out_dir
@@ -1264,85 +1264,6 @@ def api_figure_image_annotated(
         raise HTTPException(status_code=404, detail="Annotated image not available")
 
     return FileResponse(annotated_path, media_type="image/png")
-
-
-@router.get("/api/figures/{slug}/{element_id}/viewer", response_class=HTMLResponse)
-def api_figure_viewer(
-    slug: str,
-    element_id: str,
-    provider: str = Query(default=None),
-) -> str:
-    """Return an interactive HTML viewer for the figure."""
-    provider_key = provider or DEFAULT_PROVIDER
-    elements_path = _resolve_elements_file(slug, provider_key)
-    figures_dir = _get_figures_dir(elements_path)
-
-    # Load processing result
-    proc_result = _load_figure_processing_result(figures_dir, element_id)
-
-    # Build Mermaid content if available
-    mermaid_code = ""
-    figure_type = "unknown"
-    if proc_result:
-        figure_type = proc_result.get("figure_type", "unknown")
-        mermaid_code = proc_result.get("processed_content", "")
-
-    # Generate simple HTML viewer
-    html = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Figure Viewer - {element_id}</title>
-    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
-    <style>
-        body {{ font-family: system-ui, sans-serif; margin: 20px; background: #f5f5f5; }}
-        .container {{ max-width: 1200px; margin: 0 auto; }}
-        h1 {{ font-size: 1.5rem; color: #333; }}
-        .badge {{ display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; }}
-        .badge-flowchart {{ background: #4CAF50; color: white; }}
-        .badge-other {{ background: #9E9E9E; color: white; }}
-        .panel {{ background: white; border-radius: 8px; padding: 20px; margin: 20px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
-        .mermaid {{ text-align: center; }}
-        pre {{ background: #f0f0f0; padding: 15px; border-radius: 4px; overflow-x: auto; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Figure: {element_id}</h1>
-        <span class="badge badge-{figure_type}">{figure_type}</span>
-
-        <div class="panel">
-            <h2>Original Image</h2>
-            <img src="/api/figures/{slug}/{element_id}/image/original?provider={provider_key}"
-                 style="max-width: 100%; height: auto;" alt="Original figure">
-        </div>
-"""
-
-    if mermaid_code and figure_type == "flowchart":
-        escaped_code = mermaid_code.replace("`", "\\`")
-        html += f"""
-        <div class="panel">
-            <h2>Generated Diagram</h2>
-            <div class="mermaid">
-{mermaid_code}
-            </div>
-        </div>
-
-        <div class="panel">
-            <h2>Mermaid Code</h2>
-            <pre>{mermaid_code}</pre>
-        </div>
-"""
-
-    html += """
-    </div>
-    <script>
-        mermaid.initialize({ startOnLoad: true, theme: 'default' });
-    </script>
-</body>
-</html>"""
-
-    return html
 
 
 @router.post("/api/figures/{slug}/{element_id}/reprocess")
