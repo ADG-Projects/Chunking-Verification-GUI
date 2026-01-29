@@ -440,7 +440,7 @@ function setupInspectTabs() {
             if (numEl) numEl.textContent = '-'; if (cntEl) cntEl.textContent = '-';
           } catch (e) {}
         } else {
-          try { await loadRunPreviewForSelectedPdf(); } catch (e) {}
+          try { await loadExtractionPreviewForSelectedPdf(); } catch (e) {}
         }
       } catch (e) {
         showToast(`Delete failed: ${e.message}`, 'err');
