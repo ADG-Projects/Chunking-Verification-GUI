@@ -258,6 +258,7 @@ function renderFigurePipelineView(figure) {
         </div>
       </div>
 
+      ${figureType === 'flowchart' ? `
       <div class="pipeline-step step-segmentation ${segmentationDone ? 'step-complete' : 'step-pending'}" id="step-segmentation">
         <div class="step-header">
           <span class="step-number">${segmentationDone ? '✓' : '2'}</span>
@@ -299,7 +300,7 @@ function renderFigurePipelineView(figure) {
           `}
         </div>
         <div class="step-content">
-          ${extractionDone && processing.processed_content && figureType === 'flowchart' ? `
+          ${extractionDone && processing.processed_content ? `
             ${processing.intermediate_nodes ? `
               <details>
                 <summary>Nodes (${(processing.intermediate_nodes || []).length}) / Edges (${(processing.intermediate_edges || []).length})</summary>
@@ -323,7 +324,7 @@ function renderFigurePipelineView(figure) {
             ` : ''}
             <pre class="mermaid-code">${escapeHtml(processing.processed_content)}</pre>
           ` : extractionDone ? `
-            <span class="no-data">Mermaid diagram not available (figure type: ${figureType})</span>
+            <span class="no-data">Mermaid diagram not available</span>
           ` : segmentationDone ? `
             <span class="no-data">Click "Extract Mermaid" to generate diagram</span>
           ` : `
@@ -331,6 +332,7 @@ function renderFigurePipelineView(figure) {
           `}
         </div>
       </div>
+      ` : ''}
     </div>
 
     ${extractionDone && processing.processed_content && figureType === 'flowchart' ? `

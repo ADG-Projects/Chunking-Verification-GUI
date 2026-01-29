@@ -982,8 +982,11 @@ def api_figures_list(
             "figure_type": figure_type,
             "confidence": confidence,
             "has_mermaid": bool(
-                (proc_result or {}).get("processed_content")
-                or figure_processing.get("processed_content")
+                figure_type == "flowchart"
+                and (
+                    (proc_result or {}).get("processed_content")
+                    or figure_processing.get("processed_content")
+                )
             ),
         })
 
