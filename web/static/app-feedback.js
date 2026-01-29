@@ -547,9 +547,9 @@ function wireFeedbackEvents() {
   if (exportJsonBtn) exportJsonBtn.addEventListener('click', downloadFeedbackJson);
   const exportHtmlBtn = $('feedbackExportHtml');
   if (exportHtmlBtn) exportHtmlBtn.addEventListener('click', downloadFeedbackHtml);
-  const runsHost = $('feedbackRuns');
-  if (runsHost) {
-    runsHost.addEventListener('click', (ev) => {
+  const extractionsHost = $('feedbackExtractions');
+  if (extractionsHost) {
+    extractionsHost.addEventListener('click', (ev) => {
       const btn = ev.target.closest('.feedback-inspect-btn');
       if (btn && btn.dataset.slug) {
         jumpToExtractionFromFeedback(btn.dataset.slug, btn.dataset.provider);
