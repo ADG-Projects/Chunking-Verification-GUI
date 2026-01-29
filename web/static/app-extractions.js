@@ -369,7 +369,7 @@ function setupInspectTabs() {
       const sel = $('pdfSelect');
       const name = sel && sel.value;
       if (!name) { showToast('No PDF selected', 'err', 2000); return; }
-      try { await refreshRuns(); } catch (_) {}
+      try { await refreshExtractions(); } catch (_) {}
       const stem = name.replace(/\.pdf$/i, '');
       const runs = (EXTRACTIONS_CACHE || []).filter(r => {
         const cfg = r.run_config || {};
@@ -423,7 +423,7 @@ function setupInspectTabs() {
               failCount++;
             }
           }
-          await refreshRuns();
+          await refreshExtractions();
           showToast(`Deleted runs: ${okCount} ok, ${failCount} failed`, failCount ? 'err' : 'ok', 3000);
         }
         const r = await fetch(`/api/pdfs/${encodeURIComponent(name)}`, { method: 'DELETE' });
@@ -433,10 +433,10 @@ function setupInspectTabs() {
         await loadPdfs();
         if (!KNOWN_PDFS || KNOWN_PDFS.length === 0) {
           try {
-            RUN_PREVIEW_DOC = null; RUN_PREVIEW_COUNT = 0; RUN_PREVIEW_PAGE = 1;
-            const canvas = $('runPdfCanvas');
+            EXTRACTION_PREVIEW_DOC = null; EXTRACTION_PREVIEW_COUNT = 0; EXTRACTION_PREVIEW_PAGE = 1;
+            const canvas = $('extractionPdfCanvas');
             if (canvas) { const ctx = canvas.getContext('2d'); ctx && ctx.clearRect(0,0,canvas.width,canvas.height); }
-            const numEl = $('runPageNum'); const cntEl = $('runPageCount');
+            const numEl = $('extractionPageNum'); const cntEl = $('extractionPageCount');
             if (numEl) numEl.textContent = '-'; if (cntEl) cntEl.textContent = '-';
           } catch (e) {}
         } else {

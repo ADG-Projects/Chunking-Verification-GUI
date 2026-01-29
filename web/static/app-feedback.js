@@ -499,10 +499,10 @@ async function jumpToExtractionFromFeedback(slug, provider) {
   if (!slug) return;
   const providerKey = (provider || 'unstructured/local').trim() || 'unstructured/local';
   try {
-    await refreshRuns();
-    const sel = $('runSelect');
+    await refreshExtractions();
+    const sel = $('extractionSelect');
     if (sel) {
-      const targetKey = runKey(slug, providerKey);
+      const targetKey = extractionKey(slug, providerKey);
       const exists = Array.from(sel.options || []).some((opt) => opt.value === targetKey);
       sel.value = exists ? targetKey : sel.value;
       sel.dispatchEvent(new Event('change'));
