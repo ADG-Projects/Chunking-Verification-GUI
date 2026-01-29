@@ -362,9 +362,12 @@ function renderUploadPipelineView(data, options = {}) {
   resultEl.innerHTML = `
     <div class="upload-pipeline-view">
       <div class="upload-header">
-        <h4>Uploaded Image</h4>
+        <h4>Uploaded Figure</h4>
         <span class="upload-id">ID: ${uploadId}</span>
-        <button class="btn btn-icon" onclick="clearUpload()">×</button>
+        <div class="upload-header-actions">
+          <button class="btn btn-secondary" onclick="reprocessUpload('${uploadId}')" title="Run full pipeline">Reprocess</button>
+          <button class="btn btn-icon" onclick="clearUpload()">×</button>
+        </div>
       </div>
 
       <div class="upload-content">
@@ -443,6 +446,28 @@ function getDirectionDescription(direction) {
 }
 
 /**
+ * Trigger reprocessing of an uploaded image.
+ */
+async function reprocessUpload(uploadId) {
+  const confirmed = await showConfirm({
+    title: 'Reprocess Upload',
+    message: `Reprocess uploaded image?\n\nThis will re-run the full pipeline (classification, segmentation/description, extraction).`,
+    confirmText: 'Reprocess',
+    cancelText: 'Cancel'
+  });
+  if (!confirmed) return;
+
+  try {
+    showToast('Starting reprocess...', 'info');
+    await runUploadFullPipeline(uploadId);
+    showToast('Reprocessing complete', 'success');
+  } catch (err) {
+    console.error('Reprocess failed:', err);
+    showToast(`Reprocess failed: ${err.message}`, 'error');
+  }
+}
+
+/**
  * Clear the current upload and reset the upload panel.
  */
 function clearUpload() {
@@ -462,5 +487,6 @@ window.wireImageUpload = wireImageUpload;
 window.uploadImage = uploadImage;
 window.refreshUploadDetails = refreshUploadDetails;
 window.renderUploadPipelineView = renderUploadPipelineView;
+window.reprocessUpload = reprocessUpload;
 window.clearUpload = clearUpload;
 window.getDirectionDescription = getDirectionDescription;
