@@ -1119,24 +1119,51 @@ body.resizing-drawer {
   gap: 4px;
 }
 
-.extraction-grid .pdf-lang-row {
+.extraction-grid .pdf-lang-row,
+.extraction-grid .document-upload-row,
+.extraction-grid .provider-lang-row {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
   align-items: flex-end;
 }
 
-.extraction-grid .pdf-lang-row label {
+.extraction-grid .pdf-lang-row label,
+.extraction-grid .document-upload-row label,
+.extraction-grid .provider-lang-row label {
   flex: 1 1 260px;
 }
 
-.extraction-grid label.pdf-picker {
+.extraction-grid label.pdf-picker,
+.extraction-grid label.document-picker {
   min-width: 300px;
+}
+
+.extraction-grid label.upload-picker {
+  flex: 0 1 220px;
+  min-width: 180px;
 }
 
 .extraction-grid label.lang-picker {
   flex: 0 1 220px;
   min-width: 200px;
+}
+
+.extraction-grid .document-select-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.extraction-grid .document-select-row select {
+  flex: 1;
+  min-width: 0;
+}
+
+.extraction-grid .document-upload-row #pdfUploadStatus {
+  flex: 0 0 auto;
+  align-self: flex-end;
+  padding-bottom: 8px;
 }
 
 .extraction-grid label.checkbox {

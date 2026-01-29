@@ -428,21 +428,21 @@
             </div>
           </div>
           <div class="extraction-grid" id="extractionFormGrid">
-            <div class="pdf-lang-row">
-              <label class="pdf-picker">
-                <div class="lab">PDF <span class="info" tabindex="0">i</span><div class="tip">Pick a source PDF from <code>res/</code>. Use Delete to remove the selected file from the server.</div></div>
-                <div class="upload-row">
+            <div class="document-upload-row">
+              <label class="upload-picker">
+                <div class="lab">Upload <span class="info" tabindex="0">i</span><div class="tip">Upload a document (PDF, Office, or image) to the server for extraction.</div></div>
+                <input id="pdfUploadInput" type="file" accept=".pdf,.docx,.xlsx,.pptx,.jpg,.jpeg,.png,.bmp,.tiff,.tif,.heif" />
+              </label>
+              <label class="document-picker">
+                <div class="lab">Document <span class="info" tabindex="0">i</span><div class="tip">Pick a document from the server. Use Delete to remove the selected file.</div></div>
+                <div class="document-select-row">
                   <select id="pdfSelect"></select>
-                  <button id="pdfDeleteBtn" class="btn btn-secondary" type="button" title="Delete selected PDF from server">Delete</button>
+                  <button id="pdfDeleteBtn" class="btn btn-secondary" type="button" title="Delete selected document from server">Delete</button>
                 </div>
               </label>
-              <label class="lang-picker azure-hidden">
-                <div class="lab">UI primary language <span class="info" tabindex="0">i</span><div class="tip">Affects preview direction only. Azure extractions rely on built-in language detection; Unstructured also forwards OCR hints.</div></div>
-                <select id="docLanguage">
-                  <option value="eng" selected>English (LTR)</option>
-                  <option value="ara">Arabic (RTL)</option>
-                </select>
-              </label>
+              <span id="pdfUploadStatus" class="muted"></span>
+            </div>
+            <div class="provider-lang-row">
               <label class="provider-picker">
                 <div class="lab">Provider <span class="info" tabindex="0">i</span><div class="tip">Unstructured (local library), Unstructured Partition (hosted API, elements only), or Azure Document Intelligence (Layout).</div></div>
                 <select id="providerSelect">
@@ -451,14 +451,13 @@
                   <option value="azure/document_intelligence" selected>Azure Document Intelligence (Layout)</option>
                 </select>
               </label>
-            </div>
-            <div class="upload-row">
-              <label>
-                <div class="lab">Upload PDF <span class="info" tabindex="0">i</span><div class="tip">Choose a file and it uploads immediately to the server's <code>PDF_DIR</code> (Fly volume mount) so future extractions can reuse it.</div></div>
-                <input id="pdfUploadInput" type="file" accept=".pdf,.docx,.xlsx,.pptx,.jpg,.jpeg,.png,.bmp,.tiff,.tif,.heif" />
+              <label class="lang-picker azure-hidden">
+                <div class="lab">UI primary language <span class="info" tabindex="0">i</span><div class="tip">Affects preview direction only. Azure extractions rely on built-in language detection; Unstructured also forwards OCR hints.</div></div>
+                <select id="docLanguage">
+                  <option value="eng" selected>English (LTR)</option>
+                  <option value="ara">Arabic (RTL)</option>
+                </select>
               </label>
-              <button id="pdfUploadBtn" class="btn" type="button" style="display:none;">Upload</button>
-              <span id="pdfUploadStatus" class="muted"></span>
             </div>
             <label>
               <div class="lab">Pages <span class="info" tabindex="0">i</span><div class="tip">Comma‑separated pages and ranges, e.g., <code>5-7,12</code>. Leave blank to process the entire document.</div></div>
