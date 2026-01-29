@@ -32,6 +32,9 @@ function wireModal() {
         const r = await fetch(withProvider(`/api/extraction/${encodeURIComponent(CURRENT_SLUG)}`, CURRENT_PROVIDER), { method: 'DELETE' });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         await refreshExtractions();
+        if (typeof clearImagesFiguresState === 'function') {
+          clearImagesFiguresState();
+        }
         showToast('Extraction deleted', 'ok', 2000);
       } catch (e) {
         showToast(`Failed to delete extraction: ${e.message}`, 'err');

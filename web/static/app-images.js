@@ -116,6 +116,25 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
+/**
+ * Clear all PDF figures state (call after extraction deletion).
+ */
+function clearImagesFiguresState() {
+  window.IMAGES_FIGURE_LIST = [];
+  window.IMAGES_CURRENT_FIGURE = null;
+  window.IMAGES_STATS = null;
+
+  // Clear the UI
+  const listEl = $('imagesFigureList');
+  if (listEl) listEl.innerHTML = '';
+
+  const detailsEl = $('imagesFigureDetails');
+  if (detailsEl) detailsEl.innerHTML = '';
+
+  const statsEl = $('imagesStats');
+  if (statsEl) statsEl.innerHTML = '';
+}
+
 // Window exports
 window.initImagesTab = initImagesTab;
 window.wireImagesModeTabs = wireImagesModeTabs;
@@ -124,3 +143,4 @@ window.onImagesTabActivated = onImagesTabActivated;
 window.truncateId = truncateId;
 window.renderEmptyState = renderEmptyState;
 window.escapeHtml = escapeHtml;
+window.clearImagesFiguresState = clearImagesFiguresState;
