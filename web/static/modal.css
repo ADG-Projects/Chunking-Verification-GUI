@@ -368,3 +368,75 @@
   border-left-color: var(--color-danger);
 }
 
+/* =============================================================================
+   CONFIRMATION MODAL
+   ============================================================================= */
+
+.confirm-modal {
+  max-width: 420px;
+}
+
+.confirm-modal-body {
+  padding: var(--space-lg);
+}
+
+.confirm-modal-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  margin-bottom: var(--space-sm);
+}
+
+.confirm-modal-message {
+  color: var(--text-secondary);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.confirm-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.confirm-modal-actions .btn-cancel {
+  background: var(--surface-glass);
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
+}
+
+.confirm-modal-actions .btn-cancel:hover {
+  background: var(--surface-glass-hover);
+}
+
+.confirm-modal-actions .btn-confirm {
+  background: var(--color-primary);
+  color: white;
+  border: 1px solid var(--color-primary);
+}
+
+.confirm-modal-actions .btn-confirm:hover {
+  filter: brightness(1.1);
+}
+
+.confirm-modal-actions .btn-confirm:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Destructive variant (for delete operations) */
+.confirm-modal.destructive .btn-confirm {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.confirm-modal.destructive .btn-confirm:hover {
+  filter: brightness(1.1);
+}
+
+.confirm-modal.destructive .btn-confirm:focus {
+  outline-color: var(--color-danger);
+}
+

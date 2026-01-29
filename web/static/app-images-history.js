@@ -155,10 +155,14 @@ async function deleteUpload(uploadId) {
   const filename = upload?.filename || uploadId;
 
   // Confirm deletion
-  const ok = confirm(
-    `Delete upload: ${filename}?\nThis will permanently remove the upload and all processing results.`
-  );
-  if (!ok) return;
+  const confirmed = await showConfirm({
+    title: 'Delete Upload',
+    message: `Delete upload: ${filename}?\n\nThis will permanently remove the upload and all processing results.`,
+    confirmText: 'Delete',
+    cancelText: 'Cancel',
+    destructive: true
+  });
+  if (!confirmed) return;
 
   try {
     // Show progress

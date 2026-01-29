@@ -386,6 +386,21 @@
 
     <div id="toast" class="toast"></div>
 
+    <!-- Confirmation Modal -->
+    <div id="confirmModal" class="modal hidden">
+      <div class="modal-backdrop" id="confirmModalBackdrop"></div>
+      <div class="modal-content card confirm-modal">
+        <div class="confirm-modal-body">
+          <div class="confirm-modal-title" id="confirmModalTitle">Confirm</div>
+          <div class="confirm-modal-message" id="confirmModalMessage">Are you sure?</div>
+          <div class="confirm-modal-actions">
+            <button id="confirmModalCancelBtn" class="btn btn-cancel">Cancel</button>
+            <button id="confirmModalConfirmBtn" class="btn btn-confirm">OK</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- New Extraction Modal -->
     <div id="extractionModal" class="modal hidden">
       <div class="modal-backdrop" id="extractionModalBackdrop"></div>

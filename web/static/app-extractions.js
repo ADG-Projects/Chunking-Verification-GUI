@@ -385,13 +385,31 @@ function setupInspectTabs() {
         const listPreview = runs.slice(0, 5).map(r => `- ${r.slug}`).join('\n');
         const more = runs.length > 5 ? `\n…and ${runs.length - 5} more` : '';
         const msg = `Found ${runs.length} run(s) referencing ${name}:\n${listPreview}${more}\n\nDelete the PDF and ALL associated runs?`;
-        deleteRunsToo = !!confirm(msg);
+        deleteRunsToo = await showConfirm({
+          title: 'Delete PDF & Runs',
+          message: msg,
+          confirmText: 'Delete All',
+          cancelText: 'Cancel',
+          destructive: true
+        });
         if (!deleteRunsToo) {
-          const onlyPdf = confirm(`Delete the PDF only and keep ${runs.length} run(s)?`);
+          const onlyPdf = await showConfirm({
+            title: 'Delete PDF Only',
+            message: `Delete the PDF only and keep ${runs.length} run(s)?`,
+            confirmText: 'Delete PDF',
+            cancelText: 'Cancel',
+            destructive: true
+          });
           if (!onlyPdf) return;
         }
       } else {
-        const ok = confirm(`Delete PDF: ${name}? This removes it from server storage; runs remain intact.`);
+        const ok = await showConfirm({
+          title: 'Delete PDF',
+          message: `Delete PDF: ${name}?\n\nThis removes it from server storage; runs remain intact.`,
+          confirmText: 'Delete',
+          cancelText: 'Cancel',
+          destructive: true
+        });
         if (!ok) return;
       }
       try {

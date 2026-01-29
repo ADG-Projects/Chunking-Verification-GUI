@@ -215,6 +215,94 @@ function updateDrawerWidth(width) {
   document.documentElement.style.setProperty('--drawer-width', `${width}px`);
 }
 
+/**
+ * Show a custom confirmation modal dialog.
+ * @param {Object} options - Configuration options
+ * @param {string} options.title - Dialog title
+ * @param {string} options.message - Dialog message (supports multi-line)
+ * @param {string} [options.confirmText='OK'] - Text for the confirm button
+ * @param {string} [options.cancelText='Cancel'] - Text for the cancel button
+ * @param {boolean} [options.destructive=false] - Use destructive (red) styling
+ * @returns {Promise<boolean>} - Resolves to true if confirmed, false if cancelled
+ */
+function showConfirm(options) {
+  const {
+    title = 'Confirm',
+    message = 'Are you sure?',
+    confirmText = 'OK',
+    cancelText = 'Cancel',
+    destructive = false
+  } = options;
+
+  return new Promise((resolve) => {
+    const modal = document.getElementById('confirmModal');
+    const backdrop = document.getElementById('confirmModalBackdrop');
+    const titleEl = document.getElementById('confirmModalTitle');
+    const messageEl = document.getElementById('confirmModalMessage');
+    const confirmBtn = document.getElementById('confirmModalConfirmBtn');
+    const cancelBtn = document.getElementById('confirmModalCancelBtn');
+    const content = modal?.querySelector('.modal-content');
+
+    if (!modal || !titleEl || !messageEl || !confirmBtn || !cancelBtn) {
+      // Fallback to native confirm if modal elements missing
+      resolve(confirm(message));
+      return;
+    }
+
+    // Set content
+    titleEl.textContent = title;
+    messageEl.textContent = message;
+    confirmBtn.textContent = confirmText;
+    cancelBtn.textContent = cancelText;
+
+    // Apply destructive styling
+    if (content) {
+      content.classList.toggle('destructive', destructive);
+    }
+
+    // Show modal
+    modal.classList.remove('hidden');
+
+    // Focus confirm button
+    setTimeout(() => confirmBtn.focus(), 50);
+
+    // Cleanup function
+    const cleanup = () => {
+      modal.classList.add('hidden');
+      confirmBtn.removeEventListener('click', handleConfirm);
+      cancelBtn.removeEventListener('click', handleCancel);
+      backdrop.removeEventListener('click', handleCancel);
+      document.removeEventListener('keydown', handleKeydown);
+    };
+
+    const handleConfirm = () => {
+      cleanup();
+      resolve(true);
+    };
+
+    const handleCancel = () => {
+      cleanup();
+      resolve(false);
+    };
+
+    const handleKeydown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        handleCancel();
+      } else if (e.key === 'Enter' && document.activeElement === confirmBtn) {
+        e.preventDefault();
+        handleConfirm();
+      }
+    };
+
+    // Wire event handlers
+    confirmBtn.addEventListener('click', handleConfirm);
+    cancelBtn.addEventListener('click', handleCancel);
+    backdrop.addEventListener('click', handleCancel);
+    document.addEventListener('keydown', handleKeydown);
+  });
+}
+
 function initDrawerResize() {
   const panelHandle = document.getElementById('drawer-resize-handle');
   const drawerHandle = document.getElementById('drawer-overlay-resize-handle');

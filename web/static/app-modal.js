@@ -20,7 +20,13 @@ function wireModal() {
   if (deleteBtn) {
     deleteBtn.addEventListener('click', async () => {
       if (!CURRENT_SLUG) return;
-      const ok = confirm(`Delete extraction: ${CURRENT_SLUG}? This removes its matches, tables JSONL, and trimmed PDF.`);
+      const ok = await showConfirm({
+        title: 'Delete Extraction',
+        message: `Delete extraction: ${CURRENT_SLUG}?\n\nThis removes its matches, tables JSONL, and trimmed PDF.`,
+        confirmText: 'Delete',
+        cancelText: 'Cancel',
+        destructive: true
+      });
       if (!ok) return;
       try {
         const r = await fetch(withProvider(`/api/extraction/${encodeURIComponent(CURRENT_SLUG)}`, CURRENT_PROVIDER), { method: 'DELETE' });

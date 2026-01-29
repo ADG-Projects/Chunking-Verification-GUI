@@ -401,7 +401,13 @@ function closeFigureDetails() {
  * Trigger reprocessing of a figure.
  */
 async function reprocessFigure(elementId) {
-  if (!confirm(`Reprocess figure ${truncateId(elementId)}?`)) return;
+  const confirmed = await showConfirm({
+    title: 'Reprocess Figure',
+    message: `Reprocess figure ${truncateId(elementId)}?\n\nThis will re-run the full pipeline (classification, segmentation, extraction).`,
+    confirmText: 'Reprocess',
+    cancelText: 'Cancel'
+  });
+  if (!confirmed) return;
 
   try {
     const provider = CURRENT_PROVIDER || 'azure/document_intelligence';
