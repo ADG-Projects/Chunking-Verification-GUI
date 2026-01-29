@@ -12,17 +12,17 @@
 let _uploadWired = false;
 
 /**
- * Wire up the image upload form.
+ * Wire up the image upload form and compact upload zone.
  */
 function wireImageUpload() {
   if (_uploadWired) return;  // Prevent duplicate wiring
   _uploadWired = true;
 
-  const form = $('imageUploadForm');
   const input = $('imageUploadInput');
-  const dropZone = $('imageUploadZone');
+  const mainDropZone = $('imageUploadZone');
+  const compactDropZone = $('compactUploadZone');
 
-  if (!form || !input) return;
+  if (!input) return;
 
   // File input change
   input.addEventListener('change', () => {
@@ -31,30 +31,42 @@ function wireImageUpload() {
     }
   });
 
-  // Drag and drop
-  if (dropZone) {
-    dropZone.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      dropZone.classList.add('dragover');
-    });
-
-    dropZone.addEventListener('dragleave', () => {
-      dropZone.classList.remove('dragover');
-    });
-
-    dropZone.addEventListener('drop', (e) => {
-      e.preventDefault();
-      dropZone.classList.remove('dragover');
-      const files = e.dataTransfer?.files;
-      if (files && files[0]) {
-        uploadImage(files[0]);
-      }
-    });
-
-    dropZone.addEventListener('click', () => {
-      input.click();
-    });
+  // Wire main drop zone
+  if (mainDropZone) {
+    wireDropZone(mainDropZone, input);
   }
+
+  // Wire compact drop zone in sidebar
+  if (compactDropZone) {
+    wireDropZone(compactDropZone, input);
+  }
+}
+
+/**
+ * Wire drag-and-drop events for a drop zone element.
+ */
+function wireDropZone(dropZone, input) {
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('dragover');
+  });
+
+  dropZone.addEventListener('dragleave', () => {
+    dropZone.classList.remove('dragover');
+  });
+
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    const files = e.dataTransfer?.files;
+    if (files && files[0]) {
+      uploadImage(files[0]);
+    }
+  });
+
+  dropZone.addEventListener('click', () => {
+    input.click();
+  });
 }
 
 /**
@@ -131,6 +143,12 @@ async function refreshUploadDetails(uploadId) {
 function renderUploadPipelineView(data, options = {}) {
   const resultEl = $('imageUploadResult');
   if (!resultEl) return;
+
+  // Hide the main upload zone when showing pipeline
+  const uploadZone = $('imageUploadZone');
+  if (uploadZone) {
+    uploadZone.style.display = 'none';
+  }
 
   const stages = data.stages || {
     uploaded: true,
@@ -473,17 +491,32 @@ async function reprocessUpload(uploadId) {
 function clearUpload() {
   window.CURRENT_UPLOAD_ID = null;
   window.CURRENT_UPLOAD_DATA_URI = null;
+
+  // Clear any previous results
   const resultEl = $('imageUploadResult');
   if (resultEl) {
     resultEl.innerHTML = '';
   }
+
+  // Show the upload zone
+  const uploadZone = $('imageUploadZone');
+  if (uploadZone) {
+    uploadZone.style.display = '';
+  }
+
   // Reset file input to allow re-uploading the same file
   const input = $('imageUploadInput');
   if (input) input.value = '';
+
+  // Deselect any history items
+  document.querySelectorAll('.upload-history-card').forEach((card) => {
+    card.classList.remove('active');
+  });
 }
 
 // Window exports
 window.wireImageUpload = wireImageUpload;
+window.wireDropZone = wireDropZone;
 window.uploadImage = uploadImage;
 window.refreshUploadDetails = refreshUploadDetails;
 window.renderUploadPipelineView = renderUploadPipelineView;

@@ -20,9 +20,32 @@ async function loadUploadHistory() {
 
     const data = await res.json();
     renderUploadHistory(data.uploads || []);
+
+    // If no current upload selected and we have history, show empty state
+    if (!window.CURRENT_UPLOAD_ID) {
+      showMainAreaEmptyState();
+    }
   } catch (err) {
     console.error('Failed to load upload history:', err);
     historyEl.innerHTML = '<div class="empty-state">Failed to load history</div>';
+  }
+}
+
+/**
+ * Show empty state in main area when nothing is selected.
+ */
+function showMainAreaEmptyState() {
+  const resultEl = $('imageUploadResult');
+  const uploadZone = $('imageUploadZone');
+
+  // Clear any previous results
+  if (resultEl) {
+    resultEl.innerHTML = '';
+  }
+
+  // Show the upload zone
+  if (uploadZone) {
+    uploadZone.style.display = '';
   }
 }
 
@@ -208,6 +231,7 @@ function wireUploadHistoryRefresh() {
 
 // Window exports
 window.loadUploadHistory = loadUploadHistory;
+window.showMainAreaEmptyState = showMainAreaEmptyState;
 window.renderUploadHistory = renderUploadHistory;
 window.truncateFilename = truncateFilename;
 window.loadUploadById = loadUploadById;

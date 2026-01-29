@@ -78,6 +78,8 @@ function onImagesTabActivated() {
   initImagesTab();
   if (window.IMAGES_MODE === 'pdf-figures' && CURRENT_SLUG) {
     loadFiguresForCurrentRun();
+  } else if (window.IMAGES_MODE === 'upload') {
+    loadUploadHistory();
   }
 }
 
