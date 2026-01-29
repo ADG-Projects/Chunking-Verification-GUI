@@ -295,3 +295,7 @@ async function loadElementPreview(elementId) {
     return null;
   }
 }
+
+// Window exports
+window.updateExtractionConfigCard = updateExtractionConfigCard;
+window.loadElementPreview = loadElementPreview;
