@@ -29,11 +29,13 @@ async function loadExtractionPreviewForSelectedPdf() {
   if (formatBadge) {
     const extDisplay = ext.replace('.', '').toUpperCase();
     formatBadge.textContent = extDisplay;
-    formatBadge.className = 'format-badge';
+    // Preserve preview-overlay-badge class if present
+    const isOverlay = formatBadge.classList.contains('preview-overlay-badge');
+    formatBadge.className = 'format-badge' + (isOverlay ? ' preview-overlay-badge' : '');
     if (isPdf) formatBadge.classList.add('format-pdf');
     else if (isOffice) formatBadge.classList.add('format-office');
     else if (isImage) formatBadge.classList.add('format-image');
-    formatBadge.style.display = 'inline-block';
+    formatBadge.style.display = 'block';
   }
 
   // Show/hide preview message

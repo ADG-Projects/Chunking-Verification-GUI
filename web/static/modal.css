@@ -161,10 +161,14 @@
 }
 
 /* Format badge overlay on preview */
-.preview-overlay-badge {
-  position: absolute;
-  top: 16px;
-  left: 16px;
+.extraction-canvas-wrap .preview-overlay-badge {
+  position: absolute !important;
+  display: block !important;
+  top: 16px !important;
+  left: 16px !important;
+  right: auto !important;
+  bottom: auto !important;
+  margin: 0 !important;
   z-index: 10;
   padding: 4px 10px;
   font-size: 12px;
