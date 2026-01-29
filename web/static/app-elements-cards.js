@@ -59,6 +59,13 @@ async function openElementDetails(elementId) {
       }
       applyDirectionalText(scroll);
       container.appendChild(scroll);
+    } else if ((data.type || '').toLowerCase() === 'figure') {
+      // For Figure elements, fetch and display figure understanding
+      const figureContainer = document.createElement('div');
+      figureContainer.className = 'figure-understanding-section';
+      container.appendChild(figureContainer);
+      // Fetch figure understanding asynchronously
+      fetchFigureUnderstandingForElement(CURRENT_SLUG, elementId, figureContainer);
     } else {
       const md = await renderMarkdownSafe(data.text);
       if (md) {
@@ -80,6 +87,103 @@ async function openElementDetails(elementId) {
   } catch (e) {
     showToast(`Failed to load element: ${e.message}`, 'err');
   }
+}
+
+/**
+ * Fetch figure understanding for an element and display it.
+ * @param {string} slug - The run slug
+ * @param {string} elementId - The figure element ID
+ * @param {HTMLElement} container - Container to render into
+ */
+async function fetchFigureUnderstandingForElement(slug, elementId, container) {
+  try {
+    const provider = CURRENT_PROVIDER || 'azure/document_intelligence';
+    const url = `/api/figures/${encodeURIComponent(slug)}/${encodeURIComponent(elementId)}?provider=${encodeURIComponent(provider)}`;
+    const data = await fetchJSON(url);
+
+    if (data.formatted_understanding) {
+      renderFigureUnderstandingForElement(data.formatted_understanding, container);
+    } else if (data.processing) {
+      // Fallback: build a simple display from processing data
+      const figType = data.processing.figure_type || 'Unknown';
+      const desc = data.processing.description || data.processing.processed_content || '';
+      if (desc) {
+        const pre = document.createElement('pre');
+        pre.textContent = `[Figure: ${figType} - ${desc}]`;
+        applyDirectionalText(pre);
+        container.appendChild(pre);
+      } else {
+        const pre = document.createElement('pre');
+        pre.textContent = '(no figure understanding available)';
+        container.appendChild(pre);
+      }
+    } else {
+      const pre = document.createElement('pre');
+      pre.textContent = '(no figure understanding available)';
+      container.appendChild(pre);
+    }
+  } catch (e) {
+    // Figure understanding not available
+    console.debug('Could not fetch figure understanding for element:', e);
+    const pre = document.createElement('pre');
+    pre.textContent = '(figure understanding not processed)';
+    container.appendChild(pre);
+  }
+}
+
+/**
+ * Render formatted figure understanding into a container for element view.
+ * @param {string} text - The formatted understanding text
+ * @param {HTMLElement} container - Container to render into
+ */
+function renderFigureUnderstandingForElement(text, container) {
+  if (!text) return;
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'figure-understanding-element';
+
+  // Check if there's a mermaid code block
+  const mermaidMatch = text.match(/```mermaid\n([\s\S]*?)```/);
+
+  if (mermaidMatch) {
+    // Split into description part and mermaid part
+    const parts = text.split(/```mermaid\n[\s\S]*?```/);
+    const descPart = parts[0].trim();
+    const mermaidCode = mermaidMatch[1].trim();
+
+    // Add description
+    if (descPart) {
+      const descEl = document.createElement('div');
+      descEl.className = 'figure-understanding-desc';
+      descEl.textContent = descPart;
+      wrapper.appendChild(descEl);
+    }
+
+    // Add mermaid code block (expanded by default for element view)
+    const codeSection = document.createElement('div');
+    codeSection.className = 'figure-understanding-mermaid-section';
+
+    const codeHeader = document.createElement('div');
+    codeHeader.className = 'figure-understanding-mermaid-header';
+    codeHeader.textContent = 'Mermaid Code';
+    codeSection.appendChild(codeHeader);
+
+    const pre = document.createElement('pre');
+    const code = document.createElement('code');
+    code.textContent = mermaidCode;
+    pre.appendChild(code);
+    codeSection.appendChild(pre);
+
+    wrapper.appendChild(codeSection);
+  } else {
+    // No mermaid block, just show the text
+    const pre = document.createElement('pre');
+    pre.textContent = text;
+    applyDirectionalText(pre);
+    wrapper.appendChild(pre);
+  }
+
+  container.appendChild(wrapper);
 }
 
 function buildElementHierarchySection(elementId, entries) {
@@ -320,6 +424,28 @@ function buildElementCard(id, entry, review, opts = {}) {
       let txt = data.text || '';
       if (!txt && data.text_as_html) {
         txt = String(data.text_as_html).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      }
+      // For Figure elements, try to get figure understanding
+      if (!txt && (data.type || '').toLowerCase() === 'figure') {
+        try {
+          const provider = CURRENT_PROVIDER || 'azure/document_intelligence';
+          const figUrl = `/api/figures/${encodeURIComponent(CURRENT_SLUG)}/${encodeURIComponent(id)}?provider=${encodeURIComponent(provider)}`;
+          const figData = await fetchJSON(figUrl);
+          if (figData.formatted_understanding) {
+            // Extract just the bracketed description part (first line)
+            const firstLine = figData.formatted_understanding.split('\n')[0];
+            txt = firstLine || figData.formatted_understanding;
+          } else if (figData.processing) {
+            const figType = figData.processing.figure_type || 'Figure';
+            const desc = figData.processing.description || figData.processing.processed_content || '';
+            if (desc) {
+              const shortDesc = desc.length > 150 ? desc.slice(0, 150) + '…' : desc;
+              txt = `[Figure: ${figType} - ${shortDesc}]`;
+            }
+          }
+        } catch (figErr) {
+          console.debug('Could not fetch figure understanding for card:', figErr);
+        }
       }
       if (!txt) txt = '(no text)';
       pre.textContent = txt;

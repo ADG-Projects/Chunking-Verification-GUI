@@ -264,6 +264,24 @@ class FigureProcessorWrapper:
         )
         return result.model_dump()
 
+    def format_understanding(self, result: dict[str, Any]) -> str:
+        """Format figure processing result for display.
+
+        Uses PaC's format_figure_understanding to create a compact, bracketed format:
+        [Figure: Flowchart - description...]
+
+        For flowcharts, includes the mermaid diagram code in a fenced block.
+
+        Args:
+            result: Dict with figure_type, description, and processed_content
+
+        Returns:
+            Formatted text suitable for UI display
+        """
+        from src.figure_processing import format_figure_understanding
+
+        return format_figure_understanding(result)
+
     def classify_figure(
         self,
         image_path: str | Path,
@@ -865,6 +883,12 @@ class FigureProcessorWrapper:
                     "step1_duration_ms": result.get("step1_duration_ms"),
                     "step2_duration_ms": result.get("step2_duration_ms"),
                 }
+                # Update element text with formatted figure understanding
+                # so the chunker includes it when combining element texts
+                formatted_text = self.format_understanding(result)
+                if formatted_text:
+                    el["text"] = formatted_text
+                    el["content"] = formatted_text
                 processed.append(el)
             except Exception as e:
                 logger.error(f"Failed to process figure {element_id}: {e}")

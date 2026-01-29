@@ -345,15 +345,32 @@ async function openChunkDetailsDrawer(chunkId, elementsSublist) {
       row.style.transition = 'background 0.2s';
       const idDisp = (b.orig_id || b.element_id || '').toString();
       const short = idDisp.length > 30 ? `${idDisp.slice(0, 26)}…` : idDisp || '(no id)';
+      const elementType = b.type || 'Element';
       row.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <div>
-            <div style="font-weight: 600; margin-bottom: 4px;">${b.type || 'Element'}</div>
+            <div style="font-weight: 600; margin-bottom: 4px;">${elementType}</div>
             <div style="font-size: 12px; color: #666;">Page ${b.page_trimmed ?? '?'} · ${short}</div>
           </div>
           <div style="font-size: 20px; color: #999;">›</div>
         </div>
       `;
+
+      // For Figure elements, add a container for the understanding text
+      if (elementType.toLowerCase() === 'figure') {
+        const figureUnderstandingContainer = document.createElement('div');
+        figureUnderstandingContainer.className = 'figure-understanding-container';
+        figureUnderstandingContainer.style.marginTop = '8px';
+        row.appendChild(figureUnderstandingContainer);
+
+        // Fetch figure understanding asynchronously
+        // Use element_id (not orig_id) since that's what the API expects
+        const figureElementId = b.element_id;
+        if (figureElementId && CURRENT_SLUG) {
+          fetchFigureUnderstanding(CURRENT_SLUG, figureElementId, figureUnderstandingContainer);
+        }
+      }
+
       row.addEventListener('mouseenter', () => { row.style.background = '#f5f5f5'; });
       row.addEventListener('mouseleave', () => { row.style.background = 'transparent'; });
       row.addEventListener('click', async (ev) => {
@@ -419,4 +436,85 @@ function revealChunkInList(chunkId, expand = true) {
     if (sub) sub.classList.remove('hidden');
   }
   try { card.scrollIntoView({ block: 'nearest' }); } catch (e) { }
+}
+
+/**
+ * Fetch figure understanding and display it in the container.
+ * @param {string} slug - The run slug
+ * @param {string} elementId - The figure element ID
+ * @param {HTMLElement} container - Container to render the understanding text
+ */
+async function fetchFigureUnderstanding(slug, elementId, container) {
+  try {
+    const provider = CURRENT_PROVIDER || 'azure/document_intelligence';
+    const url = `/api/figures/${encodeURIComponent(slug)}/${encodeURIComponent(elementId)}?provider=${encodeURIComponent(provider)}`;
+    const data = await fetchJSON(url);
+
+    if (data.formatted_understanding) {
+      renderFigureUnderstanding(data.formatted_understanding, container);
+    } else if (data.processing) {
+      // Fallback: build a simple display from processing data
+      const figType = data.processing.figure_type || 'Unknown';
+      const desc = data.processing.description || data.processing.processed_content || '';
+      if (desc) {
+        const shortDesc = desc.length > 200 ? desc.slice(0, 200) + '…' : desc;
+        container.innerHTML = `<div class="figure-understanding-text">[Figure: ${figType} - ${shortDesc}]</div>`;
+      }
+    }
+  } catch (e) {
+    // Silently fail - figure understanding is optional
+    console.debug('Could not fetch figure understanding:', e);
+  }
+}
+
+/**
+ * Render formatted figure understanding into a container.
+ * Handles markdown with mermaid code blocks.
+ * @param {string} text - The formatted understanding text
+ * @param {HTMLElement} container - Container to render into
+ */
+async function renderFigureUnderstanding(text, container) {
+  if (!text) return;
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'figure-understanding-text';
+
+  // Check if there's a mermaid code block
+  const mermaidMatch = text.match(/```mermaid\n([\s\S]*?)```/);
+
+  if (mermaidMatch) {
+    // Split into description part and mermaid part
+    const parts = text.split(/```mermaid\n[\s\S]*?```/);
+    const descPart = parts[0].trim();
+    const mermaidCode = mermaidMatch[1].trim();
+
+    // Add description
+    if (descPart) {
+      const descEl = document.createElement('div');
+      descEl.className = 'figure-understanding-desc';
+      descEl.textContent = descPart;
+      wrapper.appendChild(descEl);
+    }
+
+    // Add collapsible mermaid code block
+    const codeDetails = document.createElement('details');
+    codeDetails.className = 'figure-understanding-mermaid';
+
+    const summary = document.createElement('summary');
+    summary.textContent = 'Mermaid code';
+    codeDetails.appendChild(summary);
+
+    const pre = document.createElement('pre');
+    const code = document.createElement('code');
+    code.textContent = mermaidCode;
+    pre.appendChild(code);
+    codeDetails.appendChild(pre);
+
+    wrapper.appendChild(codeDetails);
+  } else {
+    // No mermaid block, just show the text
+    wrapper.textContent = text;
+  }
+
+  container.appendChild(wrapper);
 }

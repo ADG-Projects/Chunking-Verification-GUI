@@ -312,6 +312,12 @@ def _process_figures_after_extraction(
                     "step1_duration_ms": result.get("step1_duration_ms"),
                     "step2_duration_ms": result.get("step2_duration_ms"),
                 }
+                # Update element text with formatted figure understanding
+                # This ensures the chunk text includes the figure description
+                formatted_text = processor.format_understanding(result)
+                if formatted_text:
+                    el["text"] = formatted_text
+                    el["content"] = formatted_text
                 logger.info(f"Processed figure {element_id}: {result.get('figure_type')}")
             except Exception as e:
                 logger.error(f"Vision processing failed for {element_id}: {e}")

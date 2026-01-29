@@ -1054,12 +1054,19 @@ def api_figure_detail(
     elements_path = _resolve_elements_file(slug, provider_key)
     figures_dir = _get_figures_dir(elements_path)
 
-    # Find the figure element
+    # Find the figure element (search by element_id first, then by original_element_id)
     figures = _load_figures_from_elements(elements_path)
     target = None
+    resolved_element_id = element_id
     for fig in figures:
         if fig.get("element_id") == element_id:
             target = fig
+            break
+        # Also check original_element_id in metadata
+        fig_md = fig.get("metadata", {})
+        if fig_md.get("original_element_id") == element_id:
+            target = fig
+            resolved_element_id = fig.get("element_id", element_id)
             break
 
     if not target:
@@ -1068,9 +1075,9 @@ def api_figure_detail(
     md = target.get("metadata", {})
     figure_image = md.get("figure_image_filename") or target.get("figure_image_filename")
 
-    # Load processing results
-    proc_result = _load_figure_processing_result(figures_dir, element_id)
-    sam3_result = _load_sam3_result(figures_dir, element_id)
+    # Load processing results (use resolved_element_id for file lookups)
+    proc_result = _load_figure_processing_result(figures_dir, resolved_element_id)
+    sam3_result = _load_sam3_result(figures_dir, resolved_element_id)
     figure_processing = target.get("figure_processing", {})
 
     # Build response
@@ -1116,10 +1123,29 @@ def api_figure_detail(
             "intermediate_edges": proc_result.get("intermediate_edges"),
             "reasoning_trace": proc_result.get("reasoning_trace"),
         }
+        # Add formatted understanding for display
+        try:
+            from chunking_pipeline.figure_processor import get_processor
+
+            processor = get_processor()
+            result["formatted_understanding"] = processor.format_understanding(proc_result)
+        except (ImportError, Exception) as e:
+            logger.warning(f"Could not format figure understanding: {e}")
+            result["formatted_understanding"] = None
     elif figure_processing:
         result["processing"] = figure_processing
+        # Add formatted understanding for embedded figure_processing
+        try:
+            from chunking_pipeline.figure_processor import get_processor
+
+            processor = get_processor()
+            result["formatted_understanding"] = processor.format_understanding(figure_processing)
+        except (ImportError, Exception) as e:
+            logger.warning(f"Could not format figure understanding: {e}")
+            result["formatted_understanding"] = None
     else:
         result["processing"] = None
+        result["formatted_understanding"] = None
 
     # Add two-stage pipeline status
     stages = {
