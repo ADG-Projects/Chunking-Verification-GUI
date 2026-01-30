@@ -82,7 +82,7 @@
 
 .extraction-modal-body {
   display: grid;
-  grid-template-columns: 1fr 500px;
+  grid-template-columns: 1fr minmax(300px, 500px);
   gap: 0;
   flex: 1;
   min-height: 0;
