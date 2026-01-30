@@ -1,4 +1,4 @@
-"""Azure Document Intelligence pipeline for ChunkingTests.
+"""Azure Document Intelligence pipeline for IngestLab.
 
 This module provides CLI access to Azure Document Intelligence,
 using AzureDIExtractor from PolicyAsCode for all extraction logic.
@@ -31,13 +31,13 @@ from src.extractors.azure_di import (
 # PolicyAsCode uses AZURE_DOCUMENTINTELLIGENCE_* but we also support legacy names
 ENDPOINT_ENVS = (
     "AZURE_DOCUMENTINTELLIGENCE_ENDPOINT",  # PolicyAsCode standard
-    "AZURE_FT_ENDPOINT",  # ChunkingTests legacy
+    "AZURE_FT_ENDPOINT",  # IngestLab legacy
     "DOCUMENTINTELLIGENCE_ENDPOINT",
     "DI_ENDPOINT",
 )
 KEY_ENVS = (
     "AZURE_DOCUMENTINTELLIGENCE_KEY",  # PolicyAsCode standard
-    "AZURE_FT_KEY",  # ChunkingTests legacy
+    "AZURE_FT_KEY",  # IngestLab legacy
     "DOCUMENTINTELLIGENCE_API_KEY",
     "DI_KEY",
 )

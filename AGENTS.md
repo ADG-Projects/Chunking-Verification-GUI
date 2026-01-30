@@ -4,7 +4,7 @@
 Repository root keeps runnable helpers alongside documentation for fast iteration.
 
 - `scripts/preview_unstructured_pages.py` — fast page slicing + gold-table comparisons.
-- `web/` — Chunking Visualizer (FastAPI + static UI):
+- `web/` — IngestLab (FastAPI + static UI):
   - `main.py` FastAPI app exposing JSON endpoints and serving the UI.
   - `web/static/` static assets (no bundler): `index.html`, `styles.css`, `app.js`.
   - `web/static/vendor/pdfjs/` vendor-pinned pdf.js (autofetched if missing).

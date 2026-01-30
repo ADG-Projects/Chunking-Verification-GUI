@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ChunkingTests is a document ingestion sandbox that enables side-by-side comparison of layout extraction and OCR quality across multiple providers:
+IngestLab is a document ingestion sandbox that enables side-by-side comparison of layout extraction and OCR quality across multiple providers:
 
 - **Azure Document Intelligence** (Layout with OCR) — active provider
 - **Unstructured** (local open-source chunker) — *deprecated, legacy extractions viewable only*
@@ -47,7 +47,7 @@ uv sync
 
 ### Updating PolicyAsCode Dependency
 
-ChunkingTests depends on PolicyAsCode (PaC) via git reference. When PaC is updated with new features needed by this project:
+IngestLab depends on PolicyAsCode (PaC) via git reference. When PaC is updated with new features needed by this project:
 
 ```bash
 # Update PaC to latest commit on its branch
@@ -95,8 +95,8 @@ uv run python -m chunking_pipeline.azure_pipeline \
 Docker build and test:
 
 ```bash
-docker build -t chunking-tests:latest .
-docker run -d -p 8765:8000 chunking-tests:latest
+docker build -t ingestlab:latest .
+docker run -d -p 8765:8000 ingestlab:latest
 curl http://localhost:8765/healthz
 ```
 

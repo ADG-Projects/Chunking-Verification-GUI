@@ -248,59 +248,6 @@ wheels = [
 ]
 
 [[package]]
-name = "chunking-tests"
-version = "6.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "azure-ai-documentintelligence" },
-    { name = "brd-to-opa-pipeline" },
-    { name = "fastapi" },
-    { name = "openai" },
-    { name = "opencv-python" },
-    { name = "pymupdf" },
-    { name = "pypdf" },
-    { name = "python-dotenv" },
-    { name = "python-multipart" },
-    { name = "requests" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.optional-dependencies]
-full = [
-    { name = "huggingface-hub" },
-    { name = "torch" },
-    { name = "torchvision" },
-    { name = "transformers" },
-]
-sam3-local = [
-    { name = "huggingface-hub" },
-    { name = "torch" },
-    { name = "torchvision" },
-    { name = "transformers" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "azure-ai-documentintelligence" },
-    { name = "brd-to-opa-pipeline", git = "https://github.com/kyndryl-agentic-ai/PolicyAsCode.git?rev=feature%2Fchunking-visualizer-integration" },
-    { name = "chunking-tests", extras = ["sam3-local"], marker = "extra == 'full'" },
-    { name = "fastapi" },
-    { name = "huggingface-hub", marker = "extra == 'sam3-local'", specifier = ">=0.36.0" },
-    { name = "openai" },
-    { name = "opencv-python", specifier = ">=4.13.0.90" },
-    { name = "pymupdf", specifier = ">=1.26.7" },
-    { name = "pypdf" },
-    { name = "python-dotenv" },
-    { name = "python-multipart" },
-    { name = "requests" },
-    { name = "torch", marker = "extra == 'sam3-local'", specifier = ">=2.10.0" },
-    { name = "torchvision", marker = "extra == 'sam3-local'", specifier = ">=0.25.0" },
-    { name = "transformers", marker = "extra == 'sam3-local'", specifier = ">=5.0.0rc1" },
-    { name = "uvicorn", extras = ["standard"] },
-]
-provides-extras = ["sam3-local", "full"]
-
-[[package]]
 name = "click"
 version = "8.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -656,6 +603,59 @@ sdist = { url = "https://files.pythonhosted.org/packages/ce/12/1da8e1a9050d0603b
 wheels = [
     { url = "https://files.pythonhosted.org/packages/63/7b/04ab6afa1ff7eb9ccb09049918c0407b205f5009092c0416147d163e4e2b/immutabledict-4.2.2-py3-none-any.whl", hash = "sha256:97c31d098a2c850e93a958badeef765e4736ed7942ec73e439facd764a3a7217", size = 4736, upload-time = "2025-10-12T13:32:58.326Z" },
 ]
+
+[[package]]
+name = "ingestlab"
+version = "6.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "azure-ai-documentintelligence" },
+    { name = "brd-to-opa-pipeline" },
+    { name = "fastapi" },
+    { name = "openai" },
+    { name = "opencv-python" },
+    { name = "pymupdf" },
+    { name = "pypdf" },
+    { name = "python-dotenv" },
+    { name = "python-multipart" },
+    { name = "requests" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.optional-dependencies]
+full = [
+    { name = "huggingface-hub" },
+    { name = "torch" },
+    { name = "torchvision" },
+    { name = "transformers" },
+]
+sam3-local = [
+    { name = "huggingface-hub" },
+    { name = "torch" },
+    { name = "torchvision" },
+    { name = "transformers" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "azure-ai-documentintelligence" },
+    { name = "brd-to-opa-pipeline", git = "https://github.com/kyndryl-agentic-ai/PolicyAsCode.git?rev=feature%2Fchunking-visualizer-integration" },
+    { name = "fastapi" },
+    { name = "huggingface-hub", marker = "extra == 'sam3-local'", specifier = ">=0.36.0" },
+    { name = "ingestlab", extras = ["sam3-local"], marker = "extra == 'full'" },
+    { name = "openai" },
+    { name = "opencv-python", specifier = ">=4.13.0.90" },
+    { name = "pymupdf", specifier = ">=1.26.7" },
+    { name = "pypdf" },
+    { name = "python-dotenv" },
+    { name = "python-multipart" },
+    { name = "requests" },
+    { name = "torch", marker = "extra == 'sam3-local'", specifier = ">=2.10.0" },
+    { name = "torchvision", marker = "extra == 'sam3-local'", specifier = ">=0.25.0" },
+    { name = "transformers", marker = "extra == 'sam3-local'", specifier = ">=5.0.0rc1" },
+    { name = "uvicorn", extras = ["standard"] },
+]
+provides-extras = ["sam3-local", "full"]
 
 [[package]]
 name = "iniconfig"

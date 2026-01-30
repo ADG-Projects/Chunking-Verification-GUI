@@ -1,5 +1,5 @@
 /**
- * Theme management for Chunking Visualizer
+ * Theme management for IngestLab
  * Supports system preference detection with manual override
  */
 

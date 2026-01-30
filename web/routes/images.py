@@ -1,4 +1,4 @@
-"""Images/Figures routes for ChunkingTests.
+"""Images/Figures routes for IngestLab.
 
 Provides API endpoints for inspecting figures extracted from PDF runs
 and uploading standalone images for processing through the vision pipeline.

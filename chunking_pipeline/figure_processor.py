@@ -1,4 +1,4 @@
-"""Figure processing wrapper for ChunkingTests.
+"""Figure processing wrapper for IngestLab.
 
 Wraps PolicyAsCode's FigureProcessor to handle image processing,
 result serialization, and storage of annotated images and JSON results.

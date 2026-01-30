@@ -441,7 +441,7 @@ function downloadFeedbackHtml() {
         <div class="container">
           <div class="page-title">
             <div>
-              <div class="eyebrow">Chunking Visualizer</div>
+              <div class="eyebrow">IngestLab</div>
               <h1>Feedback Report</h1>
               <div class="muted">Generated ${escapeHtml(new Date().toLocaleString())} · ${formatNumber((data.extractions || []).length)} extractions · ${formatNumber(noteCount)} notes</div>
             </div>

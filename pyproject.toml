@@ -1,5 +1,5 @@
 [project]
-name = "chunking-tests"
+name = "ingestlab"
 version = "6.1.0"
 description = "Document ingestion sandbox for Azure Document Intelligence with custom chunking."
 requires-python = ">=3.11,<3.12"
@@ -33,7 +33,7 @@ sam3-local = [
 
 # Full install with all optional features
 full = [
-    "chunking-tests[sam3-local]",
+    "ingestlab[sam3-local]",
 ]
 
 [build-system]

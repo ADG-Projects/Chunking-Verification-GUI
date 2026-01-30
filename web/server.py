@@ -48,7 +48,7 @@ def configure_chunking_logging() -> None:
 ensure_dirs()
 configure_chunking_logging()
 
-app = FastAPI(title="Chunking Visualizer")
+app = FastAPI(title="IngestLab")
 
 app.add_middleware(
     CORSMiddleware,

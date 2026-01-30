@@ -1,4 +1,4 @@
-# ChunkingTests
+# IngestLab
 
 Local playground for document ingestion experiments. It now supports the open-source Unstructured chunker, the hosted Unstructured Partition API (elements-only), and Azure Document Intelligence (Layout) so you can compare layout/ocr quality side by side.
 
@@ -143,7 +143,7 @@ Outputs for Azure extractions live under `outputs/azure/document_intelligence/` 
   - Verification steps:
     1. `uv run uvicorn main:app --host 127.0.0.1 --port 8765`, start a New Extraction with provider `Unstructured Partition (API)`, and confirm the UI processes elements-only (chunks tab hidden) while overlays render from returned elements.
     2. Inspect the generated artifacts under `outputs/unstructured/partition_api/` to confirm the extraction JSON and elements JSONL are stored without chunk outputs.
-    3. `docker build -t chunking-tests:4.0 .` and verify the base image pulls from ECR Public without Docker Hub rate limit warnings.
+    3. `docker build -t ingestlab:4.0 .` and verify the base image pulls from ECR Public without Docker Hub rate limit warnings.
 - **v3.2 (2025-11-25)** – Bundled markdown/DOMPurify assets locally with a favicon, persisted Azure detected-language metadata for RTL-aware reloads, and fixed Azure tooltip positioning.
   - Verification steps:
     1. `uv run uvicorn main:app --host 127.0.0.1 --port 8765`, load an Azure extraction with markdown drawers and verify markdown still renders via the bundled assets and favicon shows in the tab.
@@ -175,7 +175,7 @@ Outputs for Azure extractions live under `outputs/azure/document_intelligence/` 
     1. `uv run python scripts/preview_unstructured_pages.py --input res/<pdf>.pdf --pages 4-6 --only-tables --output outputs/unstructured/<slug>.pagesX-Y.tables.jsonl --gold dataset/gold.jsonl --emit-matches outputs/unstructured/<slug>.matches.json`
     2. `uv run uvicorn main:app --reload --host 127.0.0.1 --port 8765` and walk through the Metrics + Inspect views to confirm overlay redraws track the drawer selections.
 
-## Web UI (Chunking Visualizer)
+## Web UI (IngestLab)
 
 Spin up a small local UI to inspect PDFs, table matching, and chunker performance without juggling multiple files. The server reads `PDF_DIR` to find a writable location for PDFs (defaults to `res/` locally). When deployed to Fly.io with a volume mounted at `/data`, set `PDF_DIR=/data/res` to persist uploads.
 
@@ -313,24 +313,24 @@ Two Docker images are available:
 **Lite image (~400MB)** — Azure Document Intelligence + Unstructured Partition API only. No local ML dependencies (PyTorch, transformers, OpenCV, Tesseract). Use this for API-only workflows:
 
 ```bash
-docker build -f Dockerfile.lite -t chunking-tests:lite .
-docker run -d --name chunking-tests-lite -p 8765:8000 chunking-tests:lite
+docker build -f Dockerfile.lite -t ingestlab:lite .
+docker run -d --name ingestlab-lite -p 8765:8000 ingestlab:lite
 curl -sf http://localhost:8765/healthz
 ```
 
 **Full image (~3GB)** — All providers including local Unstructured with hi_res layout. Installs native libraries (`libgl1`, `libglib2.0-0`, `libsm6`, `libxext6`, `libxrender1`, `tesseract-ocr`, `poppler-utils`, `libheif1`):
 
 ```bash
-docker build -t chunking-tests:latest .
-docker run -d --name chunking-tests-local -p 8765:8000 chunking-tests:latest
+docker build -t ingestlab:latest .
+docker run -d --name ingestlab-local -p 8765:8000 ingestlab:latest
 curl -sf http://localhost:8765/healthz
-docker stop chunking-tests-local && docker rm chunking-tests-local
+docker stop ingestlab-local && docker rm ingestlab-local
 ```
 
 Hi_res is enabled by default in the full image. To produce a slimmed-down fast-only image, pass the build args exposed in the Dockerfile:
 
 ```bash
-docker build -t chunking-tests:min \
+docker build -t ingestlab:min \
   --build-arg WITH_HIRES=0 \
   --build-arg DISABLE_HI_RES=1 .
 ```
