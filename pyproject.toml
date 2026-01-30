@@ -1,6 +1,6 @@
 [project]
 name = "ingestlab"
-version = "6.1.1"
+version = "6.1.2"
 description = "Document ingestion sandbox for Azure Document Intelligence with custom chunking."
 requires-python = ">=3.11,<3.12"
 
@@ -31,9 +31,16 @@ sam3-local = [
     "torchvision>=0.25.0",
 ]
 
+# For deploying SAM3 to Modal serverless (GPU)
+# Deploy from PolicyAsCode: uv run modal deploy .venv/lib/python3.11/site-packages/src/services/sam3_modal_app.py
+modal = [
+    "modal>=0.64.0",
+]
+
 # Full install with all optional features
 full = [
     "ingestlab[sam3-local]",
+    "ingestlab[modal]",
 ]
 
 [build-system]
