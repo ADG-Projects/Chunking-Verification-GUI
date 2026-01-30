@@ -464,21 +464,41 @@ function getDirectionDescription(direction) {
 }
 
 /**
- * Trigger reprocessing of an uploaded image.
+ * Trigger reprocessing of an uploaded image with optional type override.
  */
 async function reprocessUpload(uploadId) {
-  const confirmed = await showConfirm({
+  const result = await showTypeSelectDialog({
     title: 'Reprocess Upload',
-    message: `Reprocess uploaded image?\n\nThis will re-run the full pipeline (classification, segmentation/description, extraction).`,
+    message: 'Select processing mode:',
     confirmText: 'Reprocess',
     cancelText: 'Cancel'
   });
-  if (!confirmed) return;
+  if (!result.confirmed) return;
 
   try {
     showToast('Starting reprocess...', 'info');
-    await runUploadFullPipeline(uploadId);
-    showToast('Reprocessing complete', 'success');
+
+    if (result.forceType) {
+      // Use the new backend endpoint with force_type
+      const res = await fetch(
+        `/api/figures/upload/${encodeURIComponent(uploadId)}/reprocess?force_type=${encodeURIComponent(result.forceType)}`,
+        { method: 'POST' }
+      );
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
+        throw new Error(err.detail || 'Reprocessing failed');
+      }
+
+      const modeLabel = `as ${result.forceType}`;
+      showToast(`Reprocessing complete ${modeLabel}`, 'success');
+      refreshUploadDetails(uploadId);
+      if (typeof loadUploadHistory === 'function') loadUploadHistory();
+    } else {
+      // No force_type - use existing full pipeline
+      await runUploadFullPipeline(uploadId);
+      showToast('Reprocessing complete with auto-detect', 'success');
+    }
   } catch (err) {
     console.error('Reprocess failed:', err);
     showToast(`Reprocess failed: ${err.message}`, 'error');

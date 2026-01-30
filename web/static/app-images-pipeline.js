@@ -109,14 +109,33 @@ async function runMermaidExtraction(elementId) {
  * Steps:
  * - For flowcharts: Classification → Direction Detection → SAM3 → Mermaid Extraction
  * - For OTHER images: Classification → Description (skips SAM3/Mermaid)
+ *
+ * @param {string} uploadId - The upload identifier
+ * @param {string|null} forceType - Optional forced type ("flowchart" or "other").
+ *   When provided, skips classification and runs the appropriate pipeline directly.
  */
-async function runUploadFullPipeline(uploadId) {
+async function runUploadFullPipeline(uploadId, forceType = null) {
   try {
-    // Step 1: Classification
-    const classResult = await runUploadClassification(uploadId);
+    let figureType;
+
+    if (forceType) {
+      // Skip classification - use forced type
+      figureType = forceType;
+
+      // Store synthetic classification result for UI updates
+      window.CURRENT_UPLOAD_CLASSIFICATION = {
+        figure_type: forceType,
+        confidence: 1.0,
+        reasoning: `Type forced to ${forceType} by user`,
+      };
+    } else {
+      // Step 1: Classification
+      const classResult = await runUploadClassification(uploadId);
+      figureType = classResult.figure_type;
+    }
 
     // Branch based on figure type
-    if (classResult.figure_type === 'flowchart') {
+    if (figureType === 'flowchart') {
       // Flowchart pipeline: Direction → SAM3 → Mermaid
       await runUploadDirectionDetection(uploadId);
       await runUploadSegmentation(uploadId);

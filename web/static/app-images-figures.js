@@ -414,30 +414,36 @@ function closeFigureDetails() {
 }
 
 /**
- * Trigger reprocessing of a figure.
+ * Trigger reprocessing of a figure with optional type override.
  */
 async function reprocessFigure(elementId) {
-  const confirmed = await showConfirm({
+  const result = await showTypeSelectDialog({
     title: 'Reprocess Figure',
-    message: `Reprocess figure ${truncateId(elementId)}?\n\nThis will re-run the full pipeline (classification, segmentation, extraction).`,
+    message: `Select processing mode for ${truncateId(elementId)}:`,
     confirmText: 'Reprocess',
     cancelText: 'Cancel'
   });
-  if (!confirmed) return;
+  if (!result.confirmed) return;
 
   try {
     const provider = CURRENT_PROVIDER || 'azure/document_intelligence';
-    const res = await fetch(
-      `/api/figures/${encodeURIComponent(CURRENT_SLUG)}/${encodeURIComponent(elementId)}/reprocess?provider=${encodeURIComponent(provider)}`,
-      { method: 'POST' }
-    );
+    let url = `/api/figures/${encodeURIComponent(CURRENT_SLUG)}/${encodeURIComponent(elementId)}/reprocess?provider=${encodeURIComponent(provider)}`;
+
+    // Add force_type parameter if a type was selected
+    if (result.forceType) {
+      url += `&force_type=${encodeURIComponent(result.forceType)}`;
+    }
+
+    const res = await fetch(url, { method: 'POST' });
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
       throw new Error(err.detail || 'Reprocessing failed');
     }
 
-    showToast('Figure reprocessed successfully', 'success');
+    const data = await res.json();
+    const modeLabel = result.forceType ? `as ${result.forceType}` : 'with auto-detect';
+    showToast(`Figure reprocessed ${modeLabel}`, 'success');
     openFigureDetails(elementId);
     loadFiguresForCurrentRun();
   } catch (err) {

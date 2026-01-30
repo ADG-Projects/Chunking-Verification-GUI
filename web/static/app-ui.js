@@ -303,6 +303,98 @@ function showConfirm(options) {
   });
 }
 
+/**
+ * Show a dialog with a type selector dropdown for reprocessing figures.
+ * @param {Object} options - Configuration options
+ * @param {string} options.title - Dialog title
+ * @param {string} options.message - Dialog message
+ * @param {string} [options.confirmText='Reprocess'] - Text for the confirm button
+ * @param {string} [options.cancelText='Cancel'] - Text for the cancel button
+ * @returns {Promise<{confirmed: boolean, forceType: string|null}>} - Resolves to the selection
+ */
+function showTypeSelectDialog(options) {
+  const {
+    title = 'Reprocess',
+    message = 'Select processing mode:',
+    confirmText = 'Reprocess',
+    cancelText = 'Cancel',
+  } = options;
+
+  return new Promise((resolve) => {
+    // Create modal overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'type-select-dialog-overlay';
+    overlay.innerHTML = `
+      <div class="type-select-dialog">
+        <h3 class="type-select-dialog-title">${title}</h3>
+        <p class="type-select-dialog-message">${message}</p>
+        <div class="type-select-dialog-options">
+          <label class="type-select-option">
+            <input type="radio" name="forceType" value="" checked>
+            <span class="option-label">Auto-detect</span>
+            <span class="option-desc">Run classification to determine type</span>
+          </label>
+          <label class="type-select-option">
+            <input type="radio" name="forceType" value="flowchart">
+            <span class="option-label">Force Flowchart</span>
+            <span class="option-desc">Run SAM3 + Mermaid extraction</span>
+          </label>
+          <label class="type-select-option">
+            <input type="radio" name="forceType" value="other">
+            <span class="option-label">Force Other</span>
+            <span class="option-desc">Run description generation only</span>
+          </label>
+        </div>
+        <div class="type-select-dialog-buttons">
+          <button class="btn btn-secondary type-select-cancel">${cancelText}</button>
+          <button class="btn btn-primary type-select-confirm">${confirmText}</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const confirmBtn = overlay.querySelector('.type-select-confirm');
+    const cancelBtn = overlay.querySelector('.type-select-cancel');
+
+    // Focus confirm button
+    setTimeout(() => confirmBtn.focus(), 50);
+
+    const cleanup = () => {
+      overlay.remove();
+    };
+
+    const handleConfirm = () => {
+      const selected = overlay.querySelector('input[name="forceType"]:checked');
+      const forceType = selected?.value || null;
+      cleanup();
+      resolve({ confirmed: true, forceType: forceType || null });
+    };
+
+    const handleCancel = () => {
+      cleanup();
+      resolve({ confirmed: false, forceType: null });
+    };
+
+    const handleKeydown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        handleCancel();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        handleConfirm();
+      }
+    };
+
+    confirmBtn.addEventListener('click', handleConfirm);
+    cancelBtn.addEventListener('click', handleCancel);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) handleCancel();
+    });
+    document.addEventListener('keydown', handleKeydown, { once: true });
+  });
+}
+
 function initDrawerResize() {
   const panelHandle = document.getElementById('drawer-resize-handle');
   const drawerHandle = document.getElementById('drawer-overlay-resize-handle');

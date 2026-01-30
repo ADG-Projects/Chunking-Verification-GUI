@@ -178,6 +178,7 @@ class FigureProcessorWrapper:
         *,
         run_id: str | None = None,
         text_positions: list[dict[str, Any]] | None = None,
+        force_type: str | None = None,
     ) -> dict[str, Any]:
         """Process a single figure image through the vision pipeline.
 
@@ -186,6 +187,8 @@ class FigureProcessorWrapper:
             ocr_text: OCR text extracted from the figure (if available)
             run_id: Optional run identifier for tracking
             text_positions: Text position data for SAM3 annotations
+            force_type: Optional forced figure type ("flowchart" or "other").
+                When provided, skips classification and uses the forced type.
 
         Returns:
             Dict containing:
@@ -205,8 +208,22 @@ class FigureProcessorWrapper:
         processor = self._get_processor()
         image_path = Path(image_path)
 
-        # Classify first to determine if SAM3 annotations are needed
-        classification = processor.classify_figure(image_path, ocr_text=ocr_text)
+        # Use forced type or classify to determine figure type
+        if force_type:
+            # Skip classification, use forced type
+            try:
+                forced_figure_type = FigureType(force_type)
+            except ValueError:
+                forced_figure_type = FigureType.OTHER
+            classification = FigureClassification(
+                figure_type=forced_figure_type,
+                confidence=1.0,
+                reasoning=f"Type forced to {force_type} by user",
+            )
+            logger.info(f"Using forced type: {force_type}")
+        else:
+            # Classify first to determine if SAM3 annotations are needed
+            classification = processor.classify_figure(image_path, ocr_text=ocr_text)
 
         shape_positions = None
         annotated_path = None
@@ -804,6 +821,7 @@ class FigureProcessorWrapper:
         *,
         run_id: str | None = None,
         text_positions: list[dict[str, Any]] | None = None,
+        force_type: str | None = None,
     ) -> dict[str, Any]:
         """Process a figure and save results to output directory.
 
@@ -818,6 +836,8 @@ class FigureProcessorWrapper:
             ocr_text: OCR text from the figure
             run_id: Optional run identifier
             text_positions: Text position data for SAM3 annotations
+            force_type: Optional forced figure type ("flowchart" or "other").
+                When provided, skips classification and uses the forced type.
 
         Returns:
             Processing results dict with added 'output_paths' key
@@ -826,7 +846,8 @@ class FigureProcessorWrapper:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         result = self.process_figure(
-            image_path, ocr_text, run_id=run_id, text_positions=text_positions
+            image_path, ocr_text, run_id=run_id, text_positions=text_positions,
+            force_type=force_type
         )
 
         # Extract internal SAM3 data before saving (not part of public result)

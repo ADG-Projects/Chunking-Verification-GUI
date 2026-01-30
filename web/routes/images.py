@@ -926,6 +926,275 @@ def api_upload_extract_mermaid(upload_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/api/figures/upload/{upload_id}/reprocess")
+def api_upload_reprocess(
+    upload_id: str,
+    force_type: Optional[str] = Query(default=None, description="Force figure type: 'flowchart' or 'other'. If not provided, runs auto-classification."),
+) -> Dict[str, Any]:
+    """Reprocess an uploaded image with optional forced type.
+
+    When force_type is provided:
+    - "flowchart": Runs Direction Detection → SAM3 → Mermaid Extraction (skips classification)
+    - "other": Runs Description generation (skips classification, SAM3, Mermaid)
+
+    When force_type is not provided, runs the full auto-detection pipeline.
+    """
+    metadata = _load_upload_metadata(upload_id)
+    if not metadata:
+        raise HTTPException(status_code=404, detail=f"Upload {upload_id} not found")
+
+    image_path = Path(metadata["image_path"])
+    if not image_path.exists():
+        raise HTTPException(status_code=404, detail="Image file not found")
+
+    upload_dir = _get_upload_dir(upload_id)
+
+    try:
+        from chunking_pipeline.figure_processor import get_processor
+
+        processor = get_processor()
+
+        if force_type == "flowchart":
+            # Forced flowchart pipeline: Direction → SAM3 → Mermaid
+            # Save forced classification
+            classification_data = {
+                "figure_type": "flowchart",
+                "confidence": 1.0,
+                "reasoning": "Type forced to flowchart by user",
+                "classified_at": datetime.now(timezone.utc).isoformat(),
+            }
+            classification_path = upload_dir / "classification.json"
+            with classification_path.open("w", encoding="utf-8") as fh:
+                json.dump(classification_data, fh, ensure_ascii=False, indent=2)
+
+            # Run direction detection
+            direction_result = processor.detect_direction_only(image_path, run_id=f"upload-{upload_id}")
+            direction_data = {
+                "direction": direction_result.get("direction"),
+                "direction_duration_ms": direction_result.get("direction_duration_ms"),
+                "detected_at": datetime.now(timezone.utc).isoformat(),
+            }
+            direction_path = upload_dir / "direction.json"
+            with direction_path.open("w", encoding="utf-8") as fh:
+                json.dump(direction_data, fh, ensure_ascii=False, indent=2)
+
+            # Extract text positions
+            text_positions = processor.extract_text_positions_from_image(image_path)
+
+            # Run SAM3 segmentation with forced flowchart type
+            # Run SAM3 with forced direction
+            try:
+                annotated_path, shape_positions, annotated_text_positions = processor._get_processor().segment_and_annotate(
+                    image_path,
+                    text_positions=text_positions,
+                    direction=direction_result.get("direction", "LR"),
+                )
+            except RuntimeError as e:
+                # SAM3 found no shapes - this is a user-facing error when forcing flowchart
+                error_msg = str(e)
+                if "no shapes" in error_msg.lower():
+                    raise HTTPException(
+                        status_code=400,
+                        detail="SAM3 found no shapes in this image. This image may not be a flowchart. Try 'Auto-detect' or 'Force Other' instead.",
+                    )
+                raise
+
+            # Copy annotated image if generated
+            if annotated_path:
+                src_annotated = Path(annotated_path)
+                if src_annotated.exists():
+                    dst_annotated = upload_dir / "annotated.png"
+                    shutil.copy2(src_annotated, dst_annotated)
+
+            # Save SAM3 results
+            sam3_data = {
+                "figure_type": "flowchart",
+                "confidence": 1.0,
+                "reasoning": "Type forced to flowchart by user",
+                "direction": direction_result.get("direction"),
+                "shape_positions": shape_positions,
+                "text_positions": annotated_text_positions or text_positions,
+                "segmented_at": datetime.now(timezone.utc).isoformat(),
+            }
+            sam3_path = upload_dir / "sam3.json"
+            with sam3_path.open("w", encoding="utf-8") as fh:
+                json.dump(sam3_data, fh, ensure_ascii=False, indent=2)
+
+            # Run Mermaid extraction
+            sam3_result = sam3_data.copy()
+            if (upload_dir / "annotated.png").exists():
+                sam3_result["annotated_path"] = str(upload_dir / "annotated.png")
+
+            mermaid_result = processor.extract_mermaid_from_sam3(
+                image_path, sam3_result, ocr_text="", run_id=f"upload-{upload_id}"
+            )
+
+            # Save full results
+            result_path = upload_dir / "result.json"
+            with result_path.open("w", encoding="utf-8") as fh:
+                json.dump(mermaid_result, fh, ensure_ascii=False, indent=2)
+
+            return {
+                "status": "ok",
+                "stage": "complete",
+                "force_type": force_type,
+                "upload_id": upload_id,
+                "figure_type": "flowchart",
+                "processed_content": mermaid_result.get("processed_content"),
+            }
+
+        elif force_type == "other":
+            # Forced OTHER pipeline: Just generate description
+            # Save forced classification
+            classification_data = {
+                "figure_type": "other",
+                "confidence": 1.0,
+                "reasoning": "Type forced to other by user",
+                "classified_at": datetime.now(timezone.utc).isoformat(),
+            }
+            classification_path = upload_dir / "classification.json"
+            with classification_path.open("w", encoding="utf-8") as fh:
+                json.dump(classification_data, fh, ensure_ascii=False, indent=2)
+
+            # Run description generation
+            description_result = processor.describe_only(image_path, ocr_text="", run_id=f"upload-{upload_id}")
+
+            # Save description results
+            description_data = {
+                "figure_type": "other",
+                "description": description_result.get("description"),
+                "processed_content": description_result.get("processed_content"),
+                "description_duration_ms": description_result.get("description_duration_ms"),
+                "described_at": datetime.now(timezone.utc).isoformat(),
+            }
+            description_path = upload_dir / "description.json"
+            with description_path.open("w", encoding="utf-8") as fh:
+                json.dump(description_data, fh, ensure_ascii=False, indent=2)
+
+            return {
+                "status": "ok",
+                "stage": "described",
+                "force_type": force_type,
+                "upload_id": upload_id,
+                "figure_type": "other",
+                "description": description_result.get("description"),
+            }
+
+        else:
+            # No force_type - run full auto-detection pipeline
+            # This is equivalent to what runUploadFullPipeline does on frontend
+            # but as a single endpoint for convenience
+
+            # Step 1: Classification
+            classification_result = processor.classify_only(image_path, ocr_text="", run_id=f"upload-{upload_id}")
+
+            classification_data = {
+                "figure_type": classification_result.get("figure_type"),
+                "confidence": classification_result.get("confidence"),
+                "reasoning": classification_result.get("reasoning"),
+                "classification_duration_ms": classification_result.get("classification_duration_ms"),
+                "classified_at": datetime.now(timezone.utc).isoformat(),
+            }
+            classification_path = upload_dir / "classification.json"
+            with classification_path.open("w", encoding="utf-8") as fh:
+                json.dump(classification_data, fh, ensure_ascii=False, indent=2)
+
+            figure_type = classification_result.get("figure_type")
+
+            if figure_type == "flowchart":
+                # Flowchart pipeline
+                direction_result = processor.detect_direction_only(image_path, run_id=f"upload-{upload_id}")
+                direction_data = {
+                    "direction": direction_result.get("direction"),
+                    "direction_duration_ms": direction_result.get("direction_duration_ms"),
+                    "detected_at": datetime.now(timezone.utc).isoformat(),
+                }
+                direction_path = upload_dir / "direction.json"
+                with direction_path.open("w", encoding="utf-8") as fh:
+                    json.dump(direction_data, fh, ensure_ascii=False, indent=2)
+
+                # SAM3 segmentation
+                text_positions = processor.extract_text_positions_from_image(image_path)
+                segment_result = processor.segment_only(
+                    image_path, ocr_text="", run_id=f"upload-{upload_id}",
+                    text_positions=text_positions
+                )
+
+                if segment_result.get("annotated_path"):
+                    src_annotated = Path(segment_result["annotated_path"])
+                    if src_annotated.exists():
+                        dst_annotated = upload_dir / "annotated.png"
+                        shutil.copy2(src_annotated, dst_annotated)
+                        segment_result["annotated_path"] = str(dst_annotated)
+
+                sam3_data = {
+                    "figure_type": segment_result.get("figure_type"),
+                    "confidence": segment_result.get("confidence"),
+                    "reasoning": segment_result.get("reasoning"),
+                    "direction": segment_result.get("direction"),
+                    "shape_positions": segment_result.get("shape_positions"),
+                    "text_positions": segment_result.get("text_positions"),
+                    "sam3_duration_ms": segment_result.get("sam3_duration_ms"),
+                    "segmented_at": datetime.now(timezone.utc).isoformat(),
+                }
+                sam3_path = upload_dir / "sam3.json"
+                with sam3_path.open("w", encoding="utf-8") as fh:
+                    json.dump(sam3_data, fh, ensure_ascii=False, indent=2)
+
+                # Mermaid extraction
+                sam3_result = sam3_data.copy()
+                if (upload_dir / "annotated.png").exists():
+                    sam3_result["annotated_path"] = str(upload_dir / "annotated.png")
+
+                mermaid_result = processor.extract_mermaid_from_sam3(
+                    image_path, sam3_result, ocr_text="", run_id=f"upload-{upload_id}"
+                )
+
+                result_path = upload_dir / "result.json"
+                with result_path.open("w", encoding="utf-8") as fh:
+                    json.dump(mermaid_result, fh, ensure_ascii=False, indent=2)
+
+                return {
+                    "status": "ok",
+                    "stage": "complete",
+                    "upload_id": upload_id,
+                    "figure_type": "flowchart",
+                    "processed_content": mermaid_result.get("processed_content"),
+                }
+            else:
+                # OTHER pipeline
+                description_result = processor.describe_only(image_path, ocr_text="", run_id=f"upload-{upload_id}")
+
+                description_data = {
+                    "figure_type": "other",
+                    "description": description_result.get("description"),
+                    "processed_content": description_result.get("processed_content"),
+                    "description_duration_ms": description_result.get("description_duration_ms"),
+                    "described_at": datetime.now(timezone.utc).isoformat(),
+                }
+                description_path = upload_dir / "description.json"
+                with description_path.open("w", encoding="utf-8") as fh:
+                    json.dump(description_data, fh, ensure_ascii=False, indent=2)
+
+                return {
+                    "status": "ok",
+                    "stage": "described",
+                    "upload_id": upload_id,
+                    "figure_type": "other",
+                    "description": description_result.get("description"),
+                }
+
+    except ImportError as e:
+        logger.exception(f"Import error during upload reprocess: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Figure processing import error: {e}",
+        )
+    except Exception as e:
+        logger.exception(f"Failed to reprocess upload {upload_id}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # =============================================================================
 # PDF Figure Routes (with {slug} path parameters)
 # =============================================================================
@@ -1272,8 +1541,17 @@ def api_figure_reprocess(
     slug: str,
     element_id: str,
     provider: str = Query(default=None),
+    force_type: Optional[str] = Query(default=None, description="Force figure type: 'flowchart' or 'other'. If not provided, runs auto-classification."),
 ) -> Dict[str, Any]:
-    """Trigger reprocessing of a figure through the vision pipeline."""
+    """Trigger reprocessing of a figure through the vision pipeline.
+
+    Args:
+        slug: The run slug
+        element_id: The figure element ID
+        provider: Optional provider override
+        force_type: Optional forced figure type. When provided, skips classification
+            and processes as the specified type ('flowchart' or 'other').
+    """
     provider_key = provider or DEFAULT_PROVIDER
     elements_path = _resolve_elements_file(slug, provider_key)
     figures_dir = _get_figures_dir(elements_path)
@@ -1324,8 +1602,9 @@ def api_figure_reprocess(
             ocr_text=ocr_text,
             run_id=slug,
             text_positions=text_positions if text_positions else None,
+            force_type=force_type,
         )
-        return {"status": "ok", "result": result}
+        return {"status": "ok", "result": result, "force_type": force_type}
     except ImportError as e:
         logger.exception(f"Import error during figure reprocessing: {e}")
         raise HTTPException(
