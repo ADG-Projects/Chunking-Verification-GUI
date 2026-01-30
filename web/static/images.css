@@ -980,6 +980,12 @@
   font-size: 9px;
 }
 
+/* Type badge sizing for upload history cards */
+.upload-history-meta .type-badge {
+  padding: 2px 5px;
+  font-size: 9px;
+}
+
 .upload-history-stage.stage-complete {
   background: var(--color-success);
   color: white;
@@ -993,14 +999,6 @@
 .upload-history-stage.stage-uploaded {
   background: var(--muted);
   color: white;
-}
-
-.upload-history-type {
-  font-size: 10px;
-  color: var(--text-secondary);
-  padding: 2px 5px;
-  background: var(--surface-glass-active);
-  border-radius: var(--radius-sm);
 }
 
 .upload-history-confidence {

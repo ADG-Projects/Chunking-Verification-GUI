@@ -116,7 +116,7 @@ function renderUploadHistory(uploads) {
             <div class="upload-history-meta">
               ${formatLabel ? `<span class="format-badge ${formatClass}">${formatLabel}</span>` : ''}
               <span class="upload-history-stage stage-${stageBadge}">${stageLabel}</span>
-              ${upload.figure_type ? `<span class="upload-history-type type-${typeLabel}">${typeLabel}</span>` : ''}
+              ${upload.figure_type ? `<span class="type-badge type-${typeLabel}">${typeLabel}</span>` : ''}
               ${confidence ? `<span class="upload-history-confidence">${confidence}</span>` : ''}
             </div>
             <div class="upload-history-date">${uploadDate}</div>
