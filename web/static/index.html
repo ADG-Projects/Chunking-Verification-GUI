@@ -93,10 +93,18 @@
         </div>
       </div>
       <div class="controls">
-        <label class="extraction-picker">
+        <div class="extraction-picker">
           <span class="lab">Extraction <span id="mainFormatBadge" class="format-badge" style="display:none;"></span></span>
-          <select id="extractionSelect"></select>
-        </label>
+          <div class="extraction-dropdown" id="extractionDropdown">
+            <button type="button" class="extraction-dropdown-toggle" id="extractionToggle">
+              <span id="extractionLabel">Select extraction...</span>
+              <span class="dropdown-chevron">▼</span>
+            </button>
+            <div class="extraction-dropdown-menu hidden" id="extractionMenu">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+        </div>
         <button id="reviewSummaryChip" class="review-chip disabled" type="button" title="Click Elements or Chunks to focus reviews"></button>
         <button id="openExtractionModal" class="btn">New Extraction</button>
         <button id="openChunkerModal" class="btn">New Chunker</button>
