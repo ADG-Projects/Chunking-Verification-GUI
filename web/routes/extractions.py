@@ -568,12 +568,16 @@ def _execute_extraction(metadata: Dict[str, Any]) -> None:
     outputs = metadata.get("outputs") or []
     want_figures = any((o or "").lower() == "figures" for o in outputs)
 
+    # Filter out internal flags (process_figures) before passing to Azure DI
+    # Azure only accepts: Pdf, Figures
+    azure_outputs = [o for o in outputs if (o or "").lower() != "process_figures"]
+
     # Build extractor config
     config = AzureDIConfig(
         model_id=metadata.get("model_id", "prebuilt-layout"),
         api_version=metadata.get("api_version", "2024-11-30"),
         features=metadata.get("features"),
-        outputs=outputs or None,
+        outputs=azure_outputs or None,
         locale=metadata.get("locale"),
         download_figures=want_figures,
     )
