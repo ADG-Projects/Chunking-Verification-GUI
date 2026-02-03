@@ -619,22 +619,33 @@ function setupExtractionDropdown() {
   });
 }
 
-async function refreshExtractions() {
+async function refreshExtractions(options = {}) {
   const extractions = await fetchJSON('/api/extractions');
   EXTRACTIONS_CACHE = extractions;
 
   let chosenKey = null;
 
   if (extractions.length) {
-    // Try to restore last extraction from localStorage
-    const lastExtractionKey = localStorage.getItem(LAST_EXTRACTION_KEY);
     let chosenExtraction = null;
-    if (lastExtractionKey) {
-      const { slug, provider } = parseExtractionKey(lastExtractionKey);
+
+    // If explicit selection requested (e.g., after job completion), use it
+    if (options.slug && options.provider) {
       chosenExtraction = extractions.find(
-        (r) => r.slug === slug && (r.provider || 'unstructured/local') === provider,
+        (r) => r.slug === options.slug && (r.provider || 'unstructured/local') === options.provider,
       );
     }
+
+    // Otherwise try to restore from localStorage
+    if (!chosenExtraction) {
+      const lastExtractionKey = localStorage.getItem(LAST_EXTRACTION_KEY);
+      if (lastExtractionKey) {
+        const { slug, provider } = parseExtractionKey(lastExtractionKey);
+        chosenExtraction = extractions.find(
+          (r) => r.slug === slug && (r.provider || 'unstructured/local') === provider,
+        );
+      }
+    }
+
     // Fall back to existing selection or first extraction
     if (!chosenExtraction) {
       const existing = extractions.find(
