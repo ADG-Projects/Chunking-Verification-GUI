@@ -436,7 +436,7 @@
 
 /* Chunker Modal */
 .chunker-modal {
-  max-width: 500px;
+  max-width: 540px;
 }
 
 .chunker-modal-body {
@@ -449,16 +449,80 @@
   gap: 16px;
 }
 
-.chunker-description {
-  padding: 12px;
-  background: var(--panel);
+.chunker-strategy-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.chunker-rules {
-  margin: 4px 0 8px;
-  padding-left: 18px;
-  color: var(--muted);
-  line-height: 1.35;
+.chunker-strategy-picker select {
+  width: 100%;
+}
+
+.chunker-strategy-desc {
+  padding: 10px 12px;
+  background: var(--panel);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.chunker-advanced {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-glass);
+}
+
+.chunker-advanced summary {
+  padding: 8px 12px;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.chunker-advanced summary:hover {
+  color: var(--text-primary);
+}
+
+.chunker-advanced-params {
+  padding: 4px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chunker-param-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.chunker-param-row label {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.chunker-param-row input[type="number"],
+.chunker-param-row input[type="text"] {
+  width: 140px;
+  min-width: 0;
+  padding: 4px 8px;
+  font-size: var(--text-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+}
+
+.chunker-param-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-primary);
 }
 
 .chunker-actions {

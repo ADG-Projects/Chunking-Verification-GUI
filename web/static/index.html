@@ -617,19 +617,15 @@
               <div class="lab">Source Extraction <span class="info" tabindex="0">i</span><div class="tip">Select an existing extraction with elements to chunk.</div></div>
               <select id="chunkerSourceExtraction"></select>
             </label>
-            <div class="chunker-description card">
-              <div class="lab">How this chunker works</div>
-              <ul class="chunker-rules">
-                <li>Filters noise types: pageHeader, pageFooter, pageNumber, Line.</li>
-                <li>Tables and Figures become standalone chunks (never split).</li>
-                <li>Titles/section headings start new chunks and stay with the following content.</li>
-                <li>Section headings inside Table/Figure boxes stay attached to the container (captions stay with figures).</li>
-                <li>Consecutive section headings merge into a single section (no header-only chunks).</li>
-                <li>Content before the first heading is grouped as a preamble chunk.</li>
-                <li>Paragraphs inside Table bounding boxes are filtered to avoid duplicate content.</li>
-                <li>Original elements stay embedded for overlays; chunks can span pages when elements do.</li>
-              </ul>
-            </div>
+            <label class="chunker-strategy-picker">
+              <div class="lab">Chunker Strategy</div>
+              <select id="chunkerStrategy"></select>
+            </label>
+            <div id="chunkerStrategyDesc" class="chunker-strategy-desc card"></div>
+            <details class="chunker-advanced" id="chunkerAdvanced">
+              <summary>Advanced Options</summary>
+              <div id="chunkerAdvancedParams" class="chunker-advanced-params"></div>
+            </details>
             <div class="chunker-actions">
               <button id="runChunkerBtn" class="btn btn-primary">Run Chunker</button>
               <span id="chunkerStatus" class="muted"></span>
