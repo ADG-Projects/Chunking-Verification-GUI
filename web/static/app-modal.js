@@ -72,6 +72,136 @@ function closeExtractionModal() {
   }
 }
 
+/* ---------- chunker prefs persistence ---------- */
+const _CHUNKER_STORAGE_KEY = 'ingestlab:chunkerPrefs';
+
+function _saveChunkerPrefs(strategy, config) {
+  try {
+    localStorage.setItem(_CHUNKER_STORAGE_KEY, JSON.stringify({ strategy, config }));
+  } catch (_) { /* quota or private-browsing — silently ignore */ }
+}
+
+function _loadChunkerPrefs() {
+  try {
+    const raw = localStorage.getItem(_CHUNKER_STORAGE_KEY);
+    if (!raw) return null;
+    const prefs = JSON.parse(raw);
+    if (prefs && typeof prefs.strategy === 'string') return prefs;
+  } catch (_) { /* corrupt data */ }
+  return null;
+}
+
+/* ---------- chunker schema cache ---------- */
+let _chunkerSchemasCache = null;
+
+async function _fetchChunkerSchemas() {
+  if (_chunkerSchemasCache) return _chunkerSchemasCache;
+  try {
+    _chunkerSchemasCache = await fetchJSON('/api/chunkers');
+  } catch (e) {
+    console.error('Failed to fetch chunker schemas:', e);
+    _chunkerSchemasCache = [];
+  }
+  return _chunkerSchemasCache;
+}
+
+function _prettyLabel(key) {
+  return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function _clearChildren(el) {
+  while (el.firstChild) el.removeChild(el.firstChild);
+}
+
+function _buildAdvancedParams(schema, container, savedConfig) {
+  _clearChildren(container);
+  const props = schema.parameters?.properties || {};
+  // Skip include_orig_elements — always true, not user-facing
+  const keys = Object.keys(props).filter(k => k !== 'include_orig_elements');
+  if (keys.length === 0) {
+    const span = document.createElement('span');
+    span.className = 'muted';
+    span.textContent = 'No configurable parameters.';
+    container.appendChild(span);
+    return;
+  }
+  keys.forEach(key => {
+    const prop = props[key];
+    const hasSaved = savedConfig && key in savedConfig;
+    const val = hasSaved ? savedConfig[key] : prop.default;
+    const row = document.createElement('div');
+    row.className = 'chunker-param-row';
+
+    const label = document.createElement('label');
+    label.textContent = _prettyLabel(key);
+    label.setAttribute('for', `chunkerParam_${key}`);
+    row.appendChild(label);
+
+    let input;
+    if (prop.type === 'boolean') {
+      input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = val === true;
+    } else if (prop.type === 'integer' || prop.type === 'number') {
+      input = document.createElement('input');
+      input.type = 'number';
+      if (prop.type === 'number') input.step = 'any';
+      if (val !== undefined) input.value = val;
+      input.placeholder = prop.default !== undefined ? String(prop.default) : '';
+    } else if (prop.type === 'array') {
+      input = document.createElement('input');
+      input.type = 'text';
+      if (val !== undefined) input.value = (Array.isArray(val) ? val : []).join(', ');
+      input.placeholder = 'comma-separated values';
+    } else {
+      input = document.createElement('input');
+      input.type = 'text';
+      if (val !== undefined) input.value = val;
+    }
+    input.id = `chunkerParam_${key}`;
+    input.dataset.paramKey = key;
+    input.dataset.paramType = prop.type || 'string';
+    if (prop.default !== undefined) input.dataset.paramDefault = JSON.stringify(prop.default);
+    row.appendChild(input);
+    container.appendChild(row);
+  });
+}
+
+function _collectParamValues(onlyOverrides) {
+  const container = $('chunkerAdvancedParams');
+  if (!container) return {};
+  const result = {};
+  container.querySelectorAll('[data-param-key]').forEach(input => {
+    const key = input.dataset.paramKey;
+    const type = input.dataset.paramType;
+    const defaultVal = input.dataset.paramDefault;
+
+    let val;
+    if (type === 'boolean') {
+      val = input.checked;
+    } else if (type === 'integer') {
+      val = input.value !== '' ? parseInt(input.value, 10) : undefined;
+    } else if (type === 'number') {
+      val = input.value !== '' ? parseFloat(input.value) : undefined;
+    } else if (type === 'array') {
+      val = input.value.trim() ? input.value.split(',').map(s => s.trim()).filter(Boolean) : undefined;
+    } else {
+      val = input.value || undefined;
+    }
+
+    if (onlyOverrides) {
+      if (val !== undefined && JSON.stringify(val) !== defaultVal) result[key] = val;
+    } else {
+      if (val !== undefined) result[key] = val;
+    }
+  });
+  return result;
+}
+
+function _collectConfigOverrides() {
+  return _collectParamValues(true);
+}
+
 function wireChunkerModal() {
   const openBtn = $('openChunkerModal');
   const closeBtn = $('closeChunkerModal');
@@ -80,13 +210,29 @@ function wireChunkerModal() {
   const runBtn = $('runChunkerBtn');
   const status = $('chunkerStatus');
   const sourceSelect = $('chunkerSourceExtraction');
+  const strategySelect = $('chunkerStrategy');
+  const strategyDesc = $('chunkerStrategyDesc');
+  const advancedDetails = $('chunkerAdvanced');
+  const advancedParams = $('chunkerAdvancedParams');
 
   if (!openBtn || !modal) return;
+
+  // Strategy change handler
+  async function onStrategyChange(savedConfig) {
+    const schemas = await _fetchChunkerSchemas();
+    const selected = schemas.find(s => s.name === strategySelect.value);
+    if (!selected) return;
+    if (strategyDesc) strategyDesc.textContent = selected.description || '';
+    if (advancedParams) _buildAdvancedParams(selected, advancedParams, savedConfig);
+    if (advancedDetails) advancedDetails.open = false;
+  }
+
+  if (strategySelect) strategySelect.addEventListener('change', () => onStrategyChange());
 
   openBtn.addEventListener('click', async () => {
     // Populate source extraction dropdown from existing extractions
     if (sourceSelect) {
-      sourceSelect.innerHTML = '';
+      _clearChildren(sourceSelect);
       let preselectValue = null;
       if (CURRENT_SLUG) {
         preselectValue = JSON.stringify({ slug: CURRENT_SLUG, provider: CURRENT_PROVIDER || 'unstructured/local' });
@@ -118,6 +264,31 @@ function wireChunkerModal() {
         sourceSelect.appendChild(opt);
       }
     }
+
+    // Populate strategy dropdown and restore saved prefs
+    if (strategySelect) {
+      const schemas = await _fetchChunkerSchemas();
+      _clearChildren(strategySelect);
+      schemas.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s.name;
+        opt.textContent = _prettyLabel(s.name);
+        strategySelect.appendChild(opt);
+      });
+
+      const prefs = _loadChunkerPrefs();
+      let savedConfig = null;
+      if (prefs && schemas.find(s => s.name === prefs.strategy)) {
+        strategySelect.value = prefs.strategy;
+        savedConfig = prefs.config || null;
+      } else {
+        // Fallback defaults
+        if (schemas.find(s => s.name === 'size_controlled')) strategySelect.value = 'size_controlled';
+        else if (schemas.find(s => s.name === 'custom')) strategySelect.value = 'custom';
+      }
+      await onStrategyChange(savedConfig);
+    }
+
     modal.classList.remove('hidden');
     if (status) status.textContent = '';
   });
@@ -151,6 +322,8 @@ function wireChunkerModal() {
         const payload = {
           source_slug: sourceData.slug,
           source_provider: sourceData.provider,
+          chunker: strategySelect ? strategySelect.value : 'custom',
+          config: _collectConfigOverrides(),
         };
 
         const r = await fetch('/api/chunk', {
@@ -168,6 +341,7 @@ function wireChunkerModal() {
           status.textContent = `Done! ${result.summary?.count || 0} chunks created`;
         }
         showToast(`Chunker complete: ${result.summary?.count || 0} chunks`, 'ok', 3000);
+        _saveChunkerPrefs(strategySelect ? strategySelect.value : 'custom', _collectParamValues(false));
         try {
           switchView('inspect', true);
           switchInspectTab('chunks', true);

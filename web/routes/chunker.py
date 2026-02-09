@@ -6,13 +6,12 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 from fastapi import APIRouter, HTTPException, Request
 
+from src.extractors.chunker_registry import chunker_schemas, get_chunker
 from src.extractors.custom_chunker import (
-    ChunkingConfig,
-    chunk_elements,
     decode_orig_elements,
     get_chunk_statistics,
 )
@@ -125,17 +124,22 @@ def _save_chunks(chunks: List[Any], path: Path) -> None:
             f.write(json.dumps(data, ensure_ascii=False) + "\n")
 
 
+@router.get("/api/chunkers")
+async def api_chunkers() -> List[Dict[str, Any]]:
+    """Return available chunker strategies with their parameter schemas."""
+    return chunker_schemas()
+
+
 @router.post("/api/chunk")
 async def api_chunk(request: Request) -> Dict[str, Any]:
-    """Run custom chunker on an existing run's elements.
+    """Run a chunker strategy on an existing run's elements.
 
     Request body:
     {
         "source_slug": "...",       # Slug of the source run
         "source_provider": "...",   # Provider of the source run
-        "config": {                 # Optional chunking configuration
-            "include_orig_elements": true
-        }                           # Other sizing knobs are ignored by the custom chunker
+        "chunker": "custom",        # Chunker strategy name (default: "custom")
+        "config": { ... }           # Optional config overrides for the chosen chunker
     }
 
     Returns:
@@ -165,14 +169,25 @@ async def api_chunk(request: Request) -> Dict[str, Any]:
             detail=f"Unknown provider: {source_provider}",
         )
 
-    # Build chunking config from payload
-    config_dict = payload.get("config") or {}
-    config_kwargs: Dict[str, Any] = {}
-    if "include_orig_elements" in config_dict:
-        config_kwargs["include_orig_elements"] = bool(
-            config_dict.get("include_orig_elements")
+    # Resolve chunker strategy from the registry
+    chunker_name = payload.get("chunker") or "custom"
+    try:
+        chunker_info = get_chunker(chunker_name)
+    except KeyError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown chunker strategy: {chunker_name}",
         )
-    config = ChunkingConfig(**config_kwargs)
+
+    # Build config from the chunker's own config model
+    config_dict = payload.get("config") or {}
+    try:
+        config = chunker_info.config_model(**config_dict)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid config for {chunker_name}: {e}",
+        ) from e
 
     # Find and load source elements (supports both v5.0+ and legacy formats)
     try:
@@ -195,13 +210,13 @@ async def api_chunk(request: Request) -> Dict[str, Any]:
             detail="Source file contains no elements",
         )
 
-    logger.info(f"Loaded {len(elements)} elements, running chunker")
+    logger.info(f"Loaded {len(elements)} elements, running {chunker_name} chunker")
 
-    # Convert dicts to Element models (chunk_elements expects Pydantic models)
+    # Convert dicts to Element models (chunker functions expect Pydantic models)
     element_models = [Element.model_validate(el) for el in elements]
 
     # Run chunker
-    chunks = chunk_elements(element_models, config)
+    chunks = chunker_info.chunker_fn(element_models, config)
     stats = get_chunk_statistics(chunks)
     summary = stats.model_dump()
 

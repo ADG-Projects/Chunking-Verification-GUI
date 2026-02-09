@@ -81,15 +81,12 @@
       <div class="header-left">
         <div class="title-stack">
           <h1>IngestLab</h1>
-<span class="version-badge" id="versionBadge" title="What's new">v6.2.1</span>
+<span class="version-badge" id="versionBadge" title="What's new">v6.3.0</span>
         </div>
         <div class="view-tabs" role="tablist" aria-label="Primary view">
           <button id="viewTabInspect" class="tab active" data-view="inspect" role="tab" aria-selected="true">Inspect</button>
+          <button id="viewTabImages" class="tab" data-view="images" role="tab" aria-selected="false">Images</button>
           <button id="viewTabFeedback" class="tab" data-view="feedback" role="tab" aria-selected="false">Feedback</button>
-          <button id="viewTabImages" class="tab" data-view="images" role="tab" aria-selected="false">
-            Images
-            <span class="experimental-badge">EXPERIMENTAL</span>
-          </button>
         </div>
       </div>
       <div class="controls">
@@ -123,6 +120,12 @@
           </svg>
           <svg id="themeIconMoon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="display:none">
             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+        <button id="settingsBtn" class="btn btn-icon" type="button" title="Settings" aria-label="Settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
           </svg>
         </button>
       </div>
@@ -308,7 +311,7 @@
       </div>
     </section>
 
-    <!-- Images View (EXPERIMENTAL) -->
+    <!-- Images View -->
     <section id="imagesView" class="images-view hidden" aria-labelledby="viewTabImages">
       <div class="images-header card">
         <div class="images-mode-tabs">
@@ -542,6 +545,10 @@
                   <label class="checkbox"><input type="checkbox" id="azureFigureImage" /> Figure image</label>
                 </div>
                 <div class="opt-group">
+                  <div class="lab sm">Post-processing <span class="info" tabindex="0">i</span><div class="tip">Run AI vision pipeline on extracted figures for flowchart detection and description generation. Disable to extract images only (can process later via Images tab).</div></div>
+                  <label class="checkbox"><input type="checkbox" id="azureProcessFigures" checked /> Analyze figures with AI</label>
+                </div>
+                <div class="opt-group">
                   <div class="lab sm">Optional detection <span class="info" tabindex="0">i</span><div class="tip">Enable extra detectors: barcodes, language hints, and key-value pairs.</div></div>
                   <label class="checkbox"><input type="checkbox" id="azureBarcodes" /> Barcodes</label>
                   <label class="checkbox"><input type="checkbox" id="azureLanguage" checked /> Language</label>
@@ -610,19 +617,15 @@
               <div class="lab">Source Extraction <span class="info" tabindex="0">i</span><div class="tip">Select an existing extraction with elements to chunk.</div></div>
               <select id="chunkerSourceExtraction"></select>
             </label>
-            <div class="chunker-description card">
-              <div class="lab">How this chunker works</div>
-              <ul class="chunker-rules">
-                <li>Filters noise types: pageHeader, pageFooter, pageNumber, Line.</li>
-                <li>Tables and Figures become standalone chunks (never split).</li>
-                <li>Titles/section headings start new chunks and stay with the following content.</li>
-                <li>Section headings inside Table/Figure boxes stay attached to the container (captions stay with figures).</li>
-                <li>Consecutive section headings merge into a single section (no header-only chunks).</li>
-                <li>Content before the first heading is grouped as a preamble chunk.</li>
-                <li>Paragraphs inside Table bounding boxes are filtered to avoid duplicate content.</li>
-                <li>Original elements stay embedded for overlays; chunks can span pages when elements do.</li>
-              </ul>
-            </div>
+            <label class="chunker-strategy-picker">
+              <div class="lab">Chunker Strategy</div>
+              <select id="chunkerStrategy"></select>
+            </label>
+            <div id="chunkerStrategyDesc" class="chunker-strategy-desc card"></div>
+            <details class="chunker-advanced" id="chunkerAdvanced">
+              <summary>Advanced Options</summary>
+              <div id="chunkerAdvancedParams" class="chunker-advanced-params"></div>
+            </details>
             <div class="chunker-actions">
               <button id="runChunkerBtn" class="btn btn-primary">Run Chunker</button>
               <span id="chunkerStatus" class="muted"></span>
@@ -641,6 +644,24 @@
           <button id="closeWhatsNew" class="btn">Close</button>
         </div>
         <div class="whats-new-body">
+          <div class="version-section">
+            <h3 class="version-header">v6.3.0 <span class="version-date">2026-02-09</span></h3>
+            <ul>
+              <li><strong>Chunker Strategy Selection</strong>: Choose between chunker strategies (Custom, Size Controlled) from a dropdown in the chunker modal</li>
+              <li><strong>Advanced Options</strong>: Collapsible panel exposes all configurable parameters per strategy (size limits, merge/split toggles, etc.)</li>
+              <li>Strategies and parameters fetched dynamically from the PolicyAsCode chunker registry (<code>GET /api/chunkers</code>)</li>
+              <li>Default strategy is now Size Controlled with configurable min/max/target chunk sizes</li>
+              <li>Last used strategy and parameter overrides are remembered across sessions</li>
+            </ul>
+          </div>
+          <div class="version-section">
+            <h3 class="version-header">v6.2.2 <span class="version-date">2026-02-03</span></h3>
+            <ul>
+              <li><strong>PolicyAsCode Dev Mode</strong>: Update PaC on-demand via Settings modal without restarting the server</li>
+              <li>New admin API endpoints for PaC status and updates (<code>/api/admin/pac/*</code>)</li>
+              <li>CLI helper script for local PaC management (<code>scripts/pac_dev.py</code>)</li>
+            </ul>
+          </div>
           <div class="version-section">
             <h3 class="version-header">v6.2.1 <span class="version-date">2026-02-03</span></h3>
             <ul>
@@ -861,6 +882,32 @@
       </div>
     </div>
 
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal hidden">
+      <div class="modal-backdrop" id="settingsModalBackdrop"></div>
+      <div class="modal-content card settings-modal">
+        <div class="modal-header">
+          <div class="modal-title">Settings</div>
+          <button id="closeSettingsModal" class="btn">Close</button>
+        </div>
+        <div class="settings-modal-body">
+          <div class="settings-section">
+            <div class="settings-section-header">
+              <h3>PolicyAsCode (PaC)</h3>
+              <p class="settings-section-desc">Manage the PolicyAsCode library used for figure processing.</p>
+            </div>
+            <div id="pacStatusContent" class="pac-status-content">
+              <div class="pac-loading">Loading status...</div>
+            </div>
+            <div class="pac-actions">
+              <button id="pacUpdateBtn" class="btn" type="button" disabled>Update PaC</button>
+              <span id="pacUpdateStatus" class="pac-update-status"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script src="/vendor/chartjs/chart.umd.min.js" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js" defer></script>
     <script src="https://unpkg.com/elkjs@0.9.3/lib/elk.bundled.js" defer></script>
@@ -893,6 +940,7 @@
     <script src="/app-extraction-form.js?v=20250126" defer></script>
     <script src="/app-modal.js?v=20250126" defer></script>
     <script src="/app-extractions.js?v=20250126" defer></script>
+    <script src="/app-settings.js?v=20250203" defer></script>
     <script src="/app.js?v=20251201" defer></script>
   </body>
   </html>
