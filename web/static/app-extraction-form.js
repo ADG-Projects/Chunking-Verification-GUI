@@ -26,11 +26,12 @@ async function fetchSupportedFormats() {
     console.error('Failed to fetch supported formats:', e);
     // Fallback to hardcoded values
     SUPPORTED_FORMATS = {
-      extensions: ['.pdf', '.docx', '.xlsx', '.pptx', '.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.heif'],
+      extensions: ['.pdf', '.docx', '.pptx', '.xlsx', '.xls', '.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.heif'],
       categories: {
         pdf: ['.pdf'],
         image: ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.heif'],
-        office: ['.docx', '.xlsx', '.pptx']
+        office: ['.docx', '.pptx'],
+        spreadsheet: ['.xlsx', '.xls']
       }
     };
     return SUPPORTED_FORMATS;

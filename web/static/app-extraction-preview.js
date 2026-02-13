@@ -23,7 +23,8 @@ async function loadExtractionPreviewForSelectedPdf() {
   const ext = name.toLowerCase().substring(name.lastIndexOf('.'));
   const isPdf = ext === '.pdf';
   const isImage = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.heif'].includes(ext);
-  const isOffice = ['.docx', '.xlsx', '.pptx'].includes(ext);
+  const isSpreadsheet = ['.xlsx', '.xls'].includes(ext);
+  const isOffice = ['.docx', '.pptx'].includes(ext);
 
   // Update format badge
   if (formatBadge) {
@@ -33,6 +34,7 @@ async function loadExtractionPreviewForSelectedPdf() {
     const isOverlay = formatBadge.classList.contains('preview-overlay-badge');
     formatBadge.className = 'format-badge' + (isOverlay ? ' preview-overlay-badge' : '');
     if (isPdf) formatBadge.classList.add('format-pdf');
+    else if (isSpreadsheet) formatBadge.classList.add('format-spreadsheet');
     else if (isOffice) formatBadge.classList.add('format-office');
     else if (isImage) formatBadge.classList.add('format-image');
     formatBadge.style.display = 'block';
@@ -40,8 +42,8 @@ async function loadExtractionPreviewForSelectedPdf() {
 
   // Show/hide preview message
   if (previewMsg) {
-    if (isOffice) {
-      previewMsg.textContent = 'Preview available after extraction (Office documents are converted to PDF)';
+    if (isOffice || isSpreadsheet) {
+      previewMsg.textContent = 'Preview available after extraction';
       previewMsg.style.display = 'block';
     } else if (isImage) {
       previewMsg.textContent = '';
@@ -74,8 +76,8 @@ async function loadExtractionPreviewForSelectedPdf() {
     return;
   }
 
-  // For Office docs, check if a converted PDF exists from a previous run
-  if (isOffice) {
+  // For Office docs and spreadsheets, check if a converted PDF exists from a previous run
+  if (isOffice || isSpreadsheet) {
     try {
       // Try to load converted PDF from previous extraction
       const checkResp = await fetch(`/api/converted-pdf/${encodeURIComponent(name)}`, { method: 'HEAD' });

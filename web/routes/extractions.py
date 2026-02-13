@@ -360,6 +360,121 @@ def _convert_image_to_pdf(image_path: Path, out_dir: Path, slug_with_pages: str)
     return pdf_path
 
 
+_SPREADSHEET_CSS = (
+    "body { font-family: Helvetica, sans-serif; font-size: 9pt; }"
+    " table { border-collapse: collapse; margin-bottom: 12pt; font-size: 8pt; }"
+    " th, td { border: 1px solid #ccc; padding: 3px 6px; text-align: left; }"
+    " th { background: #f0f0f0; font-weight: bold; }"
+    " h2 { color: #333; margin: 16pt 0 8pt; font-size: 13pt; }"
+    " .truncated { color: #888; font-style: italic; margin: 4pt 0 12pt; }"
+)
+
+# Max body rows (excluding thead) to render per table in the PDF preview.
+_PREVIEW_MAX_ROWS = 20
+
+
+def _truncate_table_html(table_html: str, max_rows: int = _PREVIEW_MAX_ROWS) -> str:
+    """Trim an HTML table to at most *max_rows* body rows for the PDF preview.
+
+    Keeps <thead> intact and cuts after the Nth <tr> in <tbody> (or after
+    the (N+1)th <tr> overall when there is no explicit <tbody>).
+    """
+    # Find all <tr positions cheaply with str.find (no regex on huge HTML)
+    tr_positions: list[int] = []
+    start = 0
+    while True:
+        idx = table_html.find("<tr", start)
+        if idx == -1:
+            break
+        tr_positions.append(idx)
+        start = idx + 3
+
+    tbody_start = table_html.find("<tbody>")
+    if tbody_start != -1:
+        # Only count rows after <tbody>
+        body_rows = [p for p in tr_positions if p > tbody_start]
+        total = len(body_rows)
+        if total <= max_rows:
+            return table_html
+        omitted = total - max_rows
+        cut_pos = body_rows[max_rows]
+        return (
+            table_html[:cut_pos]
+            + "</tbody></table>"
+            + f'<p class="truncated">… {omitted} more row{"s" if omitted != 1 else ""} omitted from preview</p>'
+        )
+
+    # No explicit <tbody> — first <tr> is header, rest are data
+    total = len(tr_positions)
+    if total <= max_rows + 1:
+        return table_html
+    omitted = total - max_rows - 1
+    cut_pos = tr_positions[max_rows + 1]
+    return (
+        table_html[:cut_pos]
+        + "</table>"
+        + f'<p class="truncated">… {omitted} more row{"s" if omitted != 1 else ""} omitted from preview</p>'
+    )
+
+
+def _convert_spreadsheet_to_pdf(
+    elements: List[Dict[str, Any]],
+    out_dir: Path,
+    slug_with_pages: str,
+) -> Path:
+    """Create a rough PDF from extracted spreadsheet elements for UI viewing.
+
+    Each worksheet (identified by page_number) becomes exactly one PDF page
+    so that page numbers align with the element metadata from
+    SpreadsheetExtractor.  Large tables are truncated to
+    `_PREVIEW_MAX_ROWS` body rows.
+
+    Args:
+        elements: List of extracted element dicts (title + Table elements).
+        out_dir: Output directory for the PDF.
+        slug_with_pages: Base name for the output file.
+
+    Returns:
+        Path to the created PDF file.
+    """
+    pdf_path = out_dir / f"{slug_with_pages}.pdf"
+
+    # Group elements by page_number (each page = one worksheet)
+    pages: Dict[int, List[Dict[str, Any]]] = {}
+    for el in elements:
+        pn = el.get("page_number") or el.get("metadata", {}).get("page_number") or 1
+        pages.setdefault(pn, []).append(el)
+
+    letter = fitz.paper_rect("letter")
+    landscape = fitz.Rect(0, 0, letter.height, letter.width)
+    margin = (36, 36, -36, -36)  # 0.5-inch margins
+
+    writer = fitz.DocumentWriter(str(pdf_path))
+    for pn in sorted(pages):
+        # Build HTML for this sheet
+        html_parts = ["<html><body>"]
+        for el in pages[pn]:
+            el_type = el.get("type", "")
+            if el_type == "title":
+                html_parts.append(f"<h2>{el.get('text', '')}</h2>")
+            elif el_type == "Table":
+                table_html = el.get("metadata", {}).get("text_as_html", "")
+                if table_html:
+                    html_parts.append(_truncate_table_html(table_html))
+        html_parts.append("</body></html>")
+
+        story = fitz.Story(html="".join(html_parts), user_css=_SPREADSHEET_CSS)
+        # Render this sheet onto exactly one page
+        dev = writer.begin_page(landscape)
+        story.place(landscape + margin)
+        story.draw(dev)
+        writer.end_page()
+
+    writer.close()
+    logger.info(f"Converted spreadsheet to PDF: {pdf_path} ({len(pages)} pages)")
+    return pdf_path
+
+
 def _process_figures_after_extraction(
     elements: List[Dict[str, Any]],
     pdf_path: Path,
@@ -551,93 +666,94 @@ def _process_figures_after_extraction(
 
 
 def _execute_extraction(metadata: Dict[str, Any]) -> None:
-    """Worker function for Azure DI extraction.
+    """Worker function for document extraction.
 
     Called by the job manager with metadata containing all extraction parameters.
     Handles PDFs (with page slicing), Office documents (converted to PDF via Gotenberg),
-    and images (processed directly).
+    images (processed directly), and spreadsheets (native openpyxl extraction).
     """
-    input_file = Path(metadata["input_pdf"])  # Can be PDF, Office doc, or image
+    input_file = Path(metadata["input_pdf"])  # Can be PDF, Office doc, image, or spreadsheet
     trimmed_path = Path(metadata["trimmed_path"])
     elements_path = Path(metadata["elements_path"])
     meta_path = Path(metadata["meta_path"])
     pages_str = metadata["pages"]
     file_type = metadata.get("file_type") or get_file_type(input_file.name)
 
-    # Determine if figures should be downloaded
-    outputs = metadata.get("outputs") or []
-    want_figures = any((o or "").lower() == "figures" for o in outputs)
+    if file_type == "spreadsheet":
+        # Native extraction via openpyxl — no Azure DI or Gotenberg needed
+        _report_progress(metadata, stage="extract", message="Extracting spreadsheet with openpyxl...")
+        logger.info(f"Processing spreadsheet: {input_file.name}")
 
-    # Filter out internal flags (process_figures) before passing to Azure DI
-    # Azure only accepts: Pdf, Figures
-    azure_outputs = [o for o in outputs if (o or "").lower() != "process_figures"]
+        from src.extractors.spreadsheet import SpreadsheetExtractor
 
-    # Build extractor config
-    config = AzureDIConfig(
-        model_id=metadata.get("model_id", "prebuilt-layout"),
-        api_version=metadata.get("api_version", "2024-11-30"),
-        features=metadata.get("features"),
-        outputs=azure_outputs or None,
-        locale=metadata.get("locale"),
-        download_figures=want_figures,
-    )
-
-    # Determine figures output directory
-    figures_output_dir = elements_path.parent if want_figures else None
-
-    # Run extraction using PolicyAsCode's AzureDIExtractor
-    extractor = AzureDIExtractor(config)
-
-    # Handle different file types
-    if file_type == "pdf":
-        # PDFs: Parse pages, slice to requested range, then extract
-        _report_progress(metadata, stage="prepare", message="Preparing PDF pages...")
-        page_list = parse_pages(pages_str)
-        valid_pages, dropped_pages, max_page = resolve_pages_in_document(str(input_file), page_list)
-        if not valid_pages:
-            raise ValueError(f"No valid pages requested; {input_file} has {max_page} pages.")
-        if dropped_pages:
-            logger.warning(f"Dropping out-of-range pages {dropped_pages}; document has {max_page} pages.")
-
-        # Slice PDF to requested pages (creates the trimmed PDF artifact)
-        slice_pdf(str(input_file), valid_pages, str(trimmed_path), warn_on_drop=False)
-        _report_progress(metadata, stage="azure", message="Sending to Azure Document Intelligence...")
-
-        # Extract from the sliced PDF
-        extract_options = AzureDIExtractOptions(figures_output_dir=figures_output_dir)
-        result = extractor.extract(str(trimmed_path), options=extract_options)
-        pages_for_config = ",".join(str(p) for p in valid_pages)
-
-    elif file_type == "office":
-        # Office documents (DOCX, XLSX, PPTX): Gotenberg converts to PDF, then extract
-        # PaC handles conversion internally; we save the converted PDF for UI display
-        _report_progress(metadata, stage="convert", message="Converting Office document...")
-        logger.info(f"Processing Office document: {input_file.name}")
-        _report_progress(metadata, stage="azure", message="Sending to Azure Document Intelligence...")
-        extract_options = AzureDIExtractOptions(
-            figures_output_dir=figures_output_dir,
-            save_converted_pdf=trimmed_path,  # Save converted PDF for UI viewing
-        )
-        result = extractor.extract(str(input_file), options=extract_options)
-        # Office docs process all pages (no page selection)
+        result = SpreadsheetExtractor().extract(input_file)
         pages_for_config = "all"
 
-    elif file_type == "image":
-        # Images: Process directly, then convert to PDF for UI viewing
-        _report_progress(metadata, stage="azure", message="Sending image to Azure Document Intelligence...")
-        logger.info(f"Processing image: {input_file.name}")
-        extract_options = AzureDIExtractOptions(figures_output_dir=figures_output_dir)
-        result = extractor.extract(str(input_file), options=extract_options)
-        # Images are single-page
-        pages_for_config = "1"
-        # Convert image to PDF for UI viewing
-        _report_progress(metadata, stage="convert", message="Converting image to PDF...")
-        slug_with_pages = metadata.get("slug_with_pages", "image")
+        # Generate a rough PDF from the extracted tables for UI viewing
+        _report_progress(metadata, stage="convert", message="Generating PDF preview...")
+        elems_for_pdf = [el.to_dict() for el in result.elements]
+        slug_with_pages = metadata.get("slug_with_pages", "spreadsheet")
         out_dir = elements_path.parent
-        trimmed_path = _convert_image_to_pdf(input_file, out_dir, slug_with_pages)
+        trimmed_path = _convert_spreadsheet_to_pdf(elems_for_pdf, out_dir, slug_with_pages)
 
     else:
-        raise ValueError(f"Unsupported file type: {file_type} for {input_file}")
+        # Azure DI path for pdf/office/image
+        outputs = metadata.get("outputs") or []
+        want_figures = any((o or "").lower() == "figures" for o in outputs)
+        azure_outputs = [o for o in outputs if (o or "").lower() != "process_figures"]
+
+        config = AzureDIConfig(
+            model_id=metadata.get("model_id", "prebuilt-layout"),
+            api_version=metadata.get("api_version", "2024-11-30"),
+            features=metadata.get("features"),
+            outputs=azure_outputs or None,
+            locale=metadata.get("locale"),
+            download_figures=want_figures,
+        )
+
+        figures_output_dir = elements_path.parent if want_figures else None
+        extractor = AzureDIExtractor(config)
+
+        if file_type == "pdf":
+            _report_progress(metadata, stage="prepare", message="Preparing PDF pages...")
+            page_list = parse_pages(pages_str)
+            valid_pages, dropped_pages, max_page = resolve_pages_in_document(str(input_file), page_list)
+            if not valid_pages:
+                raise ValueError(f"No valid pages requested; {input_file} has {max_page} pages.")
+            if dropped_pages:
+                logger.warning(f"Dropping out-of-range pages {dropped_pages}; document has {max_page} pages.")
+
+            slice_pdf(str(input_file), valid_pages, str(trimmed_path), warn_on_drop=False)
+            _report_progress(metadata, stage="azure", message="Sending to Azure Document Intelligence...")
+
+            extract_options = AzureDIExtractOptions(figures_output_dir=figures_output_dir)
+            result = extractor.extract(str(trimmed_path), options=extract_options)
+            pages_for_config = ",".join(str(p) for p in valid_pages)
+
+        elif file_type == "office":
+            _report_progress(metadata, stage="convert", message="Converting Office document...")
+            logger.info(f"Processing Office document: {input_file.name}")
+            _report_progress(metadata, stage="azure", message="Sending to Azure Document Intelligence...")
+            extract_options = AzureDIExtractOptions(
+                figures_output_dir=figures_output_dir,
+                save_converted_pdf=trimmed_path,
+            )
+            result = extractor.extract(str(input_file), options=extract_options)
+            pages_for_config = "all"
+
+        elif file_type == "image":
+            _report_progress(metadata, stage="azure", message="Sending image to Azure Document Intelligence...")
+            logger.info(f"Processing image: {input_file.name}")
+            extract_options = AzureDIExtractOptions(figures_output_dir=figures_output_dir)
+            result = extractor.extract(str(input_file), options=extract_options)
+            pages_for_config = "1"
+            _report_progress(metadata, stage="convert", message="Converting image to PDF...")
+            slug_with_pages = metadata.get("slug_with_pages", "image")
+            out_dir = elements_path.parent
+            trimmed_path = _convert_image_to_pdf(input_file, out_dir, slug_with_pages)
+
+        else:
+            raise ValueError(f"Unsupported file type: {file_type} for {input_file}")
 
     # Convert elements to dict format for JSONL
     elems = [el.to_dict() for el in result.elements]
@@ -662,19 +778,28 @@ def _execute_extraction(metadata: Dict[str, Any]) -> None:
     _report_progress(metadata, stage="elements", message=f"Found {len(elems)} elements ({summary})")
 
     # Build extraction configuration metadata
-    extraction_config: Dict[str, Any] = {
-        "provider": "azure/document_intelligence",
-        "input": str(input_file),
-        "file_type": file_type,
-        "pages": pages_for_config,
-        "model_id": config.model_id,
-        "api_version": config.api_version,
-        "features": config.features or [],
-    }
-    if config.outputs:
-        extraction_config["outputs"] = config.outputs
-    if config.locale:
-        extraction_config["locale"] = config.locale
+    if file_type == "spreadsheet":
+        extraction_config: Dict[str, Any] = {
+            "provider": "spreadsheet/native",
+            "input": str(input_file),
+            "file_type": file_type,
+            "pages": pages_for_config,
+        }
+    else:
+        extraction_config = {
+            "provider": "azure/document_intelligence",
+            "input": str(input_file),
+            "file_type": file_type,
+            "pages": pages_for_config,
+            "model_id": config.model_id,
+            "api_version": config.api_version,
+            "features": config.features or [],
+        }
+        if config.outputs:
+            extraction_config["outputs"] = config.outputs
+        if config.locale:
+            extraction_config["locale"] = config.locale
+
     if metadata.get("primary_language"):
         extraction_config["primary_language"] = metadata["primary_language"]
     if metadata.get("ocr_languages"):
@@ -838,6 +963,9 @@ def api_extraction(payload: Dict[str, Any]) -> Dict[str, Any]:
     elif file_type == "image":
         # Images: single page
         pages = "1"
+    elif file_type == "spreadsheet":
+        # Spreadsheets: process all sheets
+        pages = "all"
 
     logger.info("Received extraction request provider=%s doc=%s type=%s pages=%s", provider, doc_name, file_type, pages)
 

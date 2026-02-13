@@ -64,6 +64,7 @@ function updateMainFormatBadge() {
     if (fileType === 'pdf') badge.classList.add('format-pdf');
     else if (fileType === 'office') badge.classList.add('format-office');
     else if (fileType === 'image') badge.classList.add('format-image');
+    else if (fileType === 'spreadsheet') badge.classList.add('format-spreadsheet');
     badge.style.display = 'inline-block';
     return;
   }
@@ -82,7 +83,9 @@ function updateMainFormatBadge() {
 
   if (fileType === 'pdf' || ext === '.pdf') {
     badge.classList.add('format-pdf');
-  } else if (fileType === 'office' || ['.docx', '.xlsx', '.pptx'].includes(ext)) {
+  } else if (fileType === 'spreadsheet' || ['.xlsx', '.xls'].includes(ext)) {
+    badge.classList.add('format-spreadsheet');
+  } else if (fileType === 'office' || ['.docx', '.pptx'].includes(ext)) {
     badge.classList.add('format-office');
   } else if (fileType === 'image' || ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.heif'].includes(ext)) {
     badge.classList.add('format-image');
@@ -112,14 +115,20 @@ async function loadExtraction(slug, provider = CURRENT_PROVIDER) {
   CURRENT_ELEMENT_REVIEW_FILTER = 'All';
   BOX_INDEX = {};
   CURRENT_PAGE_BOXES = null;
-  const pdfUrl = withProvider(`/pdf/${encodeURIComponent(slug)}`, CURRENT_PROVIDER);
-  const loadingTask = window['pdfjsLib'].getDocument(pdfUrl);
-  PDF_DOC = await loadingTask.promise;
-  PAGE_COUNT = PDF_DOC.numPages;
-  CURRENT_PAGE = 1;
-  SCALE_IS_MANUAL = false;
-  $('pageCount').textContent = PAGE_COUNT;
-  await renderPage(CURRENT_PAGE);
+
+  // Load PDF if available; spreadsheet extractions have no PDF
+  if (CURRENT_EXTRACTION && CURRENT_EXTRACTION.pdf_file) {
+    const pdfUrl = withProvider(`/pdf/${encodeURIComponent(slug)}`, CURRENT_PROVIDER);
+    const loadingTask = window['pdfjsLib'].getDocument(pdfUrl);
+    PDF_DOC = await loadingTask.promise;
+    PAGE_COUNT = PDF_DOC.numPages;
+    CURRENT_PAGE = 1;
+    SCALE_IS_MANUAL = false;
+    $('pageCount').textContent = PAGE_COUNT;
+    await renderPage(CURRENT_PAGE);
+  } else {
+    resetPdfViewer();
+  }
 
   CURRENT_EXTRACTION_CONFIG = CURRENT_EXTRACTION?.extraction_config || CURRENT_EXTRACTION?.run_config || null;
   CURRENT_CHUNK_SUMMARY = CURRENT_EXTRACTION?.chunk_summary || null;

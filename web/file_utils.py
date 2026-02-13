@@ -8,6 +8,7 @@ from fastapi import HTTPException
 
 from src import get_supported_formats as pac_get_supported_formats
 from src import is_supported_format as pac_is_supported_format
+from src.utils.file_utils import SPREADSHEET_EXTENSIONS, SPREADSHEET_MIME_TYPES
 
 from .config import DEFAULT_PROVIDER, get_out_dir, latest_by_mtime
 
@@ -22,14 +23,30 @@ _formats_cache: dict | None = None
 
 
 def get_supported_formats() -> dict:
-    """Get supported document formats from PolicyAsCode.
+    """Get supported document formats from PolicyAsCode, augmented with spreadsheet support.
+
+    PaC deliberately excludes spreadsheets from its generic format list (they use
+    a dedicated SpreadsheetExtractor), so we merge them back in here so that
+    IngestLab's upload, listing, and type-detection code sees them.
 
     Returns:
         Dict with 'extensions', 'categories', and 'mime_types' keys.
     """
     global _formats_cache
     if _formats_cache is None:
-        _formats_cache = pac_get_supported_formats()
+        base = pac_get_supported_formats()
+        # Merge spreadsheet extensions into the cached result
+        extensions = set(base.get("extensions", []))
+        extensions.update(SPREADSHEET_EXTENSIONS)
+        categories = dict(base.get("categories", {}))
+        categories["spreadsheet"] = sorted(SPREADSHEET_EXTENSIONS)
+        mime_types = dict(base.get("mime_types", {}))
+        mime_types["spreadsheet"] = sorted(SPREADSHEET_MIME_TYPES)
+        _formats_cache = {
+            "extensions": sorted(extensions),
+            "categories": categories,
+            "mime_types": mime_types,
+        }
     return _formats_cache
 
 
@@ -72,13 +89,18 @@ def get_file_type(filename: str) -> Optional[str]:
 def is_supported_format(filename: str) -> bool:
     """Check if a filename has a supported document extension.
 
+    PaC's own check excludes spreadsheet extensions, so we check those separately.
+
     Args:
         filename: The filename to check.
 
     Returns:
         True if the extension is supported.
     """
-    return pac_is_supported_format(filename)
+    if pac_is_supported_format(filename):
+        return True
+    ext = get_file_extension(filename)
+    return ext in SPREADSHEET_EXTENSIONS
 
 
 def format_supported_extensions() -> str:
