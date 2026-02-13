@@ -147,9 +147,9 @@ def get_converted_pdf(name: str, provider: str = Query(default=None)):
     slug = Path(name).stem
     out_dir = get_out_dir(provider or DEFAULT_PROVIDER)
 
-    # Look for converted PDFs matching this slug
-    pattern = f"{slug}.pages*.pdf"
-    candidates = sorted(out_dir.glob(pattern))
+    # Look for converted PDFs matching this slug (including variant-tagged files like slug__r2.pages_.pdf)
+    pattern = f"{slug}*.pages*.pdf"
+    candidates = [p for p in out_dir.glob(pattern) if p.stat().st_size > 0]
     path = latest_by_mtime(candidates)
 
     if not path:

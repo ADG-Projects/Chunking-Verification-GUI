@@ -17,6 +17,7 @@ function wireModal() {
     const status = $('extractionStatus');
     if (status) status.textContent = '';
     populateExistingTagsDropdown();
+    loadExtractionPreviewForSelectedPdf();
   });
 
   // Wire up existing tag dropdown to populate the text input

@@ -81,15 +81,16 @@ async function loadExtractionPreviewForSelectedPdf() {
     try {
       // Try to load converted PDF from previous extraction
       const checkResp = await fetch(`/api/converted-pdf/${encodeURIComponent(name)}`, { method: 'HEAD' });
-      if (checkResp.ok) {
+      const contentLength = parseInt(checkResp.headers.get('content-length') || '0', 10);
+      if (checkResp.ok && contentLength > 0) {
         // Converted PDF exists - load it with PDF.js
-        if (previewMsg) previewMsg.style.display = 'none';
         await ensurePdfjsReady();
         const url = `/api/converted-pdf/${encodeURIComponent(name)}`;
         const task = window['pdfjsLib'].getDocument(url);
         EXTRACTION_PREVIEW_DOC = await task.promise;
         EXTRACTION_PREVIEW_COUNT = EXTRACTION_PREVIEW_DOC.numPages;
         EXTRACTION_PREVIEW_PAGE = 1;
+        if (previewMsg) previewMsg.style.display = 'none';
         $('extractionPageCount').textContent = EXTRACTION_PREVIEW_COUNT;
         await renderExtractionPreviewPage();
         return;
