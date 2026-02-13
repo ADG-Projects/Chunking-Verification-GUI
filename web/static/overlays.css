@@ -628,11 +628,6 @@ body.resizing-drawer {
   user-select: none;
 }
 
-#pagesInput:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
 /* Ensure inputs inside labels don't break layout */
 .opt-group input[type="radio"],
 .opt-group input[type="checkbox"] {
