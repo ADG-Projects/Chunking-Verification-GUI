@@ -689,6 +689,7 @@ async function refreshExtractions(options = {}) {
     populateTypeSelectors();
     renderElementsListForCurrentPage(CURRENT_PAGE_BOXES);
     updateReviewSummaryChip();
+    updateMainFormatBadge();
 
     // Update label for empty state
     const label = $('extractionLabel');
