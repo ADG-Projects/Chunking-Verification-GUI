@@ -285,6 +285,12 @@ function wireExtractionForm() {
       payload.form_snapshot.string_index_type = payload.string_index_type;
       payload.form_snapshot.query_fields = payload.query_fields;
     }
+    // Select the correct pipeline stages for this file type
+    const selectedFile = $('pdfSelect')?.value || '';
+    const selectedFileType = getFileType(selectedFile) || 'pdf';
+    if (typeof setActivePipeline === 'function') {
+      setActivePipeline(selectedFileType);
+    }
     setExtractionInProgress(true, { pdf: payload.pdf });
     let jobId = null;
     try {

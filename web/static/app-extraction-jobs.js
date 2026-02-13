@@ -27,14 +27,46 @@ function describeJobStatus(detail, providerName = 'provider') {
   return 'Preparing extraction…';
 }
 
-// Ordered pipeline stages
-const EXTRACTION_PIPELINE = [
-  { id: 'prepare', label: 'Prepare', aliases: ['convert'] },
-  { id: 'azure', label: 'Azure DI', aliases: [] },
-  { id: 'elements', label: 'Elements', aliases: [] },
-  { id: 'figures', label: 'Figures', aliases: [] },
-  { id: 'writing', label: 'Save', aliases: [] },
-];
+// Per-file-type pipeline stages (stage IDs match backend _report_progress calls)
+const PIPELINES_BY_FILE_TYPE = {
+  pdf: [
+    { id: 'prepare', label: 'Prepare', aliases: [] },
+    { id: 'azure', label: 'Azure DI', aliases: [] },
+    { id: 'elements', label: 'Elements', aliases: [] },
+    { id: 'figures', label: 'Figures', aliases: [] },
+    { id: 'writing', label: 'Save', aliases: [] },
+  ],
+  office: [
+    { id: 'convert', label: 'Convert', aliases: [] },
+    { id: 'azure', label: 'Azure DI', aliases: [] },
+    { id: 'elements', label: 'Elements', aliases: [] },
+    { id: 'figures', label: 'Figures', aliases: [] },
+    { id: 'writing', label: 'Save', aliases: [] },
+  ],
+  image: [
+    { id: 'azure', label: 'Azure DI', aliases: [] },
+    { id: 'elements', label: 'Elements', aliases: [] },
+    { id: 'convert', label: 'Convert', aliases: [] },
+    { id: 'writing', label: 'Save', aliases: [] },
+  ],
+  spreadsheet: [
+    { id: 'extract', label: 'Extract', aliases: [] },
+    { id: 'convert', label: 'Preview', aliases: [] },
+    { id: 'elements', label: 'Elements', aliases: [] },
+    { id: 'writing', label: 'Save', aliases: [] },
+  ],
+};
+
+// Active pipeline — default to pdf
+let EXTRACTION_PIPELINE = PIPELINES_BY_FILE_TYPE.pdf;
+
+/**
+ * Select the pipeline matching a file type category.
+ * Call this before starting extraction so the stepper shows correct stages.
+ */
+function setActivePipeline(fileType) {
+  EXTRACTION_PIPELINE = PIPELINES_BY_FILE_TYPE[fileType] || PIPELINES_BY_FILE_TYPE.pdf;
+}
 
 // Track completed stages across polling updates
 let completedStages = new Set();
@@ -315,6 +347,7 @@ function setExtractionInProgress(isRunning, context = {}) {
 
 // Window exports
 window.describeJobStatus = describeJobStatus;
+window.setActivePipeline = setActivePipeline;
 window.renderStagePipeline = renderStagePipeline;
 window.resetStagePipeline = resetStagePipeline;
 window.updateExtractionJobProgress = updateExtractionJobProgress;
