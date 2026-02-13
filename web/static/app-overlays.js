@@ -129,6 +129,11 @@ function chunkPages(chunk) {
   if (box && box.page_trimmed != null) {
     return [box.page_trimmed];
   }
+  // Fallback for formats without coordinates (e.g. XLSX)
+  const metaPage = chunk.metadata?.page_number;
+  if (metaPage != null) {
+    return [metaPage];
+  }
   return [];
 }
 
