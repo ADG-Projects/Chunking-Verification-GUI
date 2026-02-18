@@ -114,58 +114,98 @@ function _clearChildren(el) {
   while (el.firstChild) el.removeChild(el.firstChild);
 }
 
-function _buildAdvancedParams(schema, container, savedConfig) {
+/**
+ * Compute the set of property keys shared by ALL chunker strategies.
+ * These are the inherited "base" fields from ChunkingConfig.
+ */
+async function _baseParamKeys() {
+  const schemas = await _fetchChunkerSchemas();
+  if (schemas.length === 0) return new Set();
+  const sets = schemas.map(s => new Set(Object.keys(s.parameters?.properties || {})));
+  const base = new Set(sets[0]);
+  for (let i = 1; i < sets.length; i++) {
+    for (const k of base) { if (!sets[i].has(k)) base.delete(k); }
+  }
+  return base;
+}
+
+function _buildParamRow(key, prop, savedConfig) {
+  const hasSaved = savedConfig && key in savedConfig;
+  const val = hasSaved ? savedConfig[key] : prop.default;
+  const row = document.createElement('div');
+  row.className = 'chunker-param-row';
+
+  const label = document.createElement('label');
+  label.textContent = _prettyLabel(key);
+  label.setAttribute('for', `chunkerParam_${key}`);
+  row.appendChild(label);
+
+  let input;
+  if (prop.type === 'boolean') {
+    input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = val === true;
+  } else if (prop.type === 'integer' || prop.type === 'number') {
+    input = document.createElement('input');
+    input.type = 'number';
+    if (prop.type === 'number') input.step = 'any';
+    if (val !== undefined) input.value = val;
+    input.placeholder = prop.default !== undefined ? String(prop.default) : '';
+  } else if (prop.type === 'array') {
+    input = document.createElement('input');
+    input.type = 'text';
+    if (val !== undefined) input.value = (Array.isArray(val) ? val : []).join(', ');
+    input.placeholder = 'comma-separated values';
+  } else {
+    input = document.createElement('input');
+    input.type = 'text';
+    if (val !== undefined) input.value = val;
+  }
+  input.id = `chunkerParam_${key}`;
+  input.dataset.paramKey = key;
+  input.dataset.paramType = prop.type || 'string';
+  if (prop.default !== undefined) input.dataset.paramDefault = JSON.stringify(prop.default);
+  row.appendChild(input);
+  return row;
+}
+
+async function _buildAdvancedParams(schema, container, savedConfig) {
   _clearChildren(container);
   const props = schema.parameters?.properties || {};
-  // Skip include_orig_elements — always true, not user-facing
-  const keys = Object.keys(props).filter(k => k !== 'include_orig_elements');
-  if (keys.length === 0) {
+  const hidden = new Set(['include_orig_elements']);
+  const allKeys = Object.keys(props).filter(k => !hidden.has(k));
+  if (allKeys.length === 0) {
     const span = document.createElement('span');
     span.className = 'muted';
     span.textContent = 'No configurable parameters.';
     container.appendChild(span);
     return;
   }
-  keys.forEach(key => {
-    const prop = props[key];
-    const hasSaved = savedConfig && key in savedConfig;
-    const val = hasSaved ? savedConfig[key] : prop.default;
-    const row = document.createElement('div');
-    row.className = 'chunker-param-row';
 
-    const label = document.createElement('label');
-    label.textContent = _prettyLabel(key);
-    label.setAttribute('for', `chunkerParam_${key}`);
-    row.appendChild(label);
+  const baseKeys = await _baseParamKeys();
+  const strategyKeys = allKeys.filter(k => !baseKeys.has(k));
+  const sharedKeys = allKeys.filter(k => baseKeys.has(k));
 
-    let input;
-    if (prop.type === 'boolean') {
-      input = document.createElement('input');
-      input.type = 'checkbox';
-      input.checked = val === true;
-    } else if (prop.type === 'integer' || prop.type === 'number') {
-      input = document.createElement('input');
-      input.type = 'number';
-      if (prop.type === 'number') input.step = 'any';
-      if (val !== undefined) input.value = val;
-      input.placeholder = prop.default !== undefined ? String(prop.default) : '';
-    } else if (prop.type === 'array') {
-      input = document.createElement('input');
-      input.type = 'text';
-      if (val !== undefined) input.value = (Array.isArray(val) ? val : []).join(', ');
-      input.placeholder = 'comma-separated values';
-    } else {
-      input = document.createElement('input');
-      input.type = 'text';
-      if (val !== undefined) input.value = val;
-    }
-    input.id = `chunkerParam_${key}`;
-    input.dataset.paramKey = key;
-    input.dataset.paramType = prop.type || 'string';
-    if (prop.default !== undefined) input.dataset.paramDefault = JSON.stringify(prop.default);
-    row.appendChild(input);
-    container.appendChild(row);
-  });
+  // Strategy-specific params first (the ones users typically tune)
+  if (strategyKeys.length > 0) {
+    const header = document.createElement('div');
+    header.className = 'chunker-param-group-header';
+    header.textContent = 'Strategy Settings';
+    container.appendChild(header);
+    strategyKeys.forEach(key => container.appendChild(_buildParamRow(key, props[key], savedConfig)));
+  }
+
+  // Base / shared params in a collapsible group
+  if (sharedKeys.length > 0) {
+    const details = document.createElement('details');
+    details.className = 'chunker-base-params';
+    const summary = document.createElement('summary');
+    summary.textContent = 'Preprocessing (shared by all strategies)';
+    summary.title = 'Element filtering and section detection that runs BEFORE any chunker-specific logic. Both section_based and size_controlled chunkers inherit these settings.';
+    details.appendChild(summary);
+    sharedKeys.forEach(key => details.appendChild(_buildParamRow(key, props[key], savedConfig)));
+    container.appendChild(details);
+  }
 }
 
 function _collectParamValues(onlyOverrides) {

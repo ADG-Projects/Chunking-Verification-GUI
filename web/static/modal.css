@@ -525,6 +525,42 @@
   accent-color: var(--color-primary);
 }
 
+.chunker-param-group-header {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.chunker-base-params {
+  margin-top: 4px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-glass);
+}
+
+.chunker-base-params summary {
+  padding: 6px 10px;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.chunker-base-params summary:hover {
+  color: var(--text-secondary);
+}
+
+.chunker-base-params > .chunker-param-row {
+  padding: 0 10px 8px;
+}
+
+.chunker-base-params > .chunker-param-row:first-of-type {
+  padding-top: 4px;
+}
+
 .chunker-actions {
   display: flex;
   align-items: center;

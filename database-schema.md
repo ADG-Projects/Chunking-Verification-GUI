@@ -19,6 +19,7 @@ Source PDFs are read from a configurable directory:
 
 ## Version history
 
+- **v7.0.1 (2026-02-18)** – Chunker UI clarity: advanced options split into Strategy Settings and Preprocessing groups. New `merge_toward_target` parameter from PaC update. Chunker env vars documented in `.env.example`.
 - **v7.0.0 (2026-02-13)** – Native Spreadsheet Extraction: XLSX files extracted via PolicyAsCode SpreadsheetExtractor. Dynamic progress pipeline stages per file type. Spreadsheet-aware UI form. Fixes for XLSX preview, elements display, chunk page filtering, and format badge.
 - **v6.4.0 (2026-02-09)** – Rename "Custom" chunker to "Section Based" across UI, API, and documentation.
 - **v6.3.0 (2026-02-09)** – Chunker Strategy Selection: choose between registered chunker strategies (Section Based, Size Controlled) via dropdown with collapsible advanced options. Strategies and parameter schemas fetched dynamically from PaC chunker registry (`GET /api/chunkers`). Default is Size Controlled. Last used strategy and overrides remembered across sessions.
