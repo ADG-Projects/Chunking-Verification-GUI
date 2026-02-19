@@ -184,6 +184,13 @@ function renderChunksTab() {
     const metaWrap = document.createElement('div');
     metaWrap.className = 'chunk-header-meta';
     metaWrap.innerHTML = `<span>${chunk.element_id || '(no id)'}</span><span>${chunk.char_len || 0} chars</span>`;
+    if (chunk.segment_row_span) {
+      const rs = chunk.segment_row_span;
+      const badge = document.createElement('span');
+      badge.className = 'chip-tag chip-table-rows';
+      badge.textContent = `Rows ${rs.start + 1}\u2013${rs.end} of ${rs.total}`;
+      metaWrap.appendChild(badge);
+    }
     header.appendChild(metaWrap);
     header.appendChild(buildReviewButtons('chunk', chunkId, 'card'));
     const pre = document.createElement('pre');
@@ -278,6 +285,14 @@ async function openChunkDetailsDrawer(chunkId, elementsSublist) {
   resetDrawerScrollState();
   $('drawerTitle').textContent = 'Chunk Details';
   $('drawerMeta').innerHTML = `<code>${chunkId}</code> · <span class="chip-tag">${ch.type || '-'}</span> · <span class="chip-tag">${ch.char_len || 0} chars</span>`;
+  if (ch.segment_row_span) {
+    const rs = ch.segment_row_span;
+    const badge = document.createElement('span');
+    badge.className = 'chip-tag chip-table-rows';
+    badge.textContent = `Rows ${rs.start + 1}\u2013${rs.end} of ${rs.total}`;
+    $('drawerMeta').appendChild(document.createTextNode(' · '));
+    $('drawerMeta').appendChild(badge);
+  }
   $('drawerSummary').innerHTML = '';
   $('elementPicker').innerHTML = '';
   const container = $('preview');

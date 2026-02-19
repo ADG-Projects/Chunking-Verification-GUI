@@ -70,6 +70,16 @@
   border-radius: 999px;
 }
 
+.chip-table-rows {
+  font-size: 11px;
+  background: rgba(10, 132, 255, 0.12);
+  color: var(--color-primary);
+  border: 1px solid rgba(10, 132, 255, 0.25);
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+
 .chunk-card.focused,
 .element-card.focused {
   outline: 2px solid var(--accent);

@@ -11,6 +11,10 @@ from typing import Any, Dict, List, Tuple
 from fastapi import APIRouter, HTTPException, Request
 
 from src.extractors.chunker_registry import chunker_schemas, get_chunker
+from src.extractors.chunking_defaults import (
+    CHARS_PER_TOKEN_BY_LANGUAGE,
+    chars_per_token_for_language,
+)
 from src.extractors.section_based_chunker import (
     decode_orig_elements,
     get_chunk_statistics,
@@ -115,6 +119,89 @@ def _load_elements_from_chunks_file(path: Path) -> List[Dict[str, Any]]:
     return elements
 
 
+def _load_extraction_metadata(slug: str, provider: str) -> Dict[str, Any]:
+    """Load extraction.json metadata for a slug, returning {} on any failure."""
+    out_dir = get_out_dir(provider)
+    # Try direct match first, then pages-suffix variant
+    candidates = [out_dir / f"{slug}.extraction.json"]
+    base, sep, rest = slug.partition(".pages")
+    if sep:
+        candidates.append(out_dir / f"{base}.pages{rest}.extraction.json")
+    for path in candidates:
+        if path.exists():
+            try:
+                return json.loads(path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                pass
+    return {}
+
+
+def _detect_language_code(meta: Dict[str, Any]) -> str | None:
+    """Extract a 2-letter language code from extraction metadata.
+
+    The metadata may contain language info in various shapes (Azure DI
+    detected_languages list, form_snapshot primary_language, etc.).
+    Returns a 2-letter ISO 639-1 code like 'ar' or 'en', or None.
+    """
+    # ISO 639-3 → ISO 639-1 mapping for languages in the chars_per_token map
+    _3to2 = {"ara": "ar", "eng": "en", "arb": "ar"}
+
+    def _norm(val: Any) -> str | None:
+        if not val:
+            return None
+        txt = str(val).strip().lower()
+        if not txt:
+            return None
+        # Already 2-letter?
+        if txt in CHARS_PER_TOKEN_BY_LANGUAGE:
+            return txt
+        # 3-letter code?
+        if txt in _3to2:
+            return _3to2[txt]
+        # Prefix match (e.g. 'ar-SA' → 'ar')
+        prefix = txt[:2]
+        if prefix in CHARS_PER_TOKEN_BY_LANGUAGE:
+            return prefix
+        return None
+
+    def _extract_from_list(lst: Any) -> str | None:
+        if not isinstance(lst, list):
+            return None
+        for item in lst:
+            if isinstance(item, dict):
+                code = _norm(
+                    item.get("locale")
+                    or item.get("language")
+                    or item.get("language_code")
+                    or item.get("code")
+                )
+            else:
+                code = _norm(item)
+            if code:
+                return code
+        return None
+
+    snap = meta.get("form_snapshot") or {}
+    # Try detected_primary_language first, then language lists
+    for src in (meta, snap):
+        code = _norm(src.get("detected_primary_language"))
+        if code:
+            return code
+    for src in (meta, snap):
+        code = _extract_from_list(src.get("detected_languages"))
+        if code:
+            return code
+    for src in (snap, meta):
+        code = _norm(src.get("primary_language"))
+        if code:
+            return code
+    for src in (snap, meta):
+        code = _norm(src.get("ocr_languages"))
+        if code:
+            return code
+    return None
+
+
 def _save_chunks(chunks: List[Any], path: Path) -> None:
     """Save chunks to a JSONL file."""
     with path.open("w", encoding="utf-8") as f:
@@ -125,9 +212,12 @@ def _save_chunks(chunks: List[Any], path: Path) -> None:
 
 
 @router.get("/api/chunkers")
-async def api_chunkers() -> List[Dict[str, Any]]:
+async def api_chunkers() -> Dict[str, Any]:
     """Return available chunker strategies with their parameter schemas."""
-    return chunker_schemas()
+    return {
+        "chunkers": chunker_schemas(),
+        "chars_per_token_by_language": CHARS_PER_TOKEN_BY_LANGUAGE,
+    }
 
 
 @router.post("/api/chunk")
@@ -179,8 +269,23 @@ async def api_chunk(request: Request) -> Dict[str, Any]:
             detail=f"Unknown chunker strategy: {chunker_name}",
         )
 
-    # Build config from the chunker's own config model
+    # Build config, with optional language-aware chars_per_token injection
     config_dict = payload.get("config") or {}
+    detected_language = None
+    applied_chars_per_token = None
+
+    # Auto-inject chars_per_token if user didn't explicitly set it
+    if "chars_per_token" not in config_dict:
+        meta = _load_extraction_metadata(source_slug, source_provider)
+        detected_language = _detect_language_code(meta)
+        if detected_language:
+            cpt = chars_per_token_for_language(detected_language)
+            config_dict["chars_per_token"] = cpt
+            applied_chars_per_token = cpt
+            logger.info(
+                f"Auto-set chars_per_token={cpt} for detected language '{detected_language}'"
+            )
+
     try:
         config = chunker_info.config_model(**config_dict)
     except Exception as e:
@@ -235,9 +340,14 @@ async def api_chunk(request: Request) -> Dict[str, Any]:
     logger.info(f"Saving chunks to {output_path}")
     _save_chunks(chunks, output_path)
 
-    return {
+    result: Dict[str, Any] = {
         "success": True,
         "chunks_file": str(output_path),
         "source_elements": len(elements),
         "summary": summary,
     }
+    if detected_language:
+        result["detected_language"] = detected_language
+    if applied_chars_per_token is not None:
+        result["applied_chars_per_token"] = applied_chars_per_token
+    return result

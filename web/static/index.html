@@ -81,7 +81,7 @@
       <div class="header-left">
         <div class="title-stack">
           <h1>IngestLab</h1>
-<span class="version-badge" id="versionBadge" title="What's new">v7.1.0</span>
+<span class="version-badge" id="versionBadge" title="What's new">v7.2.0</span>
         </div>
         <div class="view-tabs" role="tablist" aria-label="Primary view">
           <button id="viewTabInspect" class="tab active" data-view="inspect" role="tab" aria-selected="true">Inspect</button>
@@ -621,10 +621,11 @@
               <select id="chunkerSourceExtraction"></select>
             </label>
             <label class="chunker-strategy-picker">
-              <div class="lab">Chunker Strategy</div>
+              <div class="lab">Chunker Strategy <span class="info" tabindex="0">i</span><div class="tip">Choose how extracted elements are grouped into chunks. Each strategy uses different logic for splitting and merging.</div></div>
               <select id="chunkerStrategy"></select>
             </label>
             <div id="chunkerStrategyDesc" class="chunker-strategy-desc card"></div>
+            <div id="chunkerLanguageHint" class="chunker-language-hint hidden"></div>
             <details class="chunker-advanced" id="chunkerAdvanced">
               <summary>Advanced Options</summary>
               <div id="chunkerAdvancedParams" class="chunker-advanced-params"></div>
@@ -650,6 +651,15 @@
           <button id="closeWhatsNew" class="btn">Close</button>
         </div>
         <div class="whats-new-body">
+          <div class="version-section">
+            <h3 class="version-header">v7.2.0 <span class="version-date">2026-02-19</span></h3>
+            <ul>
+              <li><strong>Language-aware chunking</strong>: Automatically detects document language and sets optimal <code>chars_per_token</code> (e.g. Arabic=2.0, English=4.0). Language hint shown in chunker modal</li>
+              <li><strong>Table row span badges</strong>: Split table chunks now show "Rows X–Y of Z" badges in chunk cards and the details drawer</li>
+              <li><strong>Cleaner chunker options</strong>: Internal developer flags hidden from the chunker modal via <code>x-internal</code> schema annotation</li>
+              <li><strong>PaC update</strong>: Semantic HTML table splitting with <code>&lt;thead&gt;</code> repetition, metadata copy fix for split table chunks</li>
+            </ul>
+          </div>
           <div class="version-section">
             <h3 class="version-header">v7.1.0 <span class="version-date">2026-02-19</span></h3>
             <ul>
