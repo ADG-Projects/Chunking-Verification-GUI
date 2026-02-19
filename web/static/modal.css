@@ -501,10 +501,25 @@
 }
 
 .chunker-param-row label {
+  position: relative;
   font-size: var(--text-sm);
   color: var(--text-secondary);
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+.chunker-param-row label > .tip {
+  left: 0;
+  right: auto;
+  top: auto;
+  bottom: calc(100% + 6px);
+  transform: translateY(4px);
+  z-index: 31000;
+  white-space: normal;
+}
+
+.chunker-strategy-picker .tip {
+  z-index: 31000;
 }
 
 .chunker-param-row input[type="number"],

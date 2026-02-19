@@ -125,6 +125,25 @@ async function _fetchChunkerSchemas() {
   return _chunkerSchemasCache;
 }
 
+/* ---------- parameter tooltip descriptions ---------- */
+const _PARAM_TOOLTIPS = {
+  // Size-controlled strategy
+  min_chunk_chars: 'Minimum characters per chunk. Sections shorter than this are merged into a neighbour.',
+  max_chunk_chars: 'Hard ceiling on chunk size in characters. Sections exceeding this are split at element boundaries.',
+  target_chunk_chars: 'Ideal chunk size in characters. The merger tries to combine small sections toward this target.',
+  chars_per_token: 'Average characters per LLM token, used to estimate token counts from character lengths.',
+  merge_small_chunks: 'Merge undersized sections into adjacent chunks so headings stay with their content.',
+  split_large_chunks: 'Split oversized sections at element boundaries using the target/max threshold.',
+  preserve_tables: 'Keep tables as standalone chunks even if they exceed the max size limit.',
+  merge_toward_target: 'Greedily combine consecutive sections toward the target size for better average chunk density.',
+  // Shared / preprocessing
+  bbox_tolerance: 'Pixel tolerance when comparing bounding boxes — elements within this distance are treated as co-located.',
+  noise_types: 'Element types to filter as noise before chunking (e.g., pageHeader, pageFooter).',
+  section_break_types: 'Element types that signal section breaks and start a new chunk.',
+  standalone_types: 'Element types that become their own standalone chunk (e.g., Table, Figure).',
+  include_orig_elements: 'Attach the original source elements to each chunk for traceability.',
+};
+
 function _prettyLabel(key) {
   return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
@@ -157,6 +176,20 @@ function _buildParamRow(key, prop, savedConfig) {
   const label = document.createElement('label');
   label.textContent = _prettyLabel(key);
   label.setAttribute('for', `chunkerParam_${key}`);
+
+  // Add tooltip if a description is available (schema or fallback map)
+  const tipText = prop.description || _PARAM_TOOLTIPS[key];
+  if (tipText) {
+    const infoSpan = document.createElement('span');
+    infoSpan.className = 'info';
+    infoSpan.tabIndex = 0;
+    infoSpan.textContent = 'i';
+    const tipDiv = document.createElement('div');
+    tipDiv.className = 'tip';
+    tipDiv.textContent = tipText;
+    label.appendChild(infoSpan);
+    label.appendChild(tipDiv);
+  }
   row.appendChild(label);
 
   let input;
