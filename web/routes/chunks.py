@@ -29,9 +29,44 @@ def _resolve_chunk_file(slug: str, provider: str) -> Path:
     raise HTTPException(status_code=404, detail=f"Chunk file not found for {slug}")
 
 
+def _load_full_table_htmls(chunks_path: Path) -> Dict[str, str]:
+    """Load full table text_as_html from the sibling elements file.
+
+    Returns a dict keyed by element_id → full HTML string.
+    This is needed because split table chunks only carry partial HTML
+    in their orig_elements after the PaC metadata-copy fix.
+    """
+    elements_path = chunks_path.with_name(
+        chunks_path.name.replace(".chunks.jsonl", ".elements.jsonl")
+    )
+    if not elements_path.exists():
+        return {}
+    result: Dict[str, str] = {}
+    try:
+        with elements_path.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    el = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if "table" not in (el.get("type") or "").lower():
+                    continue
+                html = (el.get("metadata") or {}).get("text_as_html")
+                eid = el.get("element_id")
+                if html and eid:
+                    result[eid] = html
+    except OSError:
+        pass
+    return result
+
+
 @router.get("/api/chunks/{slug}")
 def api_chunks(slug: str, provider: str = Query(default=None)) -> Dict[str, Any]:
     path = _resolve_chunk_file(slug, provider or DEFAULT_PROVIDER)
+    full_table_htmls = _load_full_table_htmls(path)
     chunks: List[Dict[str, Any]] = []
     count = 0
     total = 0
@@ -62,6 +97,17 @@ def api_chunks(slug: str, provider: str = Query(default=None)) -> Dict[str, Any]
                 decoded = []
             for el in decoded:
                 md = el.get("metadata") or {}
+                # Capture table HTML regardless of coordinates.
+                # Prefer the full table from the elements file (split chunks
+                # only carry partial HTML after the PaC metadata-copy fix).
+                eid = el.get("element_id")
+                full_html = full_table_htmls.get(eid) if eid else None
+                html_candidate = full_html or md.get("text_as_html") or el.get("text_as_html")
+                if html_candidate:
+                    is_table = "table" in (el.get("type") or "").lower()
+                    if not orig_table_html or (is_table and not orig_html_is_table):
+                        orig_table_html = html_candidate
+                        orig_html_is_table = is_table
                 coords = (md.get("coordinates") or {})
                 pts = coords.get("points") or []
                 if not pts:
@@ -86,12 +132,6 @@ def api_chunks(slug: str, provider: str = Query(default=None)) -> Dict[str, Any]
                     "orig_id": md.get("original_element_id"),
                 }
                 orig_boxes.append(box_entry)
-                html_candidate = md.get("text_as_html") or el.get("text_as_html")
-                if html_candidate:
-                    is_table = "table" in (el.get("type") or "").lower()
-                    if not orig_table_html or (is_table and not orig_html_is_table):
-                        orig_table_html = html_candidate
-                        orig_html_is_table = is_table
             bbox = None
             try:
                 ccoords = (meta.get("coordinates") or {})
@@ -159,13 +199,13 @@ def api_chunks(slug: str, provider: str = Query(default=None)) -> Dict[str, Any]
                 chunk_entry["page_bboxes"] = page_bboxes_simplified
             if segment_bbox:
                 chunk_entry["segment_bbox"] = segment_bbox
-                if segment_span_info:
-                    start_idx, end_idx, total_rows = segment_span_info
-                    chunk_entry["segment_row_span"] = {
-                        "start": start_idx,
-                        "end": end_idx,
-                        "total": total_rows,
-                    }
+            if segment_span_info:
+                start_idx, end_idx, total_rows = segment_span_info
+                chunk_entry["segment_row_span"] = {
+                    "start": start_idx,
+                    "end": end_idx,
+                    "total": total_rows,
+                }
             chunks.append(chunk_entry)
     summary = {
         "count": count,
@@ -181,13 +221,17 @@ class _TableHTMLParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
         self.rows: List[List[str]] = []
+        self.thead_row_count: int = 0
         self._current_row: List[str] = []
         self._current_cell: List[str] = []
         self._in_cell = False
+        self._in_thead = False
 
     def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
         tag = tag.lower()
-        if tag == "tr":
+        if tag == "thead":
+            self._in_thead = True
+        elif tag == "tr":
             self._current_row = []
         elif tag in {"td", "th"}:
             self._in_cell = True
@@ -197,7 +241,9 @@ class _TableHTMLParser(HTMLParser):
 
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
-        if tag in {"td", "th"}:
+        if tag == "thead":
+            self._in_thead = False
+        elif tag in {"td", "th"}:
             if self._in_cell:
                 text = unescape("".join(self._current_cell))
                 self._current_row.append(text)
@@ -206,6 +252,8 @@ class _TableHTMLParser(HTMLParser):
         elif tag == "tr":
             if any((cell or "").strip() for cell in self._current_row):
                 self.rows.append(self._current_row)
+                if self._in_thead:
+                    self.thead_row_count += 1
             self._current_row = []
 
     def handle_data(self, data: str) -> None:
@@ -225,7 +273,9 @@ class _TableHTMLParser(HTMLParser):
                 pass
 
 
-def _collect_table_rows(html_text: Optional[str]) -> List[str]:
+def _collect_table_rows(
+    html_text: Optional[str], *, skip_thead: bool = False,
+) -> List[str]:
     if not html_text:
         return []
     parser = _TableHTMLParser()
@@ -234,8 +284,9 @@ def _collect_table_rows(html_text: Optional[str]) -> List[str]:
         parser.close()
     except Exception:
         return []
+    start = parser.thead_row_count if skip_thead else 0
     rows: List[str] = []
-    for cells in parser.rows:
+    for cells in parser.rows[start:]:
         joined = " ".join((cell or "").strip() for cell in cells if (cell or "").strip())
         normalized = re.sub(r"\s+", " ", joined.replace("\xa0", " ")).strip()
         if normalized:
@@ -352,21 +403,21 @@ def _compute_table_segment(
     chunk: Dict[str, Any],
     table_html: Optional[str],
     reference_bbox: Optional[Dict[str, Any]],
-) -> Optional[Tuple[Dict[str, Any], Tuple[int, int], int]]:
-    if not (table_html and reference_bbox):
+) -> Optional[Tuple[Optional[Dict[str, Any]], Tuple[int, int], int]]:
+    if not table_html:
         return None
     chunk_html = (meta.get("text_as_html") or chunk.get("text_as_html") or "")
     if "<table" not in chunk_html.lower():
         return None
     orig_rows = _collect_table_rows(table_html)
     row_weights = [max(len(r), 1) for r in orig_rows]
-    chunk_rows = _collect_table_rows(chunk_html)
+    chunk_rows = _collect_table_rows(chunk_html, skip_thead=True)
     if not orig_rows or not chunk_rows:
         return None
     span = _find_row_span(orig_rows, chunk_rows)
     if not span:
         return None
-    sliced = _slice_bbox(reference_bbox, len(orig_rows), span, row_weights)
-    if not sliced:
-        return None
+    sliced = None
+    if reference_bbox:
+        sliced = _slice_bbox(reference_bbox, len(orig_rows), span, row_weights)
     return sliced, span, len(orig_rows)

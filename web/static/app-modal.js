@@ -113,16 +113,61 @@ function _loadChunkerPrefs(schemas) {
 
 /* ---------- chunker schema cache ---------- */
 let _chunkerSchemasCache = null;
+let _charsPerTokenByLang = {};
 
 async function _fetchChunkerSchemas() {
   if (_chunkerSchemasCache) return _chunkerSchemasCache;
   try {
-    _chunkerSchemasCache = await fetchJSON('/api/chunkers');
+    const data = await fetchJSON('/api/chunkers');
+    // New dict shape: { chunkers: [...], chars_per_token_by_language: {...} }
+    if (data && data.chunkers) {
+      _chunkerSchemasCache = data.chunkers;
+      _charsPerTokenByLang = data.chars_per_token_by_language || {};
+    } else {
+      // Backward compat: bare array
+      _chunkerSchemasCache = Array.isArray(data) ? data : [];
+    }
   } catch (e) {
     console.error('Failed to fetch chunker schemas:', e);
     _chunkerSchemasCache = [];
   }
   return _chunkerSchemasCache;
+}
+
+/* ---------- language → chars_per_token helpers ---------- */
+
+/**
+ * Map a 3-letter language code (from resolvePrimaryLanguage) to a 2-letter
+ * key compatible with _charsPerTokenByLang.
+ */
+function _langCode3to2(code3) {
+  if (!code3) return null;
+  const map = { ara: 'ar', eng: 'en', arb: 'ar' };
+  const lower = code3.toLowerCase();
+  if (map[lower]) return map[lower];
+  // Already 2-letter?
+  const prefix = lower.slice(0, 2);
+  if (_charsPerTokenByLang[prefix] !== undefined) return prefix;
+  return null;
+}
+
+/**
+ * Look up chars_per_token for a given extraction, returning { value, langLabel } or null.
+ */
+function _charsPerTokenForExtraction(extraction) {
+  if (!extraction) return null;
+  const cfg = extraction.extraction_config || extraction.run_config || {};
+  const snap = cfg.form_snapshot || {};
+  const lang3 = resolvePrimaryLanguage(cfg, snap);
+  const lang2 = _langCode3to2(lang3);
+  if (!lang2 || _charsPerTokenByLang[lang2] === undefined) return null;
+  // Build a human-readable label
+  const labelMap = { ar: 'Arabic', en: 'English' };
+  return {
+    value: _charsPerTokenByLang[lang2],
+    langLabel: labelMap[lang2] || lang2,
+    langCode: lang2,
+  };
 }
 
 /* ---------- parameter tooltip descriptions ---------- */
@@ -248,7 +293,7 @@ async function _buildAdvancedParams(schema, container, savedConfig) {
   _clearChildren(container);
   const props = schema.parameters?.properties || {};
   const hidden = new Set(['include_orig_elements']);
-  const allKeys = Object.keys(props).filter(k => !hidden.has(k));
+  const allKeys = Object.keys(props).filter(k => !hidden.has(k) && !props[k]['x-internal']);
   if (allKeys.length === 0) {
     const span = document.createElement('span');
     span.className = 'muted';
@@ -346,6 +391,31 @@ function wireChunkerModal() {
 
   if (strategySelect) strategySelect.addEventListener('change', () => onStrategyChange());
 
+  // Language-aware chars_per_token: update hint and input when source extraction changes
+  function _updateLanguageHint() {
+    const hint = $('chunkerLanguageHint');
+    if (!hint) return;
+    if (!sourceSelect || !sourceSelect.value) { hint.textContent = ''; hint.classList.add('hidden'); return; }
+    let sourceData;
+    try { sourceData = JSON.parse(sourceSelect.value); } catch { hint.textContent = ''; hint.classList.add('hidden'); return; }
+    // Find matching extraction in cache
+    const ext = (typeof EXTRACTIONS_CACHE !== 'undefined' && Array.isArray(EXTRACTIONS_CACHE))
+      ? EXTRACTIONS_CACHE.find(e => e.slug === sourceData.slug && e.provider === sourceData.provider)
+      : null;
+    const info = _charsPerTokenForExtraction(ext);
+    if (!info) { hint.textContent = ''; hint.classList.add('hidden'); return; }
+    hint.textContent = `${info.langLabel} detected — ${info.value} chars/token`;
+    hint.classList.remove('hidden');
+    // Set chars_per_token input if it hasn't been manually modified
+    const cptInput = document.getElementById('chunkerParam_chars_per_token');
+    if (cptInput && !cptInput.closest('.pref-modified')) {
+      cptInput.value = info.value;
+      // Trigger modification check
+      cptInput.dispatchEvent(new Event('input'));
+    }
+  }
+  if (sourceSelect) sourceSelect.addEventListener('change', _updateLanguageHint);
+
   // Reset to defaults button
   const resetBtn = $('resetChunkerDefaults');
   if (resetBtn) {
@@ -415,6 +485,9 @@ function wireChunkerModal() {
       }
       await onStrategyChange(savedConfig);
     }
+
+    // Apply language hint after params are rendered
+    _updateLanguageHint();
 
     modal.classList.remove('hidden');
     if (status) status.textContent = '';

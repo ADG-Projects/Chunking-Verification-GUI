@@ -467,6 +467,19 @@
   line-height: 1.45;
 }
 
+.chunker-language-hint {
+  padding: 6px 10px;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  background: var(--surface-glass-active);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--color-primary);
+}
+
+.chunker-language-hint.hidden {
+  display: none;
+}
+
 .chunker-advanced {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
